@@ -1,3 +1,4 @@
+import { deriveRulingPins } from '../lib/paper/fitRulingPins';
 import type {
   LightingField,
   MarginLineSide,
@@ -5,8 +6,10 @@ import type {
   PaperSheet,
   PaperTexture,
   RulingBend,
+  RulingKind,
   RulingMirrorOverride,
   RulingPerspective,
+  RulingPin,
   SheetFrame,
   SheetOutline,
   SheetPoint,
@@ -14,6 +17,8 @@ import type {
 } from '../lib/paper/paper.types';
 import { lineCoordinateAt } from '../lib/paper/rulingPerspective';
 import { buildSheetRuling } from '../lib/paper/sheetRuling';
+
+import type { StoredSheetTexture, StoredUserSheet } from './userSheetsStorage.types';
 
 const DEGREES_IN_HALF_TURN = 180;
 
@@ -447,5 +452,153 @@ export const parsePaperSheet = (value: unknown): PaperSheet | null => {
     ruling: parseSheetRuling(value, frame),
     lighting: parseLighting(value.lighting),
     texture: parseTexture(value.texture),
+  };
+};
+
+/**
+ * Наименьшее число булавок, через которое проводится гребёнка.
+ */
+const MIN_PIN_COUNT = 2;
+
+/**
+ * Виды разлиновки, которые знает запись листа.
+ */
+const RULING_KINDS: RulingKind[] = ['grid', 'lined', 'blank'];
+
+/**
+ * Вид разлиновки из JSON.
+ *
+ * @param value — разобранное значение
+ * @returns вид; `null` — вида нет или он нечитаем
+ */
+const parseRulingKind = (value: unknown): RulingKind | null => {
+  return (
+    RULING_KINDS.find((kind) => {
+      return kind === value;
+    }) || null
+  );
+};
+
+/**
+ * Булавка из JSON.
+ *
+ * @param value — разобранное значение
+ * @returns булавка; `null` — номер не целый или у конца нет координаты
+ */
+const parseRulingPin = (value: unknown): RulingPin | null => {
+  if (!isJsonRecord(value) || !Number.isInteger(value.index)) {
+    return null;
+  }
+
+  const left = parseSheetPoint(value.left);
+  const right = parseSheetPoint(value.right);
+
+  if (!left || !right) {
+    return null;
+  }
+
+  return { index: toFiniteNumber(value.index, 0), left, right };
+};
+
+/**
+ * Булавки из JSON. Испорченная булавка снимает все, а не одну: гребёнка через
+ * оставшиеся прошла бы не там, где её закрепил пользователь. Без булавок лист
+ * получает выведенные из его разлиновки — они проходят по тем же линиям.
+ *
+ * @param value — разобранное значение
+ * @param ruling — разлиновка записи
+ * @param frame — кадр фотографии записи
+ * @returns булавки
+ */
+const parseRulingPins = (
+  value: unknown,
+  ruling: SheetRuling,
+  frame: SheetFrame
+): RulingPin[] => {
+  const items: unknown[] = Array.isArray(value) ? value : [];
+  const pins = items.reduce<RulingPin[]>((acc, item) => {
+    const pin = parseRulingPin(item);
+
+    if (pin) {
+      acc.push(pin);
+    }
+
+    return acc;
+  }, []);
+
+  return pins.length === items.length && pins.length >= MIN_PIN_COUNT
+    ? pins
+    : deriveRulingPins(ruling, frame);
+};
+
+/**
+ * Карта текстуры записи своего листа. Без картинки файлом карты нет.
+ *
+ * @param value — разобранное значение
+ * @returns карта; `null` — карты нет или в ней нет картинки
+ */
+const parseStoredTexture = (value: unknown): StoredSheetTexture | null => {
+  if (!isJsonRecord(value) || !(value.image instanceof Blob)) {
+    return null;
+  }
+
+  return {
+    image: value.image,
+    width: toFiniteNumber(value.width, 0),
+    height: toFiniteNumber(value.height, 0),
+    amplitude: toFiniteNumber(value.amplitude, 0),
+  };
+};
+
+/**
+ * Запись своего листа из IndexedDB. Обязательны идентификатор и фотография
+ * файлом: без них лист нечем показать. Разлиновка разбирается тем же путём, что
+ * у `parsePaperSheet`, с теми же фолбэками. Недостающие поля новой формы
+ * получают дефолты: вид — чистый лист, если запись помечена `isBlank`, иначе
+ * вид семьи; найденная разметка — сохранённая; булавки — выведенные из
+ * разлиновки; замена полей зеркала — нет.
+ *
+ * @param value — прочитанная запись
+ * @param resolveFamilyKind — вид семьи по её идентификатору
+ * @returns запись листа или `null`, если его нечем показать
+ */
+export const parseStoredUserSheet = (
+  value: unknown,
+  resolveFamilyKind: (familyId: string) => RulingKind
+): StoredUserSheet | null => {
+  if (!isJsonRecord(value) || !(value.source instanceof Blob)) {
+    return null;
+  }
+
+  const id = toText(value.id);
+
+  if (!id) {
+    return null;
+  }
+
+  const familyId = toText(value.familyId);
+  const frame = {
+    width: toFiniteNumber(value.width, 0),
+    height: toFiniteNumber(value.height, 0),
+  };
+  const ruling = parseSheetRuling(value, frame);
+  const measuredRuling = isJsonRecord(value.measuredRuling)
+    ? parseSheetRuling({ ruling: value.measuredRuling }, frame)
+    : ruling;
+  const legacyKind = value.isBlank === true ? 'blank' : resolveFamilyKind(familyId);
+
+  return {
+    id,
+    familyId,
+    kind: parseRulingKind(value.kind) || legacyKind,
+    label: toText(value.label) || id,
+    width: frame.width,
+    height: frame.height,
+    ruling,
+    measuredRuling,
+    pins: parseRulingPins(value.pins, ruling, frame),
+    lighting: parseLighting(value.lighting),
+    source: value.source,
+    texture: parseStoredTexture(value.texture),
   };
 };

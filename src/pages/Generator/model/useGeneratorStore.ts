@@ -413,7 +413,7 @@ export const useGeneratorStore = create<GeneratorStoreWithHistory>()(
           return commit({ sheetId, isSheetPinned: true });
         },
         addUserSheet: (record) => {
-          writeUserSheet(record);
+          void writeUserSheet(record);
 
           return set((state) => {
             const rest = state.userSheets.filter((item) => {
@@ -434,7 +434,7 @@ export const useGeneratorStore = create<GeneratorStoreWithHistory>()(
           });
         },
         removeUserSheet: (sheetId) => {
-          deleteUserSheet(sheetId);
+          void deleteUserSheet(sheetId);
 
           return set((state) => {
             const userSheets = state.userSheets.filter((item) => {
@@ -454,10 +454,25 @@ export const useGeneratorStore = create<GeneratorStoreWithHistory>()(
             };
           });
         },
-        restoreUserSheets: () => {
-          const userSheets = readUserSheets();
+        restoreUserSheets: async () => {
+          const restored = await readUserSheets();
 
-          return set((state) => {
+          set((state) => {
+            const restoredIds = new Set(
+              restored.map(({ sheet }) => {
+                return sheet.id;
+              })
+            );
+            /**
+             * Лист, добавленный, пока шло чтение, остаётся: чтение его ещё не
+             * видело, а затирать его прочитанным списком значит потерять.
+             */
+            const userSheets = [
+              ...restored,
+              ...state.userSheets.filter(({ sheet }) => {
+                return !restoredIds.has(sheet.id);
+              }),
+            ];
             const families = selectPaperFamilies({ ...state, userSheets });
 
             return { userSheets, ...resolveSheetRefs(families, state) };

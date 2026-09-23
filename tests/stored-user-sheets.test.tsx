@@ -11,7 +11,8 @@ import {
   writeUserSheet,
 } from '@pages/Generator/model/userSheetsStorage';
 import { useStoredUserSheets } from '@pages/Generator/model/useStoredUserSheets';
-import { cleanup, renderHook } from '@testing-library/react';
+import { cleanup, renderHook, waitFor } from '@testing-library/react';
+import { IDBFactory } from 'fake-indexeddb';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 const SHEET: PaperSheet = {
@@ -62,20 +63,29 @@ const TABLE_SHEET: PaperSheet = {
 
 describe('восстановление своих листов при открытии генератора', () => {
   beforeEach(() => {
-    clearUserSheets();
+    globalThis.indexedDB = new IDBFactory();
     useGeneratorStore.setState(DEFAULT_GENERATOR_STATE);
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     cleanup();
-    clearUserSheets();
+    await clearUserSheets();
   });
 
-  it('возвращает лист из хранилища в стор', () => {
-    writeUserSheet({ familyId: 'lined', sheet: SHEET, isAnalyzed: true, isBlank: false });
+  it('возвращает лист из хранилища в стор', async () => {
+    await writeUserSheet({
+      familyId: 'lined',
+      sheet: SHEET,
+      isAnalyzed: true,
+      isBlank: false,
+    });
 
     renderHook(() => {
       return useStoredUserSheets();
+    });
+
+    await waitFor(() => {
+      expect(useGeneratorStore.getState().userSheets).toHaveLength(1);
     });
 
     const [restored] = useGeneratorStore.getState().userSheets;
@@ -84,8 +94,8 @@ describe('восстановление своих листов при откры
     expect(restored?.sheet.ruling).toEqual(SHEET.ruling);
   });
 
-  it('возвращает лист с контуром и перспективой теми же, что записаны', () => {
-    writeUserSheet({
+  it('возвращает лист с контуром и перспективой теми же, что записаны', async () => {
+    await writeUserSheet({
       familyId: 'grid',
       sheet: TABLE_SHEET,
       isAnalyzed: true,
@@ -94,6 +104,10 @@ describe('восстановление своих листов при откры
 
     renderHook(() => {
       return useStoredUserSheets();
+    });
+
+    await waitFor(() => {
+      expect(useGeneratorStore.getState().userSheets).toHaveLength(1);
     });
 
     const [restored] = useGeneratorStore.getState().userSheets;
@@ -106,11 +120,20 @@ describe('восстановление своих листов при откры
     expect(selectPendingUserSheets(useGeneratorStore.getState())).toHaveLength(0);
   });
 
-  it('не ставит восстановленный лист в очередь на повторный анализ', () => {
-    writeUserSheet({ familyId: 'lined', sheet: SHEET, isAnalyzed: true, isBlank: false });
+  it('не ставит восстановленный лист в очередь на повторный анализ', async () => {
+    await writeUserSheet({
+      familyId: 'lined',
+      sheet: SHEET,
+      isAnalyzed: true,
+      isBlank: false,
+    });
 
     renderHook(() => {
       return useStoredUserSheets();
+    });
+
+    await waitFor(() => {
+      expect(useGeneratorStore.getState().userSheets).toHaveLength(1);
     });
 
     expect(selectPendingUserSheets(useGeneratorStore.getState())).toHaveLength(0);

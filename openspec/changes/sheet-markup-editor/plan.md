@@ -22,8 +22,8 @@
   производные + `SheetImageData` (с `redMinusGreen`) для магнитов; до бита = `measureSheetPhoto` в основном потоке.
   Владелец G2; потребители G5, G6, G7, G10.
 - **K6 запись листа** — IndexedDB `autograph`/`sheets`, ключ `id`: `{id, familyId, kind, label, width, height, ruling,
-  measuredRuling, pins, lighting, source: Blob, texture: Blob}`; прежняя: `kind = isBlank ? 'blank' : family.kind`,
-  `pins = deriveRulingPins`; API асинхронное, запись отдаёт успех/отказ. Владелец G4; потребители G5, G6.
+  measuredRuling, pins, lighting, source: Blob, texture: {image: Blob, width, height, amplitude} | null}` (isAnalyzed не хранится — прочитанное считается разобранным); прежняя: `kind = isBlank ? 'blank' : family.kind`,
+  `pins = deriveRulingPins`; API асинхронное, `writeUserSheet(record, markup?)` → `Promise<boolean>`; без `markup` пишет measuredRuling = ruling и выводит pins — G5/G6 передают markup при каждой перезаписи, иначе затрут разметку автомата. Владелец G4; потребители G5, G6.
 - **K7 стор** — флаг отказа записи, статус чтения своих листов, одно действие сохранения разметки `{ruling, pins, kind}`;
   семья по `kind` (D6). Владелец G5; потребители G6, G9.
 - **K8 каркас редактора** — `ui/Generator/SettingsPane/SheetMarkupEditor/` с заглушками `OutlineTool LinesTool BendTool

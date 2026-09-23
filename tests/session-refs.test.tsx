@@ -5,6 +5,7 @@ import { LINED_FAMILY_ID, PRESET_PAPER_FAMILIES } from '@pages/Generator/config'
 import type { PaperSheet } from '@pages/Generator/lib/paper';
 import { SESSION_VERSION } from '@pages/Generator/model/sessionSchema';
 import { cleanup, renderHook } from '@testing-library/react';
+import { IDBFactory } from 'fake-indexeddb';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
@@ -69,10 +70,18 @@ const openGenerator = async () => {
     useStoredUserSheets();
   });
 
+  /**
+   * Листы читаются асинхронно, и хук не отдаёт своего промиса. Повторное
+   * чтение встаёт в очередь хранилища за чтением хука и исполняется после
+   * него.
+   */
+  await useGeneratorStore.getState().restoreUserSheets();
+
   return useGeneratorStore.getState();
 };
 
 beforeEach(() => {
+  globalThis.indexedDB = new IDBFactory();
   globalThis.localStorage.clear();
 });
 
@@ -112,7 +121,7 @@ describe('проверка ссылок на листы после восста�
   it('закреплённый свой лист на месте — выбор сохраняется', async () => {
     const { writeUserSheet } = await import('@pages/Generator/model/userSheetsStorage');
 
-    writeUserSheet({
+    await writeUserSheet({
       familyId: LINED_FAMILY_ID,
       sheet: USER_SHEET,
       isBlank: false,
@@ -134,7 +143,7 @@ describe('проверка ссылок на листы после восста�
   it('загрузка профилей после восстановления не снимает закрепление своего листа', async () => {
     const { writeUserSheet } = await import('@pages/Generator/model/userSheetsStorage');
 
-    writeUserSheet({
+    await writeUserSheet({
       familyId: LINED_FAMILY_ID,
       sheet: USER_SHEET,
       isBlank: false,

@@ -17,6 +17,12 @@ import {
   type SheetRuling,
 } from '@pages/Generator/lib/paper';
 import { detectRowSkewAngle } from '@pages/Generator/lib/paper/detectSkewAngle';
+import {
+  getAllRecords,
+  openDatabase,
+  putRecord,
+  SHEETS_STORE,
+} from '@pages/Generator/model/indexedDb';
 import { clearLayoutCache } from '@pages/Generator/model/measureLayout';
 import {
   DEFAULT_GENERATOR_STATE,
@@ -29,6 +35,7 @@ import { PaperPicker } from '@pages/Generator/ui/Generator/SettingsPane/PaperPic
 import { SheetDialog } from '@pages/Generator/ui/Generator/SettingsPane/SheetDialog';
 import { cleanup, render, renderHook, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { IDBFactory } from 'fake-indexeddb';
 import type { FC } from 'react';
 import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -397,9 +404,27 @@ const TABLE_PHOTO: SyntheticSheetParams = {
  */
 const FORM_ROUNDING = 0.005;
 
+/**
+ * Лист без адресов файлов: из хранилища фотография и карта текстуры приходят
+ * object URL, а характеристики — те же, что в сторе.
+ *
+ * @param sheet — лист
+ * @returns характеристики листа без адресов
+ */
+const withoutUrls = (sheet: PaperSheet | undefined) => {
+  if (!sheet) {
+    return sheet;
+  }
+
+  const { src: _src, texture, ...rest } = sheet;
+
+  return { ...rest, texture: texture && { ...texture, src: '' } };
+};
+
 beforeEach(() => {
   clearLayoutCache();
   useGeneratorStore.setState(DEFAULT_GENERATOR_STATE);
+  globalThis.indexedDB = new IDBFactory();
   globalThis.localStorage?.clear();
   decodeSheetImage.mockReset();
   vi.mocked(measureSheetPhoto).mockClear();
@@ -464,7 +489,9 @@ describe('импорт фотографии листа', () => {
         buildSheetRuling(measureSheetPhoto(image, { kind: 'grid' }).source, image).margins
       )
     ).toBeLessThanOrEqual(FORM_ROUNDING);
-    expect(readUserSheets()[0]?.sheet.ruling.outline).toStrictEqual(ruling?.outline);
+    expect((await readUserSheets())[0]?.sheet.ruling.outline).toStrictEqual(
+      ruling?.outline
+    );
   }, 60_000);
 
   it('сохраняет у повёрнутого листа найденный угол наклона', async () => {
@@ -495,7 +522,7 @@ describe('импорт фотографии листа', () => {
     render(<SheetDialogHarness />);
     await uploadUserPhoto(user);
 
-    const [stored] = readUserSheets();
+    const [stored] = await readUserSheets();
 
     expect(stored?.sheet.ruling).toEqual(readUserRuling());
   });
@@ -513,7 +540,7 @@ describe('импорт фотографии листа', () => {
     expect(bend?.offsets.length).toBeGreaterThan(0);
 
     useGeneratorStore.setState({ userSheets: [] });
-    useGeneratorStore.getState().restoreUserSheets();
+    await useGeneratorStore.getState().restoreUserSheets();
 
     expect(readUserRuling()?.bend).toStrictEqual(bend);
   });
@@ -995,7 +1022,7 @@ describe('ручная правка разлиновки', () => {
     await fillField(user, 'Левое поле, px', EDITED_MARGINS.left);
     await saveDialog(user);
 
-    const [stored] = readUserSheets();
+    const [stored] = await readUserSheets();
 
     expect(stored?.sheet.ruling).toEqual(readUserRuling());
     expect(stored?.sheet.ruling.step).toBe(25);
@@ -1020,7 +1047,7 @@ describe('ручная правка разлиновки', () => {
 
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(readUserRuling()).toBe(before);
-    expect(readUserSheets()[0]?.sheet.ruling).toEqual(before);
+    expect((await readUserSheets())[0]?.sheet.ruling).toEqual(before);
 
     await openSheetDialog(user, UPLOADED_LABEL);
 
@@ -1344,25 +1371,34 @@ const seedSheet = (isBlank = false) => {
 };
 
 /**
- * Ключ списка своих листов в локальном хранилище.
- */
-const INDEX_KEY = 'autograph.paper.user-sheets';
-
-/**
  * Превращает записи хранилища в записи прежней формы — без вида листа — и
  * перечитывает их, как при перезагрузке.
  */
-const restoreWithoutKind = () => {
-  const entries: Record<string, unknown>[] = JSON.parse(
-    globalThis.localStorage.getItem(INDEX_KEY) || '[]'
-  );
-  const legacy = entries.map(({ isBlank: _isBlank, ...rest }) => {
-    return rest;
-  });
+const restoreWithoutKind = async () => {
+  /**
+   * Чтение встаёт в очередь хранилища за записью листа: после него запись
+   * уже в базе.
+   */
+  await readUserSheets();
 
-  globalThis.localStorage.setItem(INDEX_KEY, JSON.stringify(legacy));
+  const database = await openDatabase();
+
+  try {
+    const records = await getAllRecords(database, SHEETS_STORE);
+
+    for (const record of records) {
+      if (typeof record === 'object' && record !== null) {
+        const { kind: _kind, ...legacy } = { kind: null, ...record };
+
+        await putRecord(database, SHEETS_STORE, legacy);
+      }
+    }
+  } finally {
+    database.close();
+  }
+
   useGeneratorStore.setState({ userSheets: [] });
-  useGeneratorStore.getState().restoreUserSheets();
+  await useGeneratorStore.getState().restoreUserSheets();
 };
 
 /**
@@ -1428,7 +1464,9 @@ describe('ручная правка границ листа', () => {
     expect(Math.abs((sheet?.ruling.step || 0) - STEP)).toBeLessThanOrEqual(
       STEP_TOLERANCE
     );
-    expect(readUserSheets()[0]?.sheet).toStrictEqual(sheet);
+    expect(withoutUrls((await readUserSheets())[0]?.sheet)).toStrictEqual(
+      withoutUrls(sheet)
+    );
   }, 60_000);
 
   it('перемер перетирает поля, заданные руками, и форма разлиновки показывает новые', async () => {
@@ -1501,7 +1539,7 @@ describe('ручная правка границ листа', () => {
     const measured = readUserSheet();
 
     useGeneratorStore.setState({ userSheets: [] });
-    useGeneratorStore.getState().restoreUserSheets();
+    await useGeneratorStore.getState().restoreUserSheets();
 
     expect(readUserSheet()?.ruling.outline).toStrictEqual(toRectOutline(MANUAL_BOUNDS));
     expect(readUserSheet()?.ruling).toEqual(measured?.ruling);
@@ -1612,7 +1650,11 @@ describe('перемер чистого листа', () => {
       skewAngle,
       margins,
     });
-    expect(readUserSheets()[0]).toStrictEqual(record);
+    const [stored] = await readUserSheets();
+
+    expect(stored && { ...stored, sheet: withoutUrls(stored.sheet) }).toStrictEqual(
+      record && { ...record, sheet: withoutUrls(record.sheet) }
+    );
   }, 60_000);
 
   it('поля, оставшиеся от прежнего контура, уходят внутрь нового', async () => {
@@ -1651,7 +1693,7 @@ describe('перемер чистого листа', () => {
     const user = userEvent.setup();
 
     seedSheet();
-    restoreWithoutKind();
+    await restoreWithoutKind();
 
     expect(useGeneratorStore.getState().userSheets[0]?.isBlank).toBe(false);
 
@@ -1698,7 +1740,7 @@ describe('лист без разлиновки', () => {
     await saveDialog(user);
 
     expect(useGeneratorStore.getState().userSheets[0]?.isBlank).toBe(true);
-    expect(readUserSheets()[0]?.isBlank).toBe(true);
+    expect((await readUserSheets())[0]?.isBlank).toBe(true);
   });
 
   it('с флажком перемер не ищет линии и оставляет заданное руками', async () => {
@@ -1740,7 +1782,7 @@ describe('удаление листа', () => {
     await user.click(screen.getByRole('button', { name: 'Да, удалить' }));
 
     expect(useGeneratorStore.getState().userSheets).toHaveLength(0);
-    expect(readUserSheets()).toHaveLength(0);
+    expect(await readUserSheets()).toHaveLength(0);
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(
       screen.queryByRole('button', { name: `Настроить «${TABLE_SHEET_LABEL}»` })
@@ -1758,7 +1800,7 @@ describe('удаление листа', () => {
     await user.click(screen.getByRole('button', { name: 'Не удалять' }));
 
     expect(useGeneratorStore.getState().userSheets).toHaveLength(1);
-    expect(readUserSheets()).toHaveLength(1);
+    expect(await readUserSheets()).toHaveLength(1);
     expect(screen.getByRole('dialog')).toBeDefined();
   });
 });

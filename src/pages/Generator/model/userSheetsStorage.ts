@@ -1,218 +1,183 @@
-import { isJsonRecord, parsePaperSheet, toText } from './paperSheetJson';
-import type { UserSheetIndexEntry, UserSheetRecord } from './userSheetsStorage.types';
+import {
+  deleteRecord,
+  getAllRecords,
+  openDatabase,
+  putRecord,
+  runTransaction,
+  SHEETS_STORE,
+} from './indexedDb';
+import { parseStoredUserSheet } from './paperSheetJson';
+import type {
+  StoredUserSheet,
+  UserSheetMarkup,
+  UserSheetRecord,
+} from './userSheetsStorage.types';
+import {
+  clearLegacyUserSheets,
+  readLegacyUserSheets,
+  removeLegacyUserSheets,
+} from './userSheetsStorageLegacy';
+import { migrateLegacyUserSheets } from './userSheetsStorageMigration';
+import {
+  dataUrlToBlob,
+  resolveFamilyKind,
+  toStoredUserSheet,
+} from './userSheetsStorageRecord';
 
 /**
- * Ключ списка пользовательских листов: лёгкие характеристики всех листов
- * сразу.
+ * Хвост очереди операций хранилища. Операции идут строго по одной в порядке
+ * вызова: стор пишет лист, не дожидаясь записи, и чтение, начатое следом,
+ * должно её увидеть, а удаление — не обогнать запись того же листа.
  */
-const INDEX_KEY = 'autograph.paper.user-sheets';
+let queueTail: Promise<unknown> = Promise.resolve();
 
 /**
- * Префикс ключа исходного файла. Исходник лежит отдельной записью на лист и
- * отдельно от производных: файл невосстановим, а всё, что из него посчитано,
- * пересчитывается заново. Хранилище кончится — выбрасываются производные, а
- * не фотографии.
+ * Object URL листов по идентификатору листа: фотография и карта текстуры.
+ * Освобождаются при удалении листа. Повторное чтение прежние адреса не
+ * освобождает: их ещё может держать лист в сторе, и его запись искала бы файл
+ * по уже отозванному адресу.
  */
-const SOURCE_KEY_PREFIX = 'autograph.paper.source.';
+const sheetUrls = new Map<string, string[]>();
 
 /**
- * Префикс ключа производных карт: поля освещения и текстуры. Самая тяжёлая и
- * при этом единственная пересчитываемая часть.
+ * Файлы за выданными object URL: лист, прочитанный из базы, несёт в `src`
+ * адрес, а при повторной записи нужен сам файл.
  */
-const DERIVED_KEY_PREFIX = 'autograph.paper.derived.';
+const urlFiles = new Map<string, Blob>();
 
 /**
- * Общее начало ключей листов под прежним именем приложения. Такие записи
- * переносятся под текущие ключи при чтении: иначе листы, сохранённые до
- * переименования, пропали бы у пользователя без следа.
- */
-const LEGACY_KEY_PREFIX = 'handwriting.paper.';
-
-/**
- * Общее начало текущих ключей листов.
- */
-const KEY_PREFIX = 'autograph.paper.';
-
-/**
- * Локальное хранилище или `null`, если его нет: в тестовом окружении без jsdom
- * и в браузере с запрещёнными данными сайта обращение к нему бросает.
+ * Ставит операцию в очередь хранилища. Сбой операции очередь не рвёт.
  *
- * @returns хранилище или `null`
+ * @param operation — операция
+ * @returns результат операции
  */
-const getStorage = (): Storage | null => {
-  try {
-    return globalThis.localStorage || null;
-  } catch {
-    return null;
-  }
-};
+const enqueue = <T>(operation: () => Promise<T>): Promise<T> => {
+  const result = queueTail.then(operation, operation);
 
-/**
- * Читает и разбирает значение ключа.
- *
- * @param storage — локальное хранилище
- * @param key — ключ записи
- * @returns разобранное значение; `null` — записи нет или она нечитаема
- */
-const readJson = (storage: Storage, key: string): unknown => {
-  const raw = storage.getItem(key);
-
-  if (!raw) {
-    return null;
-  }
-
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
-};
-
-/**
- * Пишет значение в ключ, переживая переполнение хранилища.
- *
- * @param storage — локальное хранилище
- * @param key — ключ записи
- * @param value — что записать
- * @returns удалось ли записать
- */
-const writeItem = (storage: Storage, key: string, value: string): boolean => {
-  try {
-    storage.setItem(key, value);
-
-    return true;
-  } catch {
-    return false;
-  }
-};
-
-/**
- * Переносит записи листов из ключей прежнего имени в текущие. Запись под
- * текущим ключом не перезаписывается: она новее. Старый ключ удаляется, только
- * если перенос удался, — переполненное хранилище не должно терять фотографию.
- *
- * @param storage — локальное хранилище
- */
-const migrateLegacyKeys = (storage: Storage): void => {
-  const legacyKeys = Object.keys(storage).filter((key) => {
-    return key.startsWith(LEGACY_KEY_PREFIX);
+  queueTail = result.catch(() => {
+    return undefined;
   });
 
-  for (const legacyKey of legacyKeys) {
-    const key = `${KEY_PREFIX}${legacyKey.slice(LEGACY_KEY_PREFIX.length)}`;
-    const value = storage.getItem(legacyKey);
-    const isMoved =
-      storage.getItem(key) !== null || (value !== null && writeItem(storage, key, value));
+  return result;
+};
 
-    if (isMoved) {
-      storage.removeItem(legacyKey);
-    }
+/**
+ * Выполняет работу с открытой базой и закрывает соединение после неё.
+ *
+ * @param run — работа с базой
+ * @returns результат работы
+ */
+const withDatabase = async <T>(
+  run: (database: IDBDatabase) => Promise<T>
+): Promise<T> => {
+  const database = await openDatabase();
+
+  try {
+    return await run(database);
+  } finally {
+    database.close();
   }
 };
 
 /**
- * Разбирает список лёгких характеристик.
+ * Выдаёт object URL файла листа и запоминает его для освобождения.
  *
- * @param storage — локальное хранилище
- * @returns записи списка по порядку добавления
+ * @param sheetId — идентификатор листа
+ * @param file — файл
+ * @returns адрес файла
  */
-const readIndex = (storage: Storage): Record<string, unknown>[] => {
-  const parsed = readJson(storage, INDEX_KEY);
+const createSheetUrl = (sheetId: string, file: Blob): string => {
+  const url = URL.createObjectURL(file);
 
-  if (!Array.isArray(parsed)) {
-    return [];
+  sheetUrls.set(sheetId, [...(sheetUrls.get(sheetId) || []), url]);
+  urlFiles.set(url, file);
+
+  return url;
+};
+
+/**
+ * Освобождает object URL листа.
+ *
+ * @param sheetId — идентификатор листа
+ */
+const revokeSheetUrls = (sheetId: string): void => {
+  for (const url of sheetUrls.get(sheetId) || []) {
+    URL.revokeObjectURL(url);
+    urlFiles.delete(url);
   }
 
-  const items: unknown[] = parsed;
-
-  return items.reduce<Record<string, unknown>[]>((acc, item) => {
-    if (isJsonRecord(item) && toText(item.id)) {
-      acc.push(item);
-    }
-
-    return acc;
-  }, []);
+  sheetUrls.delete(sheetId);
 };
 
 /**
- * Собирает лёгкую часть записи для списка.
+ * Файл по адресу из листа стора: выданный хранилищем object URL, data URL
+ * свежего импорта или иной адрес, который браузер умеет прочитать.
  *
- * @param record — пользовательский лист
- * @returns запись списка
+ * @param src — адрес файла
+ * @returns файл; `null` — прочитать не удалось
  */
-const toIndexEntry = ({
-  familyId,
-  sheet,
-  isAnalyzed,
-  isBlank,
-}: UserSheetRecord): UserSheetIndexEntry => {
-  const { id, label, width, height, ruling } = sheet;
+const resolveFile = async (src: string): Promise<Blob | null> => {
+  const file = urlFiles.get(src) || dataUrlToBlob(src);
 
-  return { familyId, isAnalyzed, isBlank, id, label, width, height, ruling };
-};
+  if (file) {
+    return file;
+  }
 
-/**
- * Собирает лист обратно из трёх частей хранилища.
- *
- * @param storage — локальное хранилище
- * @param entry — запись списка
- * @returns пользовательский лист; `null` — исходный файл потерян
- */
-const readRecord = (
-  storage: Storage,
-  entry: Record<string, unknown>
-): UserSheetRecord | null => {
-  const id = toText(entry.id);
-  const src = storage.getItem(`${SOURCE_KEY_PREFIX}${id}`) || '';
-  const derived = readJson(storage, `${DERIVED_KEY_PREFIX}${id}`);
-  const maps = isJsonRecord(derived) ? derived : {};
-  const sheet = parsePaperSheet({
-    ...entry,
-    src,
-    lighting: maps.lighting,
-    texture: maps.texture,
-  });
+  try {
+    const response = await fetch(src);
 
-  if (!sheet) {
+    return await response.blob();
+  } catch {
     return null;
   }
+};
+
+/**
+ * Лист стора из записи базы: файлы становятся object URL. Лист из хранилища
+ * всегда посчитан — повторный анализ по нему не запускается.
+ *
+ * @param stored — запись базы
+ * @returns лист стора
+ */
+const toUserSheetRecord = (stored: StoredUserSheet): UserSheetRecord => {
+  const { id, familyId, kind, label, width, height, ruling, lighting, texture } = stored;
+
+  const src = createSheetUrl(id, stored.source);
 
   return {
-    familyId: toText(entry.familyId),
-    sheet,
-    isAnalyzed: entry.isAnalyzed === true,
-    /**
-     * Запись без вида листа читается листом с разлиновкой семьи, а не
-     * отбрасывается: у записи прежней формы поля нет, и это не порча.
-     */
-    isBlank: entry.isBlank === true,
+    familyId,
+    isAnalyzed: true,
+    isBlank: kind === 'blank',
+    sheet: {
+      id,
+      label,
+      src,
+      width,
+      height,
+      ruling,
+      lighting,
+      texture: texture && {
+        src: createSheetUrl(id, texture.image),
+        width: texture.width,
+        height: texture.height,
+        amplitude: texture.amplitude,
+      },
+    },
   };
 };
 
 /**
- * Восстанавливает пользовательские листы из локального хранилища вместе с их
- * характеристиками: восстановленный лист приходит уже посчитанным, поэтому
- * анализ по нему не запускается.
+ * Разбирает записи базы. Нечитаемая запись пропускается, а не роняет список.
  *
- * Лист, у которого потерялся исходный файл, отбрасывается: показывать нечего,
- * а характеристики без фотографии бесполезны.
- *
- * @returns листы по порядку добавления; пустой список — хранилища нет
+ * @param records — записи базы как есть
+ * @returns листы стора по порядку ключей
  */
-export const readUserSheets = (): UserSheetRecord[] => {
-  const storage = getStorage();
+const toUserSheetRecords = (records: unknown[]): UserSheetRecord[] => {
+  return records.reduce<UserSheetRecord[]>((acc, record) => {
+    const stored = parseStoredUserSheet(record, resolveFamilyKind);
 
-  if (!storage) {
-    return [];
-  }
-
-  migrateLegacyKeys(storage);
-
-  return readIndex(storage).reduce<UserSheetRecord[]>((acc, entry) => {
-    const record = readRecord(storage, entry);
-
-    if (record) {
-      acc.push(record);
+    if (stored) {
+      acc.push(toUserSheetRecord(stored));
     }
 
     return acc;
@@ -220,75 +185,122 @@ export const readUserSheets = (): UserSheetRecord[] => {
 };
 
 /**
- * Сохраняет лист: исходный файл, производные карты и лёгкие характеристики
- * идут раздельными записями. Лист с тем же идентификатором перезаписывается —
- * так пересчитанные характеристики заменяют прежние, не плодя записей.
+ * Читает свои листы вместе с характеристиками и разметкой. Листы, лежащие
+ * ещё в строковом хранилище прежних версий, сначала переносятся в IndexedDB;
+ * не перенесённые показываются до конца сессии.
  *
- * @param record — пользовательский лист
- * @returns удалось ли сохранить; `false` — хранилища нет или оно переполнено
+ * Без IndexedDB (запрет данных сайта) читается только прежнее хранилище.
+ *
+ * @returns листы по порядку идентификаторов
  */
-export const writeUserSheet = (record: UserSheetRecord): boolean => {
-  const storage = getStorage();
+export const readUserSheets = (): Promise<UserSheetRecord[]> => {
+  return enqueue(async () => {
+    try {
+      return await withDatabase(async (database) => {
+        const pending = await migrateLegacyUserSheets(database);
+        const stored = toUserSheetRecords(await getAllRecords(database, SHEETS_STORE));
+        const storedIds = new Set(
+          stored.map(({ sheet }) => {
+            return sheet.id;
+          })
+        );
 
-  if (!storage) {
-    return false;
-  }
-
-  const { sheet } = record;
-  const entry = toIndexEntry(record);
-  const rest = readIndex(storage).filter((item) => {
-    return toText(item.id) !== sheet.id;
+        return [
+          ...stored,
+          ...pending.filter(({ sheet }) => {
+            return !storedIds.has(sheet.id);
+          }),
+        ];
+      });
+    } catch {
+      return readLegacyUserSheets();
+    }
   });
-  const isSourceSaved = writeItem(storage, `${SOURCE_KEY_PREFIX}${sheet.id}`, sheet.src);
-  const isDerivedSaved = writeItem(
-    storage,
-    `${DERIVED_KEY_PREFIX}${sheet.id}`,
-    JSON.stringify({ lighting: sheet.lighting, texture: sheet.texture })
-  );
-  const isIndexSaved = writeItem(storage, INDEX_KEY, JSON.stringify([...rest, entry]));
-
-  return isSourceSaved && isDerivedSaved && isIndexSaved;
 };
 
 /**
- * Убирает лист из хранилища целиком: и файл, и производные, и запись списка.
+ * Сохраняет лист одной записью: фотография и карта текстуры — файлами, рядом
+ * характеристики и разметка. Лист с тем же идентификатором перезаписывается.
+ *
+ * @param record — лист стора
+ * @param markup — разметка, которой нет в экземпляре; не заданное — дефолты
+ * @returns удалось ли сохранить; `false` — хранилища нет, оно переполнено
+ * или фотографию не удалось прочитать
+ */
+export const writeUserSheet = (
+  record: UserSheetRecord,
+  markup?: UserSheetMarkup
+): Promise<boolean> => {
+  return enqueue(async () => {
+    const { sheet } = record;
+    const source = await resolveFile(sheet.src);
+
+    if (!source) {
+      return false;
+    }
+
+    const textureImage = sheet.texture ? await resolveFile(sheet.texture.src) : null;
+
+    try {
+      await withDatabase((database) => {
+        return putRecord(
+          database,
+          SHEETS_STORE,
+          toStoredUserSheet(record, source, textureImage, markup)
+        );
+      });
+
+      return true;
+    } catch {
+      return false;
+    }
+  });
+};
+
+/**
+ * Убирает лист из хранилища и освобождает его object URL. Лист прежнего
+ * хранилища, не перенесённый из-за сбоя, убирается и оттуда.
  *
  * @param sheetId — идентификатор экземпляра
  */
-export const deleteUserSheet = (sheetId: string): void => {
-  const storage = getStorage();
+export const deleteUserSheet = (sheetId: string): Promise<void> => {
+  return enqueue(async () => {
+    removeLegacyUserSheets([sheetId]);
+    revokeSheetUrls(sheetId);
 
-  if (!storage) {
-    return;
-  }
-
-  const rest = readIndex(storage).filter((item) => {
-    return toText(item.id) !== sheetId;
+    try {
+      await withDatabase((database) => {
+        return deleteRecord(database, SHEETS_STORE, sheetId);
+      });
+    } catch {
+      /**
+       * Без базы удалять нечего: лист жил только в памяти сессии.
+       */
+    }
   });
-
-  storage.removeItem(`${SOURCE_KEY_PREFIX}${sheetId}`);
-  storage.removeItem(`${DERIVED_KEY_PREFIX}${sheetId}`);
-  writeItem(storage, INDEX_KEY, JSON.stringify(rest));
 };
 
 /**
- * Убирает из хранилища все пользовательские листы. Нужен тестам и сбросу
- * состояния: поштучное удаление оставляет мусор, если список разъехался с
- * записями.
+ * Убирает все свои листы из обоих хранилищ. Нужен тестам и сбросу состояния.
  */
-export const clearUserSheets = (): void => {
-  const storage = getStorage();
+export const clearUserSheets = (): Promise<void> => {
+  return enqueue(async () => {
+    clearLegacyUserSheets();
 
-  if (!storage) {
-    return;
-  }
+    for (const sheetId of [...sheetUrls.keys()]) {
+      revokeSheetUrls(sheetId);
+    }
 
-  for (const entry of readIndex(storage)) {
-    const id = toText(entry.id);
-
-    storage.removeItem(`${SOURCE_KEY_PREFIX}${id}`);
-    storage.removeItem(`${DERIVED_KEY_PREFIX}${id}`);
-  }
-
-  storage.removeItem(INDEX_KEY);
+    try {
+      await withDatabase((database) => {
+        return runTransaction(database, [SHEETS_STORE], 'readwrite', (transaction) => {
+          transaction.objectStore(SHEETS_STORE).clear();
+        });
+      });
+    } catch {
+      /**
+       * Без базы очищать нечего.
+       */
+    }
+  });
 };

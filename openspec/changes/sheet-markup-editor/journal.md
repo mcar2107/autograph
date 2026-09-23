@@ -48,3 +48,11 @@ test:stories: флак окружения, не регресс G2 — дерев
 Отступления K3: frame у editRulingBend, экспорт snapToMarginLine (задача 2.6), refitRulingBend, resolveBendRadius — plan.md K3 поправлен; G8 рисует кольцо на 2R.
 Аудит: ok с первого круга. question → пачка пользователю: подгонка изгиба по области редактора расходится с импортным (медиана 0,036 шага; IMG_1806/1807/1808/1811/1812 — 0,15–0,18; IMG_1809 импорт null → 0,364; grid/3, lined/2, lined/4 — импорт 0,05–0,09 → null, изгиб пропадёт после первой правки булавки); область импорта (rowBorders) в SheetRuling не хранится, хранение сменило бы profiles.json (K4).
 Долг: snapToRulingLine.ts:172 — проверку края окна не держит ни один тест (нужен случай 0,35–0,36 шага); editRulingBendRefit.ts:35 — копия приватной toFrameBend из measureSheetPhoto.ts:287 (вынос запрещён заморозкой детектора).
+
+### G4 · Хранилище своих листов в IndexedDB
+
+Решения: операции хранилища — очередью транзакций (промис по complete, квота через abort → DOMException); без IndexedDB — чтение из localStorage; при сбое переноса листы видны до конца сессии, ключи остаются; src/texture.src после чтения — object URL (освобождаются при delete/clear); restoreUserSheets сливает прочитанное с добавленным за время чтения, порядок — по id (= порядок добавления). Прежний код localStorage — userSheetsStorageLegacy.ts, только чтение и удаление после переноса.
+Зависимость: fake-indexeddb — только devDependencies; обёртка structuredClone в jsdom-setup сохраняет Blob.
+Отступления: K6 texture → {image, width, height, amplitude} | null, isAnalyzed не хранится — plan.md K6 поправлен; правки вне масок (generator.types.ts, session-refs/sheet-dialog тесты) вынуждены асинхронным API; два теста store-user-sheets заменены эквивалентами в user-sheets-storage/migration.
+Аудит: ok с первого круга. Исполнитель — 2 пачки, 92 вызова.
+Долг: userSheetsStorageRecord.ts:130 — запись без markup затирает разметку автомата (G5/G6 обязаны передавать markup, K6); сценарий «пять снимков по 4 МБ» без теста (кандидат итогового аудита, 7.2); useGeneratorStore.ts:457 — слияние при чтении без теста, в StrictMode object URL первого чтения текут до удаления листа; jsdom-setup.ts:181 — `as T` без обоснования; риск 7.2 — texture object URL в воркере отрисовки проверить в Firefox.
