@@ -29,9 +29,10 @@ export type MarginsEdit = {
   moveMarginLine: (point: SheetPoint) => void;
 
   /**
-   * Отпускание линии поля: магнит к черте фотографии — шаг истории.
+   * Отпускание линии поля — шаг истории. С магнитом линия притягивается к
+   * черте фотографии, без него стоит, где отпущена.
    */
-  releaseMarginLine: (point: SheetPoint) => void;
+  releaseMarginLine: (point: SheetPoint, shouldSnap: boolean) => void;
 
   /**
    * Убирает линию поля.

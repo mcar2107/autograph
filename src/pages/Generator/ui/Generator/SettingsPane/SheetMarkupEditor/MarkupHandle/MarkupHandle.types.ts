@@ -1,5 +1,11 @@
 import type { SheetPoint } from '../../../../../lib/paper';
 
+/**
+ * Чем ручку сдвинули: указателем — перетаскиванием, клавиатурой — стрелкой.
+ * Сдвиг стрелкой — точная правка на пиксель, и магнит её не отменяет.
+ */
+export type MarkupMoveSource = 'pointer' | 'keyboard';
+
 export type MarkupHandleProps = {
   /**
    * Горизонталь ручки в пикселях фотографии.
@@ -23,12 +29,33 @@ export type MarkupHandleProps = {
   onMove?: (point: SheetPoint) => void;
 
   /**
-   * Колбэк на отпускание: последняя точка перетаскивания.
+   * Колбэк на завершённый сдвиг: последняя точка перетаскивания или точка
+   * после стрелки, и чем ручку сдвинули.
    */
-  onMoveEnd?: (point: SheetPoint) => void;
+  onMoveEnd?: (point: SheetPoint, source: MarkupMoveSource) => void;
 
   /**
    * Дополнительные классы.
    */
   className?: string;
+};
+
+/**
+ * Идущее перетаскивание ручки — то, что нужно лупе.
+ */
+export type HandleDrag = {
+  /**
+   * Точка ручки, px фотографии.
+   */
+  point: SheetPoint;
+
+  /**
+   * Указатель в окне браузера.
+   */
+  anchor: SheetPoint;
+
+  /**
+   * Куда лупа кладётся порталом.
+   */
+  container: Element;
 };

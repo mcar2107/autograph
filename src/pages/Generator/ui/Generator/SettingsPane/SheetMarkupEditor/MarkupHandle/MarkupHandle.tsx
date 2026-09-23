@@ -1,17 +1,59 @@
 import { cx } from '@shared/lib/styles';
-import type { FC, PointerEvent } from 'react';
-import { useRef } from 'react';
+import type { FC, KeyboardEvent, PointerEvent } from 'react';
+import { useRef, useState } from 'react';
 
 import type { SheetPoint } from '../../../../../lib/paper';
-import { useMarkupScale } from '../MarkupViewport';
+import { useMarkupEditorStore } from '../../../../../model/useMarkupEditorStore';
+import { Loupe } from '../Loupe';
+import {
+  mirrorMarkupPoint,
+  useMarkupMirrorWidth,
+  useMarkupScale,
+} from '../MarkupViewport';
 
-import type { MarkupHandleProps } from './MarkupHandle.types';
+import type { HandleDrag, MarkupHandleProps } from './MarkupHandle.types';
 
 /**
  * Радиус ручки в экранных пикселях: попадать пальцем и мышью одинаково
  * удобно при любом приближении фотографии.
  */
 const HANDLE_RADIUS = 7;
+
+/**
+ * Сдвиг стрелкой с Shift, px фотографии: грубая подводка к линии, а
+ * стрелкой без модификатора — последний пиксель.
+ */
+const COARSE_NUDGE = 10;
+
+/**
+ * Направление сдвига по стрелке.
+ *
+ * @param key — нажатая клавиша
+ * @returns сдвиг на пиксель фотографии; `null` — клавиша не стрелка
+ */
+const readArrowOffset = (key: string): SheetPoint | null => {
+  switch (key) {
+    case 'ArrowLeft': {
+      return { x: -1, y: 0 };
+    }
+
+    case 'ArrowRight': {
+      return { x: 1, y: 0 };
+    }
+
+    case 'ArrowUp': {
+      return { x: 0, y: -1 };
+    }
+
+    case 'ArrowDown': {
+      return { x: 0, y: 1 };
+    }
+
+    default: {
+      return null;
+    }
+  }
+};
 
 /**
  * Точка фотографии под указателем. Разметка лежит в SVG с `viewBox` в
@@ -41,25 +83,44 @@ const toPhotoPoint = (
 
 /**
  * Ручка разметки: точка в пикселях фотографии, которую перетаскивают. Общая
- * у всех инструментов редактора — размер, фокус, подпись и перевод указателя
- * в пиксели фотографии у них одни.
+ * у всех инструментов редактора — размер, фокус, подпись, перевод указателя
+ * в пиксели фотографии, лупа и сдвиг стрелками у них одни.
  *
  * Нажатие ручка забирает себе: окно просмотра под ней иначе начало бы
- * сдвигать фотографию вместе с перетаскиванием.
+ * сдвигать фотографию вместе с перетаскиванием. Пока ручку тянут, рядом с
+ * указателем стоит лупа с фотографией под ручкой.
+ *
+ * Стрелка сдвигает ручку в фокусе на пиксель фотографии, с Shift — на
+ * десять, при любом приближении окна: сдвиг мерится в пикселях снимка, а не
+ * экрана, и каждое нажатие — завершённая правка.
+ *
+ * На зеркальной странице ручка стоит в пикселях самого листа внутри
+ * отражённого слоя: указатель переводится через `x → W − x`, а стрелка влево
+ * двигает её влево на экране — вправо по листу.
  */
 export const MarkupHandle: FC<MarkupHandleProps> = (props) => {
   const { x, y, label, onMove, onMoveEnd, className } = props;
   const scale = useMarkupScale();
+  const mirrorWidth = useMarkupMirrorWidth();
+  const sheet = useMarkupEditorStore((state) => {
+    return state.record?.sheet || null;
+  });
   const pointerIdRef = useRef<number | null>(null);
   const lastPointRef = useRef<SheetPoint | null>(null);
+  const [drag, setDrag] = useState<HandleDrag | null>(null);
 
   const handleHandlePointerDown = (event: PointerEvent<SVGCircleElement>) => {
-    const { pointerId, currentTarget } = event;
+    const { pointerId, clientX, clientY, currentTarget } = event;
 
     event.stopPropagation();
     pointerIdRef.current = pointerId;
     lastPointRef.current = { x, y };
     currentTarget.setPointerCapture?.(pointerId);
+    setDrag({
+      point: { x, y },
+      anchor: { x: clientX, y: clientY },
+      container: currentTarget.closest('[role="dialog"]') || document.body,
+    });
   };
 
   const handleHandlePointerMove = (event: PointerEvent<SVGCircleElement>) => {
@@ -69,10 +130,14 @@ export const MarkupHandle: FC<MarkupHandleProps> = (props) => {
       return;
     }
 
-    const point = toPhotoPoint(currentTarget, clientX, clientY);
+    const pagePoint = toPhotoPoint(currentTarget, clientX, clientY);
+    const point = pagePoint && mirrorMarkupPoint(pagePoint, mirrorWidth);
 
     if (point) {
       lastPointRef.current = point;
+      setDrag((current) => {
+        return current && { ...current, point, anchor: { x: clientX, y: clientY } };
+      });
       onMove?.(point);
     }
   };
@@ -86,29 +151,67 @@ export const MarkupHandle: FC<MarkupHandleProps> = (props) => {
 
     pointerIdRef.current = null;
     lastPointRef.current = null;
+    setDrag(null);
 
     if (point) {
-      onMoveEnd?.(point);
+      onMoveEnd?.(point, 'pointer');
     }
   };
 
+  const handleHandleKeyDown = (event: KeyboardEvent<SVGCircleElement>) => {
+    const { key, shiftKey } = event;
+    const offset = readArrowOffset(key);
+
+    if (!offset) {
+      return;
+    }
+
+    /**
+     * Стрелка иначе прокрутила бы панель или окно под диалогом.
+     */
+    event.preventDefault();
+
+    const distance = shiftKey ? COARSE_NUDGE : 1;
+    const directionX = mirrorWidth === null ? 1 : -1;
+
+    onMoveEnd?.(
+      { x: x + offset.x * directionX * distance, y: y + offset.y * distance },
+      'keyboard'
+    );
+  };
+
   return (
-    <circle
-      role="button"
-      tabIndex={0}
-      aria-label={label}
-      cx={x}
-      cy={y}
-      r={HANDLE_RADIUS / scale}
-      vectorEffect="non-scaling-stroke"
-      className={cx(
-        'cursor-move fill-surface-raised stroke-focus stroke-2 outline-none focus-visible:stroke-fg',
-        className
-      )}
-      onPointerDown={handleHandlePointerDown}
-      onPointerMove={handleHandlePointerMove}
-      onPointerUp={handleHandlePointerUp}
-      onPointerCancel={handleHandlePointerUp}
-    />
+    <>
+      <circle
+        role="button"
+        tabIndex={0}
+        aria-label={label}
+        cx={x}
+        cy={y}
+        r={HANDLE_RADIUS / scale}
+        vectorEffect="non-scaling-stroke"
+        className={cx(
+          'cursor-move fill-surface-raised stroke-focus stroke-2 outline-none focus-visible:stroke-fg',
+          className
+        )}
+        onPointerDown={handleHandlePointerDown}
+        onPointerMove={handleHandlePointerMove}
+        onPointerUp={handleHandlePointerUp}
+        onPointerCancel={handleHandlePointerUp}
+        onKeyDown={handleHandleKeyDown}
+      />
+
+      {drag && sheet ? (
+        <Loupe
+          src={sheet.src}
+          frame={sheet}
+          point={drag.point}
+          anchor={drag.anchor}
+          scale={scale}
+          isMirrored={mirrorWidth !== null}
+          container={drag.container}
+        />
+      ) : null}
+    </>
   );
 };

@@ -1,7 +1,7 @@
 import type { FC } from 'react';
 import { useId, useMemo } from 'react';
 
-import { useMarkupScale } from '../MarkupViewport';
+import { useMarkupMirrorWidth, useMarkupScale } from '../MarkupViewport';
 
 import {
   buildMarginGuides,
@@ -46,6 +46,7 @@ export const MarkupOverlay: FC<MarkupOverlayProps> = (props) => {
   const { frame, ruling, pins, layers, onHandleLayerChange } = props;
   const clipId = toSvgId(useId());
   const scale = useMarkupScale();
+  const mirrorWidth = useMarkupMirrorWidth();
   const { width, height } = frame;
   const { margins, marginLineX } = ruling;
   const polygon = toPointsAttribute(toOutlinePolygon(ruling.outline, frame));
@@ -199,7 +200,15 @@ export const MarkupOverlay: FC<MarkupOverlayProps> = (props) => {
         </g>
       ) : null}
 
-      <g ref={onHandleLayerChange} data-layer="handles" />
+      {/*
+       * На зеркальной странице ручки стоят в пикселях самого листа, а слой
+       * отражён целиком: инструмент правит одну разметку на обеих вкладках.
+       */}
+      <g
+        ref={onHandleLayerChange}
+        data-layer="handles"
+        transform={mirrorWidth === null ? undefined : `matrix(-1 0 0 1 ${mirrorWidth} 0)`}
+      />
     </svg>
   );
 };

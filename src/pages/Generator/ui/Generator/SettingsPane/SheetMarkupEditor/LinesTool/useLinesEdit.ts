@@ -9,6 +9,7 @@ import type {
 import { fitRulingPins } from '../../../../../lib/paper';
 import { useMarkupEditorStore } from '../../../../../model/useMarkupEditorStore';
 import type { MarkupCommitOptions } from '../../../../../model/useMarkupEditorStore.types';
+import type { MarkupMoveSource } from '../MarkupHandle';
 
 import {
   fitPinsWithBend,
@@ -103,7 +104,12 @@ export const useLinesEdit = (frame: SheetFrame): LinesEdit => {
     preview(fit.status === 'fitted' ? { pins, ruling: fit.ruling } : { pins });
   };
 
-  const releaseEnd = (order: number, end: PinEnd, point: SheetPoint) => {
+  const releaseEnd = (
+    order: number,
+    end: PinEnd,
+    point: SheetPoint,
+    source: MarkupMoveSource
+  ) => {
     const { draft, history, image } = useMarkupEditorStore.getState();
 
     if (!draft) {
@@ -116,7 +122,11 @@ export const useLinesEdit = (frame: SheetFrame): LinesEdit => {
      */
     const base = (history.previewBase || draft).ruling;
     const clamped = clampToFrame(point, frame);
-    const isMagnetOn = !isAltRef.current && draft.kind !== 'blank' && image !== null;
+    const isMagnetOn =
+      source === 'pointer' &&
+      !isAltRef.current &&
+      draft.kind !== 'blank' &&
+      image !== null;
     const target = isMagnetOn ? snapPinEnd(image, base, clamped) : clamped;
 
     applyPins(movePinEnd(draft.pins, order, end, target), base, order);

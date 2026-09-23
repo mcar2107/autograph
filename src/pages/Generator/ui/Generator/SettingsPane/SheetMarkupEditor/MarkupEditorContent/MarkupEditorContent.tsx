@@ -7,6 +7,7 @@ import { getPageRuling } from '../../../../../model/geometrySelectors';
 import { useGeneratorStore } from '../../../../../model/useGeneratorStore';
 import { useMarkupEditorStore } from '../../../../../model/useMarkupEditorStore';
 import { BendTool } from '../BendTool';
+import { ExactValues } from '../ExactValues';
 import { LinesTool } from '../LinesTool';
 import { MarginsTool } from '../MarginsTool';
 import { MarkupCloseConfirm } from '../MarkupCloseConfirm';
@@ -15,8 +16,12 @@ import { MarkupLayers } from '../MarkupLayers';
 import { MarkupNotices } from '../MarkupNotices';
 import type { MarkupLayerVisibility } from '../MarkupOverlay';
 import { MarkupOverlay } from '../MarkupOverlay';
-import { MarkupScaleContext, MarkupViewport } from '../MarkupViewport';
-import { MirrorTab } from '../MirrorTab';
+import {
+  MarkupMirrorContext,
+  MarkupScaleContext,
+  MarkupViewport,
+} from '../MarkupViewport';
+import { mirrorPins, MirrorTab } from '../MirrorTab';
 import { OutlineTool } from '../OutlineTool';
 import { RulingKindControl } from '../RulingKindControl';
 import type { MarkupToolId, MarkupToolProps } from '../SheetMarkupEditor.types';
@@ -93,11 +98,13 @@ export const MarkupEditorContent: FC<MarkupEditorContentProps> = (props) => {
     return state.removeUserSheet;
   });
   const [handleLayer, setHandleLayer] = useState<SVGGElement | null>(null);
+  const [trialLayer, setTrialLayer] = useState<HTMLDivElement | null>(null);
   const [tool, setTool] = useState<MarkupToolId>(START_TOOL);
   const [layers, setLayers] = useState(ALL_LAYERS_SHOWN);
   const [pageIndex, setPageIndex] = useState(0);
   const [scale, setScale] = useState(1);
   const ActiveTool = TOOLS[tool];
+  const isMirrorPage = pageIndex !== 0;
 
   /**
    * Разлиновка — страницы, а не листа, тем же селектором, что у раскладки и
@@ -121,6 +128,13 @@ export const MarkupEditorContent: FC<MarkupEditorContentProps> = (props) => {
    */
   const handleScaleChange = useCallback((next: number) => {
     setScale(next);
+  }, []);
+
+  /**
+   * Стабильный колбэк: это `ref` слоя пробного текста.
+   */
+  const handleTrialLayerChange = useCallback((layer: HTMLDivElement | null) => {
+    setTrialLayer(layer);
   }, []);
 
   const handleToolChange = (value: string) => {
@@ -159,65 +173,92 @@ export const MarkupEditorContent: FC<MarkupEditorContentProps> = (props) => {
     close();
   };
 
+  /**
+   * На зеркальной странице окно и ручки узнают ширину кадра из контекста:
+   * фотография и слой ручек отражаются, а инструменты правят лист в его
+   * собственных пикселях.
+   */
   return (
-    <div className="flex min-h-0 flex-1 gap-4">
-      <MarkupViewport
-        frame={sheet}
-        photoSrc={sheet.src}
-        photoLabel={`Фотография листа «${sheet.label}»`}
-        onScaleChange={handleScaleChange}
-      >
-        <MarkupOverlay
+    <MarkupMirrorContext value={isMirrorPage ? sheet.width : null}>
+      <div className="flex min-h-0 flex-1 gap-4">
+        <MarkupViewport
           frame={sheet}
-          ruling={pageRuling}
-          pins={pageIndex === 0 ? draft.pins : []}
-          layers={layers}
-          onHandleLayerChange={handleHandleLayerChange}
-        />
-      </MarkupViewport>
-
-      <aside
-        aria-label="Настройка разметки"
-        className="flex w-80 shrink-0 flex-col gap-4 overflow-y-auto"
-      >
-        <RulingKindControl />
-
-        <SegmentedControl
-          label="Инструмент"
-          value={tool}
-          options={TOOL_OPTIONS}
-          onChange={handleToolChange}
-        />
-
-        <MarkupNotices tool={tool} draft={draft} />
-
-        {/*
-         * Ручки инструментов уходят порталом в оверлей, но в дереве React
-         * лежат здесь, вне окна просмотра, — масштаб им передаётся отсюда.
-         */}
-        <MarkupScaleContext value={scale}>
-          <ActiveTool handleLayer={handleLayer} pageIndex={pageIndex} />
-
-          <MarkupLayers layers={layers} onLayersChange={handleLayersChange} />
-
-          <TrialText handleLayer={handleLayer} pageIndex={pageIndex} />
-        </MarkupScaleContext>
-
-        <MirrorTab pageIndex={pageIndex} onPageIndexChange={handlePageIndexChange} />
-
-        <div className="mt-auto flex flex-col gap-3">
-          <MarkupCloseConfirm />
-
-          <MarkupFooter
-            sheetLabel={sheet.label}
-            onReset={handleReset}
-            onDelete={handleDelete}
-            onCancel={handleCancel}
-            isSaveDisabled={isRemeasuring}
-            onSave={handleSave}
+          photoSrc={sheet.src}
+          photoLabel={
+            isMirrorPage
+              ? `Фотография листа «${sheet.label}», отражённая`
+              : `Фотография листа «${sheet.label}»`
+          }
+          onScaleChange={handleScaleChange}
+        >
+          {/*
+           * Пробный текст — страница с фотографией целиком: лежит над снимком и
+           * под разметкой, чтобы линии и ручки оставались видны.
+           */}
+          <div
+            ref={handleTrialLayerChange}
+            className="pointer-events-none absolute inset-0"
           />
-        </div>
-      </aside>
-    </div>
+
+          <MarkupOverlay
+            frame={sheet}
+            ruling={pageRuling}
+            pins={isMirrorPage ? mirrorPins(draft.pins, sheet.width) : draft.pins}
+            layers={layers}
+            onHandleLayerChange={handleHandleLayerChange}
+          />
+        </MarkupViewport>
+
+        <aside
+          aria-label="Настройка разметки"
+          className="flex w-80 shrink-0 flex-col gap-4 overflow-y-auto"
+        >
+          <RulingKindControl />
+
+          <SegmentedControl
+            label="Инструмент"
+            value={tool}
+            options={TOOL_OPTIONS}
+            onChange={handleToolChange}
+          />
+
+          <MarkupNotices tool={tool} draft={draft} />
+
+          {isMirrorPage ? null : <ExactValues />}
+
+          {/*
+           * Ручки инструментов уходят порталом в оверлей, но в дереве React
+           * лежат здесь, вне окна просмотра, — масштаб им передаётся отсюда.
+           */}
+          <MarkupScaleContext value={scale}>
+            <ActiveTool handleLayer={handleLayer} pageIndex={pageIndex} />
+
+            <MarkupLayers layers={layers} onLayersChange={handleLayersChange} />
+
+            <TrialText layer={trialLayer} pageIndex={pageIndex} />
+          </MarkupScaleContext>
+
+          <MirrorTab
+            pageIndex={pageIndex}
+            tool={tool}
+            handleLayer={handleLayer}
+            onPageIndexChange={handlePageIndexChange}
+          />
+
+          <div className="mt-auto flex flex-col gap-3">
+            <MarkupCloseConfirm />
+
+            <MarkupFooter
+              sheetLabel={sheet.label}
+              onReset={handleReset}
+              onDelete={handleDelete}
+              onCancel={handleCancel}
+              isSaveDisabled={isRemeasuring}
+              onSave={handleSave}
+            />
+          </div>
+        </aside>
+      </div>
+    </MarkupMirrorContext>
   );
 };

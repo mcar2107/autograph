@@ -40,8 +40,10 @@ const previewMarginLine = (frame: SheetFrame, point: SheetPoint) => {
  *
  * @param frame — кадр фотографии
  * @param point — точка, px фотографии
+ * @param shouldSnap — притягивать ли к черте: сдвиг стрелкой — точная правка
+ *   на пиксель, и магнит вернул бы линию на место
  */
-const commitMarginLine = (frame: SheetFrame, point: SheetPoint) => {
+const commitMarginLine = (frame: SheetFrame, point: SheetPoint, shouldSnap = true) => {
   const { draft, image, commit } = useMarkupEditorStore.getState();
 
   if (!draft) {
@@ -49,7 +51,7 @@ const commitMarginLine = (frame: SheetFrame, point: SheetPoint) => {
   }
 
   const x =
-    image && draft.kind !== 'blank'
+    shouldSnap && image && draft.kind !== 'blank'
       ? snapMarginLineX(image, draft.ruling, point)
       : point.x;
 
@@ -224,8 +226,8 @@ export const useMarginsEdit = (
     previewMarginLine(frame, point);
   };
 
-  const releaseMarginLine = (point: SheetPoint) => {
-    commitMarginLine(frame, point);
+  const releaseMarginLine = (point: SheetPoint, shouldSnap: boolean) => {
+    commitMarginLine(frame, point, shouldSnap);
   };
 
   const removeMarginLine = () => {

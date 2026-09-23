@@ -1,4 +1,5 @@
 import type { SheetPoint } from '../../../../../lib/paper';
+import type { MarkupMoveSource } from '../MarkupHandle';
 
 import type { PinEnd } from './linesPins';
 
@@ -19,10 +20,17 @@ export type LinesEdit = {
   moveEnd: (order: number, end: PinEnd, point: SheetPoint) => void;
 
   /**
-   * Отпускание конца: магнит, если не зажат Alt/Option, подгонка гребёнки и
-   * изгиба — шаг истории.
+   * Завершённый сдвиг конца: магнит, если конец отпущен указателем без
+   * Alt/Option, подгонка гребёнки и изгиба — шаг истории. Сдвиг стрелкой
+   * магнит не притягивает: иначе конец у линии возвращался бы на неё и
+   * точная правка на пиксель была бы невозможна.
    */
-  releaseEnd: (order: number, end: PinEnd, point: SheetPoint) => void;
+  releaseEnd: (
+    order: number,
+    end: PinEnd,
+    point: SheetPoint,
+    source: MarkupMoveSource
+  ) => void;
 
   /**
    * Меняет число шагов между соседними булавками.

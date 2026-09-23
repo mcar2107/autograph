@@ -63,8 +63,11 @@ const MIN_PIVOT = 1e-12;
 const LINE_SNAP_EPSILON = 1e-6;
 
 /**
- * Доля ширины листа, на которую концы начальных булавок отступают от его краёв,
- * когда разлиновка не найдена: у самого края контура бумаги может не быть.
+ * Доля ширины, на которую концы начальных булавок отступают внутрь: от краёв
+ * листа, когда разлиновка не найдена, — у самого края контура бумаги может не
+ * быть, — и от краёв блока, когда найдена. У края блока линия на снимке
+ * обрывается, уходит под линию поля или в тень переплёта, и магнит, отпущенный
+ * там, линии не находит.
  */
 const PIN_INSET_SHARE = 0.1;
 
@@ -649,7 +652,8 @@ const placePinOnLine = (
 /**
  * Начальные булавки листа: крайние линии области с линиями в её среднем
  * столбце, плюс средняя, если у листа есть перспектива, — две булавки
- * перспективу по высоте не передают. Концы булавок стоят на краях блока.
+ * перспективу по высоте не передают. Концы булавок стоят на десятой доле
+ * ширины блока внутрь от его краёв.
  *
  * Без шага разлиновки булавки ставятся на четверть и три четверти высоты
  * листа с равными номерами: число шагов между ними задаёт пользователь.
@@ -674,9 +678,12 @@ export const deriveRulingPins = (ruling: SheetRuling, frame: SheetFrame): Ruling
     });
   }
 
-  const left = margins.left;
-  const right = frame.width - margins.right;
-  const center = (left + right) / 2;
+  const blockLeft = margins.left;
+  const blockRight = frame.width - margins.right;
+  const center = (blockLeft + blockRight) / 2;
+  const inset = (blockRight - blockLeft) * PIN_INSET_SHARE;
+  const left = blockLeft + inset;
+  const right = blockRight - inset;
   const firstIndex = Math.ceil(
     (lineCoordinateAt(ruling, center, margins.top) - firstLinePhase) / step -
       LINE_SNAP_EPSILON

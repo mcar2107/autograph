@@ -6,6 +6,7 @@ import { createPortal } from 'react-dom';
 import type { SheetOutline, SheetPoint } from '../../../../../lib/paper';
 import { useMarkupEditorStore } from '../../../../../model/useMarkupEditorStore';
 import { MarkupHandle } from '../MarkupHandle';
+import { useMarkupMirrorWidth } from '../MarkupViewport';
 import type { MarkupToolProps } from '../SheetMarkupEditor.types';
 
 import {
@@ -23,6 +24,17 @@ const CORNER_LABELS: Record<OutlineCorner, string> = {
   topRight: 'Правый верхний угол листа',
   bottomRight: 'Правый нижний угол листа',
   bottomLeft: 'Левый нижний угол листа',
+};
+
+/**
+ * Подписи углов на зеркальной странице: угол листа стоит там по другую
+ * сторону, и читалка называет его тем углом, который видно.
+ */
+const MIRROR_CORNER_LABELS: Record<OutlineCorner, string> = {
+  topLeft: CORNER_LABELS.topRight,
+  topRight: CORNER_LABELS.topLeft,
+  bottomRight: CORNER_LABELS.bottomLeft,
+  bottomLeft: CORNER_LABELS.bottomRight,
 };
 
 const INVERTED_MESSAGE =
@@ -56,11 +68,13 @@ const toPolygonPoints = (outline: SheetOutline): string => {
  * разметка не трогается. Пока идёт перемер, углы стоят, куда их отпустили, а
  * сохранение ждёт.
  *
- * Контур правится на странице самого листа: у зеркальной страницы ручки
- * появляются вместе с её правкой.
+ * На зеркальной странице углы стоят в отражённом слое ручек: правится контур
+ * самого листа, и зеркало его отражает.
  */
 export const OutlineTool: FC<MarkupToolProps> = (props) => {
-  const { handleLayer, pageIndex } = props;
+  const { handleLayer } = props;
+  const cornerLabels =
+    useMarkupMirrorWidth() === null ? CORNER_LABELS : MIRROR_CORNER_LABELS;
   const record = useMarkupEditorStore((state) => {
     return state.record;
   });
@@ -170,7 +184,7 @@ export const OutlineTool: FC<MarkupToolProps> = (props) => {
         key={corner}
         x={x}
         y={y}
-        label={CORNER_LABELS[corner]}
+        label={cornerLabels[corner]}
         className="in-data-pan-mode:pointer-events-none"
         onMove={handleCornerMove}
         onMoveEnd={handleCornerMoveEnd}
@@ -198,7 +212,7 @@ export const OutlineTool: FC<MarkupToolProps> = (props) => {
         </p>
       ) : null}
 
-      {handleLayer && pageIndex === 0
+      {handleLayer
         ? createPortal(
             <g data-tool="outline">
               {pending ? (

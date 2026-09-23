@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 
 import type { MarginLineSide, SheetPoint } from '../../../../../lib/paper';
 import { useMarkupEditorStore } from '../../../../../model/useMarkupEditorStore';
+import type { MarkupMoveSource } from '../MarkupHandle';
 import { MarkupHandle } from '../MarkupHandle';
 import { toPointsAttribute } from '../MarkupOverlay/markupGeometry';
 import type { MarkupToolProps } from '../SheetMarkupEditor.types';
@@ -14,6 +15,12 @@ import type { MarginSide } from './marginsGeometry.types';
 import { useMarginsEdit } from './useMarginsEdit';
 
 const MARGIN_SIDES: MarginSide[] = ['top', 'bottom', 'left', 'right'];
+
+/**
+ * Поля, общие у листа и зеркальной страницы: боковые поля и линия поля у
+ * зеркала свои и правятся в его разделе.
+ */
+const SHARED_MARGIN_SIDES: MarginSide[] = ['top', 'bottom'];
 
 const MARGIN_LABELS: Record<MarginSide, string> = {
   top: 'Верхнее поле',
@@ -40,11 +47,13 @@ const GUIDE_WIDTH = 2;
  * притягивается к черте фотографии, а сторона листа выводится из её
  * положения относительно середины листа.
  *
- * Разметка правится на странице самого листа: у зеркальной страницы поля —
- * отражение этих.
+ * На зеркальной странице правятся только верхнее и нижнее поля — в
+ * отражённом слое ручек, общие с листом. Боковые поля и линия поля у зеркала
+ * свои: их задают в разделе зеркальной страницы.
  */
 export const MarginsTool: FC<MarkupToolProps> = (props) => {
   const { handleLayer, pageIndex } = props;
+  const isMirrorPage = pageIndex !== 0;
   const record = useMarkupEditorStore((state) => {
     return state.record;
   });
@@ -91,33 +100,42 @@ export const MarginsTool: FC<MarkupToolProps> = (props) => {
     moveMarginLine(point);
   };
 
-  const handleMarginLineMoveEnd = (point: SheetPoint) => {
-    releaseMarginLine(point);
+  /**
+   * Стрелкой линию поля сдвигают на пиксель мимо черты — магнит вернул бы
+   * её обратно.
+   *
+   * @param point — точка отпускания, px фотографии
+   * @param source — чем сдвинули
+   */
+  const handleMarginLineMoveEnd = (point: SheetPoint, source: MarkupMoveSource) => {
+    releaseMarginLine(point, source === 'pointer');
   };
 
-  const marginHandles = MARGIN_SIDES.map((side) => {
-    const { x, y } = handles[side];
+  const marginHandles = (isMirrorPage ? SHARED_MARGIN_SIDES : MARGIN_SIDES).map(
+    (side) => {
+      const { x, y } = handles[side];
 
-    const handleMarginMove = (point: SheetPoint) => {
-      moveMargin(side, point);
-    };
+      const handleMarginMove = (point: SheetPoint) => {
+        moveMargin(side, point);
+      };
 
-    const handleMarginMoveEnd = (point: SheetPoint) => {
-      releaseMargin(side, point);
-    };
+      const handleMarginMoveEnd = (point: SheetPoint) => {
+        releaseMargin(side, point);
+      };
 
-    return (
-      <MarkupHandle
-        key={side}
-        x={x}
-        y={y}
-        label={MARGIN_LABELS[side]}
-        className="in-data-pan-mode:pointer-events-none"
-        onMove={handleMarginMove}
-        onMoveEnd={handleMarginMoveEnd}
-      />
-    );
-  });
+      return (
+        <MarkupHandle
+          key={side}
+          x={x}
+          y={y}
+          label={MARGIN_LABELS[side]}
+          className="in-data-pan-mode:pointer-events-none"
+          onMove={handleMarginMove}
+          onMoveEnd={handleMarginMoveEnd}
+        />
+      );
+    }
+  );
 
   return (
     <section aria-label="Поля листа" className="flex flex-col gap-2 text-sm">
@@ -126,29 +144,39 @@ export const MarginsTool: FC<MarkupToolProps> = (props) => {
         боковые — куда отпустите. Текст не заходит за поля и отступает от линии поля.
       </p>
 
-      {marginLineSide === null ? (
-        <p className="text-fg-muted">Линии поля нет.</p>
-      ) : (
-        <p className="text-fg">Линия поля {MARGIN_LINE_SIDE_LABELS[marginLineSide]}.</p>
-      )}
-
-      {isFollowing ? (
-        <p role="status" className="text-fg-muted">
-          Ведите линию поля к черте на фотографии и нажмите, чтобы поставить.
+      {isMirrorPage ? (
+        <p className="text-fg-muted">
+          Боковые поля и линия поля зеркальной страницы задаются в её разделе ниже.
         </p>
-      ) : null}
-
-      {ruling.marginLineX === null ? (
-        <Button variant="secondary" onClick={handleAddMarginLineClick}>
-          Добавить линию поля
-        </Button>
       ) : (
-        <Button variant="secondary" onClick={handleRemoveMarginLineClick}>
-          Убрать линию поля
-        </Button>
+        <>
+          {marginLineSide === null ? (
+            <p className="text-fg-muted">Линии поля нет.</p>
+          ) : (
+            <p className="text-fg">
+              Линия поля {MARGIN_LINE_SIDE_LABELS[marginLineSide]}.
+            </p>
+          )}
+
+          {isFollowing ? (
+            <p role="status" className="text-fg-muted">
+              Ведите линию поля к черте на фотографии и нажмите, чтобы поставить.
+            </p>
+          ) : null}
+
+          {ruling.marginLineX === null ? (
+            <Button variant="secondary" onClick={handleAddMarginLineClick}>
+              Добавить линию поля
+            </Button>
+          ) : (
+            <Button variant="secondary" onClick={handleRemoveMarginLineClick}>
+              Убрать линию поля
+            </Button>
+          )}
+        </>
       )}
 
-      {handleLayer && pageIndex === 0
+      {handleLayer
         ? createPortal(
             <g data-tool="margins">
               {guides.map(({ side, points }) => {
@@ -167,7 +195,7 @@ export const MarginsTool: FC<MarkupToolProps> = (props) => {
 
               {marginHandles}
 
-              {marginLine ? (
+              {marginLine && !isMirrorPage ? (
                 <MarkupHandle
                   x={marginLine.x}
                   y={marginLine.y}

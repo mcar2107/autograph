@@ -89,6 +89,6 @@ describe('ручка разметки', () => {
     expect(pointerDown).not.toHaveBeenCalled();
     expect(onMove).toHaveBeenCalledTimes(1);
     expect(onMove).toHaveBeenCalledWith({ x: 110, y: 210 });
-    expect(onMoveEnd).toHaveBeenCalledWith({ x: 110, y: 210 });
+    expect(onMoveEnd).toHaveBeenCalledWith({ x: 110, y: 210 }, 'pointer');
   });
 });

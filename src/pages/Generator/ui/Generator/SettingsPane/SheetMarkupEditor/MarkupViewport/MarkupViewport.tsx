@@ -1,7 +1,9 @@
+import { cx } from '@shared/lib/styles';
 import { IconButton } from '@shared/ui/IconButton';
 import type { FC, PointerEvent } from 'react';
 import { useEffect, useRef } from 'react';
 
+import { useMarkupMirrorWidth } from './markupMirrorContext';
 import { MarkupScaleContext } from './markupScaleContext';
 import type { MarkupViewportProps, PanPointer } from './MarkupViewport.types';
 import { useMarkupView } from './useMarkupView';
@@ -18,6 +20,9 @@ const PERCENT = 100;
  * нажатие сами, поэтому их перетаскивание снимок не двигает. С зажатым
  * пробелом нажатие забирает окно ещё до ручек: поверх ручек и линий пустого
  * места почти не остаётся, а сдвигать снимок нужно и там.
+ *
+ * На зеркальной странице фотография отражена — так она ляжет на правую
+ * страницу разворота.
  */
 export const MarkupViewport: FC<MarkupViewportProps> = (props) => {
   const { frame, photoSrc, photoLabel, children, onScaleChange } = props;
@@ -25,6 +30,7 @@ export const MarkupViewport: FC<MarkupViewportProps> = (props) => {
   const pointerRef = useRef<PanPointer | null>(null);
   const { view, zoomIn, zoomOut, fit, panBy } = useMarkupView(viewportRef, frame);
   const isSpacePan = useSpacePan(viewportRef);
+  const isMirrored = useMarkupMirrorWidth() !== null;
   const { scale, x, y } = view;
 
   useEffect(() => {
@@ -116,7 +122,10 @@ export const MarkupViewport: FC<MarkupViewportProps> = (props) => {
             width={frame.width}
             height={frame.height}
             draggable={false}
-            className="block size-full max-w-none select-none"
+            className={cx(
+              'block size-full max-w-none select-none',
+              isMirrored && '-scale-x-100'
+            )}
           />
 
           <MarkupScaleContext value={scale}>{children}</MarkupScaleContext>

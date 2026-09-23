@@ -5,11 +5,17 @@ import { useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 import { formatNumber, NBSP } from '../../../../../lib/format/formatNumber';
-import type { RulingBendRadius, SheetFrame, SheetRuling } from '../../../../../lib/paper';
+import type {
+  RulingBendRadius,
+  SheetFrame,
+  SheetPoint,
+  SheetRuling,
+} from '../../../../../lib/paper';
 import { resolveBendRadius, resolveBendReach } from '../../../../../lib/paper';
 import { useMarkupEditorStore } from '../../../../../model/useMarkupEditorStore';
 import { normalizePins, refitBendToPins } from '../LinesTool/linesPins';
 import { buildRulingLines, toPointsAttribute } from '../MarkupOverlay/markupGeometry';
+import { mirrorMarkupPoint, useMarkupMirrorWidth } from '../MarkupViewport';
 import type { MarkupToolProps } from '../SheetMarkupEditor.types';
 
 import { buildBendRing, toPhotoPoint } from './bendGeometry';
@@ -96,11 +102,12 @@ const scaleBendRadius = (
  * относительно текущих линий и доводит его до закреплённых линий, «Выпрямить»
  * его снимает.
  *
- * Разметка правится на странице самого листа: у зеркальной страницы линии —
- * отражение этих.
+ * На зеркальной странице линии берутся в отражённом слое: правится изгиб
+ * самого листа, и зеркало его отражает.
  */
 export const BendTool: FC<MarkupToolProps> = (props) => {
-  const { handleLayer, pageIndex } = props;
+  const { handleLayer } = props;
+  const mirrorWidth = useMarkupMirrorWidth();
   const record = useMarkupEditorStore((state) => {
     return state.record;
   });
@@ -181,9 +188,22 @@ export const BendTool: FC<MarkupToolProps> = (props) => {
     commit({ ruling: refitted });
   };
 
-  const handleLinesPointerDown = (event: PointerEvent<SVGGElement>) => {
-    const { pointerId, clientX, clientY, currentTarget } = event;
+  /**
+   * Точка листа под указателем: на зеркальной странице — отражённая.
+   *
+   * @param event — событие указателя на линиях
+   * @returns точка, px фотографии листа; `null` — матрицы нет
+   */
+  const readSheetPoint = (event: PointerEvent<SVGGElement>): SheetPoint | null => {
+    const { clientX, clientY, currentTarget } = event;
     const point = toPhotoPoint(currentTarget.ownerSVGElement, clientX, clientY);
+
+    return point && mirrorMarkupPoint(point, mirrorWidth);
+  };
+
+  const handleLinesPointerDown = (event: PointerEvent<SVGGElement>) => {
+    const { pointerId, currentTarget } = event;
+    const point = readSheetPoint(event);
 
     if (point && grab(pointerId, point)) {
       event.stopPropagation();
@@ -192,8 +212,8 @@ export const BendTool: FC<MarkupToolProps> = (props) => {
   };
 
   const handleLinesPointerMove = (event: PointerEvent<SVGGElement>) => {
-    const { pointerId, clientX, clientY, currentTarget, shiftKey } = event;
-    const point = toPhotoPoint(currentTarget.ownerSVGElement, clientX, clientY);
+    const { pointerId, shiftKey } = event;
+    const point = readSheetPoint(event);
 
     if (point) {
       drag(pointerId, point.y, shiftKey);
@@ -201,8 +221,8 @@ export const BendTool: FC<MarkupToolProps> = (props) => {
   };
 
   const handleLinesPointerUp = (event: PointerEvent<SVGGElement>) => {
-    const { pointerId, clientX, clientY, currentTarget, shiftKey } = event;
-    const point = toPhotoPoint(currentTarget.ownerSVGElement, clientX, clientY);
+    const { pointerId, shiftKey } = event;
+    const point = readSheetPoint(event);
 
     release(pointerId, point ? point.y : null, shiftKey);
   };
@@ -259,7 +279,7 @@ export const BendTool: FC<MarkupToolProps> = (props) => {
         </p>
       ) : null}
 
-      {handleLayer && pageIndex === 0 && hasLines
+      {handleLayer && hasLines
         ? createPortal(
             <g
               data-tool="bend"

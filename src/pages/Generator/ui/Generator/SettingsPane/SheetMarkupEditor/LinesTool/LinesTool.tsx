@@ -8,7 +8,9 @@ import { formatNumber, NBSP } from '../../../../../lib/format/formatNumber';
 import type { RulingPinsFit, SheetPoint } from '../../../../../lib/paper';
 import { fitRulingPins } from '../../../../../lib/paper';
 import { useMarkupEditorStore } from '../../../../../model/useMarkupEditorStore';
+import type { MarkupMoveSource } from '../MarkupHandle';
 import { MarkupHandle } from '../MarkupHandle';
+import { useMarkupMirrorWidth } from '../MarkupViewport';
 import type { MarkupToolProps } from '../SheetMarkupEditor.types';
 
 import { measurePinMiss, normalizePins, type PinEnd, readGapSteps } from './linesPins';
@@ -24,6 +26,15 @@ const MAX_RESIDUAL_PX = 1;
 const END_LABELS: Record<PinEnd, string> = {
   left: 'левый конец',
   right: 'правый конец',
+};
+
+/**
+ * Подписи концов на зеркальной странице: левый конец булавки листа стоит там
+ * справа, и читалка называет его тем концом, который видно.
+ */
+const MIRROR_END_LABELS: Record<PinEnd, string> = {
+  left: END_LABELS.right,
+  right: END_LABELS.left,
 };
 
 const PIN_ENDS: PinEnd[] = ['left', 'right'];
@@ -72,11 +83,12 @@ const formatResidual = (residual: number | undefined): string => {
  * отпусканию притягиваются к ближайшей тёмной линии; Alt/Option магнит
  * отключает. Между соседними булавками — число шагов с кнопками ±.
  *
- * Разметка правится на странице самого листа: у зеркальной страницы булавок
- * нет, её линии — отражение этих.
+ * На зеркальной странице концы булавок стоят в отражённом слое ручек:
+ * правятся булавки самого листа, и зеркало их отражает.
  */
 export const LinesTool: FC<MarkupToolProps> = (props) => {
-  const { handleLayer, pageIndex } = props;
+  const { handleLayer } = props;
+  const endLabels = useMarkupMirrorWidth() === null ? END_LABELS : MIRROR_END_LABELS;
   const record = useMarkupEditorStore((state) => {
     return state.record;
   });
@@ -140,8 +152,8 @@ export const LinesTool: FC<MarkupToolProps> = (props) => {
         moveEnd(order, end, point);
       };
 
-      const handleEndMoveEnd = (point: SheetPoint) => {
-        releaseEnd(order, end, point);
+      const handleEndMoveEnd = (point: SheetPoint, source: MarkupMoveSource) => {
+        releaseEnd(order, end, point, source);
       };
 
       return (
@@ -149,7 +161,7 @@ export const LinesTool: FC<MarkupToolProps> = (props) => {
           key={`${order}-${end}`}
           x={x}
           y={y}
-          label={`Закреплённая линия ${order + 1}, ${END_LABELS[end]}`}
+          label={`Закреплённая линия ${order + 1}, ${endLabels[end]}`}
           className={cx(
             'in-data-pan-mode:pointer-events-none',
             isPinFlagged(order) && 'stroke-danger'
@@ -228,9 +240,7 @@ export const LinesTool: FC<MarkupToolProps> = (props) => {
         Закрепить ещё линию
       </Button>
 
-      {handleLayer && pageIndex === 0
-        ? createPortal(<g data-tool="lines">{handles}</g>, handleLayer)
-        : null}
+      {handleLayer ? createPortal(<g data-tool="lines">{handles}</g>, handleLayer) : null}
     </section>
   );
 };

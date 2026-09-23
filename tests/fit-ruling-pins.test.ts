@@ -346,9 +346,15 @@ describe('начальные булавки', () => {
     const center = (180 + FRAME.width - 120) / 2;
     const [first, last] = pins;
 
+    /**
+     * Концы — на десятой доле ширины блока внутрь от его краёв: блок
+     * 180…1480, ширина 1300.
+     */
     expect(pins).toHaveLength(2);
-    expect(first?.left.x).toBe(180);
-    expect(first?.right.x).toBe(FRAME.width - 120);
+    expect(first?.left.x).toBeCloseTo(310, 9);
+    expect(first?.right.x).toBeCloseTo(1350, 9);
+    expect(last?.left.x).toBeCloseTo(310, 9);
+    expect(last?.right.x).toBeCloseTo(1350, 9);
     expect(getLineY(BASE_RULING, first?.index || 0, center)).toBeGreaterThanOrEqual(160);
     expect(getLineY(BASE_RULING, (first?.index || 0) - 1, center)).toBeLessThan(160);
     expect(getLineY(BASE_RULING, last?.index || 0, center)).toBeLessThanOrEqual(

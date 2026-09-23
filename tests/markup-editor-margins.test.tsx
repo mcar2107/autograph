@@ -501,6 +501,25 @@ describe('инструмент «Поля»: линия поля', () => {
     ).toBeLessThan(1);
   });
 
+  it('стрелка сдвигает линию поля на пиксель мимо магнита', async () => {
+    const user = userEvent.setup();
+    const editor = await openMarginsTool(
+      user,
+      buildRuling(PHOTO.marginLineX, 'left'),
+      createSyntheticSheet(PHOTO)
+    );
+    const handle = within(editor).getByRole('button', { name: 'Линия поля' });
+
+    handle.focus();
+    await user.keyboard('{ArrowRight}');
+
+    expect(readDraftRuling().marginLineX).toBeCloseTo(PHOTO.marginLineX + 1, 9);
+
+    await user.keyboard('{Shift>}{ArrowLeft}{/Shift}');
+
+    expect(readDraftRuling().marginLineX).toBeCloseTo(PHOTO.marginLineX - 9, 9);
+  });
+
   it('удаление отменяется', async () => {
     const user = userEvent.setup();
     const editor = await openMarginsTool(user, buildRuling(280, 'left'));

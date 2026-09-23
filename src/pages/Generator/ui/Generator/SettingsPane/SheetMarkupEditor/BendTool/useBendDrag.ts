@@ -8,6 +8,7 @@ import type {
 } from '../../../../../lib/paper';
 import { editRulingBend } from '../../../../../lib/paper';
 import { useMarkupEditorStore } from '../../../../../model/useMarkupEditorStore';
+import { mirrorMarkupPoint, useMarkupMirrorWidth } from '../MarkupViewport';
 
 import { findLinePoint, toPhotoPoint } from './bendGeometry';
 import type { BendDrag, BendDragState } from './useBendDrag.types';
@@ -25,7 +26,9 @@ const MIN_DRAG_PX = 0.01;
  * показ без шага истории, отпускание — один шаг.
  *
  * Рамка радиуса следует за курсором над фотографией, пока инструмент
- * смонтирован, а во время перетаскивания стоит на взятой линии.
+ * смонтирован, а во время перетаскивания стоит на взятой линии. На
+ * зеркальной странице её центр — в пикселях самого листа: рамку рисует
+ * отражённый слой ручек.
  *
  * @param handleLayer — слой ручек оверлея: по его SVG курсор переводится в
  *   пиксели фотографии
@@ -40,6 +43,7 @@ export const useBendDrag = (
 ): BendDrag => {
   const dragRef = useRef<BendDragState | null>(null);
   const [ringCenter, setRingCenter] = useState<SheetPoint | null>(null);
+  const mirrorWidth = useMarkupMirrorWidth();
 
   /**
    * Курсор над фотографией слушается у самого SVG, а не у линий: рамка
@@ -54,7 +58,9 @@ export const useBendDrag = (
 
     const handlePointerMove = (event: globalThis.PointerEvent) => {
       if (!dragRef.current) {
-        setRingCenter(toPhotoPoint(svg, event.clientX, event.clientY));
+        const point = toPhotoPoint(svg, event.clientX, event.clientY);
+
+        setRingCenter(point && mirrorMarkupPoint(point, mirrorWidth));
       }
     };
 
@@ -71,7 +77,7 @@ export const useBendDrag = (
       svg.removeEventListener('pointermove', handlePointerMove);
       svg.removeEventListener('pointerleave', handlePointerLeave);
     };
-  }, [handleLayer]);
+  }, [handleLayer, mirrorWidth]);
 
   /**
    * Разлиновка, в которой взятая точка линии ушла вместе с указателем.
