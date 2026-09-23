@@ -18,6 +18,8 @@ import type { UserSheetRecord } from '@pages/Generator/model/userSheetsStorage.t
 import { IDBFactory } from 'fake-indexeddb';
 import { beforeEach, describe, expect, it } from 'vitest';
 
+import { buildUserSheetRecord } from './helpers/user-sheet-record';
+
 /**
  * Стор объявлен вне React, поэтому проверяется вызовами напрямую.
  */
@@ -72,7 +74,11 @@ const buildMeasuredSheet = (id: string): PaperSheet => {
 };
 
 const buildRecord = (id: string, isAnalyzed = true): UserSheetRecord => {
-  return { familyId: 'grid', sheet: buildMeasuredSheet(id), isAnalyzed, isBlank: false };
+  return buildUserSheetRecord({
+    familyId: 'grid',
+    sheet: buildMeasuredSheet(id),
+    isAnalyzed,
+  });
 };
 
 /**

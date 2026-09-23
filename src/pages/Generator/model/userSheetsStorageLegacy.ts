@@ -1,5 +1,6 @@
 import { isJsonRecord, parsePaperSheet, toText } from './paperSheetJson';
 import type { UserSheetRecord } from './userSheetsStorage.types';
+import { deriveUserSheetMarkup, resolveFamilyKind } from './userSheetsStorageRecord';
 
 /**
  * Ключ списка пользовательских листов: лёгкие характеристики всех листов
@@ -160,15 +161,18 @@ const readRecord = (
     return null;
   }
 
+  const familyId = toText(entry.familyId);
+
   return {
-    familyId: toText(entry.familyId),
+    familyId,
     sheet,
     isAnalyzed: entry.isAnalyzed === true,
     /**
-     * Запись без вида листа читается листом с разлиновкой семьи, а не
-     * отбрасывается: у записи прежней формы поля нет, и это не порча.
+     * Запись без признака чистого листа читается листом с разлиновкой семьи,
+     * а не отбрасывается: у записи прежней формы поля нет, и это не порча.
      */
-    isBlank: entry.isBlank === true,
+    kind: entry.isBlank === true ? 'blank' : resolveFamilyKind(familyId),
+    ...deriveUserSheetMarkup(sheet),
   };
 };
 

@@ -65,6 +65,7 @@ import {
   TILTED_ANGLE,
   uploadUserPhoto,
 } from './helpers/user-sheet-photo';
+import { buildUserSheetRecord } from './helpers/user-sheet-record';
 
 /**
  * Подменяется только съём пикселей: канвы в jsdom нет. Измерения идут
@@ -1014,6 +1015,9 @@ describe('ручная правка разлиновки', () => {
 
     render(<SheetDialogHarness />);
     await uploadUserPhoto(user);
+
+    const measuredRuling = useGeneratorStore.getState().userSheets[0]?.sheet.ruling;
+
     await openSheetDialog(user, UPLOADED_LABEL);
 
     await fillField(user, 'Шаг строк, px', 25);
@@ -1023,6 +1027,13 @@ describe('ручная правка разлиновки', () => {
     await saveDialog(user);
 
     const [stored] = await readUserSheets();
+
+    /**
+     * Правка ложится на разлиновку листа, а найденная автоматом остаётся
+     * прежней: к ней вернёт «Сбросить к найденному».
+     */
+    expect(measuredRuling?.step).not.toBe(25);
+    expect(stored?.measuredRuling).toStrictEqual(measuredRuling);
 
     expect(stored?.sheet.ruling).toEqual(readUserRuling());
     expect(stored?.sheet.ruling.step).toBe(25);
@@ -1079,30 +1090,30 @@ const BENT_SHEET_LABEL = 'Изогнутый лист';
  * округление за правку шага.
  */
 const seedBentSheet = () => {
-  useGeneratorStore.getState().addUserSheet({
-    familyId: DEFAULT_GENERATOR_STATE.familyId,
-    isAnalyzed: true,
-    isBlank: false,
-    sheet: {
-      id: 'user-bent',
-      label: BENT_SHEET_LABEL,
-      src: 'data:image/jpeg;base64,0123456789',
-      width: 480,
-      height: 640,
-      ruling: buildSheetRuling(
-        {
-          step: 47.9312,
-          firstLinePhase: 19.2587,
-          skewAngle: 0.4,
-          margins: { top: 70, right: 40, bottom: 50, left: 45 },
-          bend: SHEET_BEND,
-        },
-        { width: 480, height: 640 }
-      ),
-      lighting: null,
-      texture: null,
-    },
-  });
+  useGeneratorStore.getState().addUserSheet(
+    buildUserSheetRecord({
+      familyId: DEFAULT_GENERATOR_STATE.familyId,
+      sheet: {
+        id: 'user-bent',
+        label: BENT_SHEET_LABEL,
+        src: 'data:image/jpeg;base64,0123456789',
+        width: 480,
+        height: 640,
+        ruling: buildSheetRuling(
+          {
+            step: 47.9312,
+            firstLinePhase: 19.2587,
+            skewAngle: 0.4,
+            margins: { top: 70, right: 40, bottom: 50, left: 45 },
+            bend: SHEET_BEND,
+          },
+          { width: 480, height: 640 }
+        ),
+        lighting: null,
+        texture: null,
+      },
+    })
+  );
 };
 
 describe('изгиб при ручной правке разлиновки', () => {
@@ -1186,32 +1197,32 @@ const TABLE_SHEET_LABEL = 'Лист на столе';
  * фазой.
  */
 const seedPerspectiveSheet = () => {
-  useGeneratorStore.getState().addUserSheet({
-    familyId: DEFAULT_GENERATOR_STATE.familyId,
-    isAnalyzed: true,
-    isBlank: false,
-    sheet: {
-      id: 'user-table',
-      label: TABLE_SHEET_LABEL,
-      src: 'data:image/jpeg;base64,0123456789',
-      width: 480,
-      height: 640,
-      ruling: buildSheetRuling(
-        {
-          step: 47.9312,
-          firstLinePhase: 19.2587,
-          skewAngle: 0.4,
-          margins: { top: 70, right: 40, bottom: 50, left: 45 },
-          bend: SHEET_BEND,
-          perspective: SHEET_PERSPECTIVE,
-          outline: SHEET_OUTLINE,
-        },
-        { width: 480, height: 640 }
-      ),
-      lighting: null,
-      texture: null,
-    },
-  });
+  useGeneratorStore.getState().addUserSheet(
+    buildUserSheetRecord({
+      familyId: DEFAULT_GENERATOR_STATE.familyId,
+      sheet: {
+        id: 'user-table',
+        label: TABLE_SHEET_LABEL,
+        src: 'data:image/jpeg;base64,0123456789',
+        width: 480,
+        height: 640,
+        ruling: buildSheetRuling(
+          {
+            step: 47.9312,
+            firstLinePhase: 19.2587,
+            skewAngle: 0.4,
+            margins: { top: 70, right: 40, bottom: 50, left: 45 },
+            bend: SHEET_BEND,
+            perspective: SHEET_PERSPECTIVE,
+            outline: SHEET_OUTLINE,
+          },
+          { width: 480, height: 640 }
+        ),
+        lighting: null,
+        texture: null,
+      },
+    })
+  );
 };
 
 describe('перспектива и контур при ручной правке разлиновки', () => {
@@ -1362,12 +1373,13 @@ const toRectOutline = (bounds: PaperMargins): SheetOutline => {
  * @param isBlank — лист добавлен без разлиновки; семья у него всё равно клетка
  */
 const seedSheet = (isBlank = false) => {
-  useGeneratorStore.getState().addUserSheet({
-    familyId: 'grid',
-    isAnalyzed: true,
-    isBlank,
-    sheet: SEEDED_SHEET,
-  });
+  useGeneratorStore.getState().addUserSheet(
+    buildUserSheetRecord({
+      familyId: 'grid',
+      sheet: SEEDED_SHEET,
+      kind: isBlank ? 'blank' : 'grid',
+    })
+  );
 };
 
 /**
@@ -1549,12 +1561,12 @@ describe('ручная правка границ листа', () => {
     const user = userEvent.setup();
 
     seedSheet();
-    useGeneratorStore.getState().addUserSheet({
-      familyId: 'grid',
-      isAnalyzed: true,
-      isBlank: false,
-      sheet: { ...SEEDED_SHEET, id: 'user-other', label: 'Другой лист' },
-    });
+    useGeneratorStore.getState().addUserSheet(
+      buildUserSheetRecord({
+        familyId: 'grid',
+        sheet: { ...SEEDED_SHEET, id: 'user-other', label: 'Другой лист' },
+      })
+    );
     render(<SheetDialogHarness />);
     await openSheetDialog(user, SEEDED_SHEET.label);
 
@@ -1642,7 +1654,7 @@ describe('перемер чистого листа', () => {
       expect.anything(),
       expect.objectContaining({ kind: 'blank' })
     );
-    expect(record?.isBlank).toBe(true);
+    expect(record?.kind).toBe('blank');
     expect(record?.sheet.lighting).not.toBeNull();
     expect(record?.sheet.ruling).toMatchObject({
       step,
@@ -1660,12 +1672,11 @@ describe('перемер чистого листа', () => {
   it('поля, оставшиеся от прежнего контура, уходят внутрь нового', async () => {
     const user = userEvent.setup();
 
-    useGeneratorStore.getState().addUserSheet({
-      familyId: 'grid',
-      isAnalyzed: true,
-      isBlank: true,
-      sheet: FALLBACK_SHEET,
-    });
+    useGeneratorStore
+      .getState()
+      .addUserSheet(
+        buildUserSheetRecord({ familyId: 'grid', sheet: FALLBACK_SHEET, kind: 'blank' })
+      );
     render(<SheetDialogHarness />);
     await openSheetDialog(user, TABLE_SHEET_LABEL);
 
@@ -1695,7 +1706,7 @@ describe('перемер чистого листа', () => {
     seedSheet();
     await restoreWithoutKind();
 
-    expect(useGeneratorStore.getState().userSheets[0]?.isBlank).toBe(false);
+    expect(useGeneratorStore.getState().userSheets[0]?.kind).toBe('grid');
 
     render(<SheetDialogHarness />);
     await openSheetDialog(user, TABLE_SHEET_LABEL);
@@ -1735,12 +1746,12 @@ describe('лист без разлиновки', () => {
 
     await user.click(checkbox);
 
-    expect(useGeneratorStore.getState().userSheets[0]?.isBlank).toBe(false);
+    expect(useGeneratorStore.getState().userSheets[0]?.kind).toBe('grid');
 
     await saveDialog(user);
 
-    expect(useGeneratorStore.getState().userSheets[0]?.isBlank).toBe(true);
-    expect((await readUserSheets())[0]?.isBlank).toBe(true);
+    expect(useGeneratorStore.getState().userSheets[0]?.kind).toBe('blank');
+    expect((await readUserSheets())[0]?.kind).toBe('blank');
   });
 
   it('с флажком перемер не ищет линии и оставляет заданное руками', async () => {
@@ -1762,7 +1773,7 @@ describe('лист без разлиновки', () => {
       expect.anything(),
       expect.objectContaining({ kind: 'blank' })
     );
-    expect(useGeneratorStore.getState().userSheets[0]?.isBlank).toBe(true);
+    expect(useGeneratorStore.getState().userSheets[0]?.kind).toBe('blank');
     expect(readUserSheet()?.ruling.step).toBe(MANUAL_RULING.step);
   }, 60_000);
 });

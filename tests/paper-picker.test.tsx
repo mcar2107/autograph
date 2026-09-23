@@ -5,9 +5,11 @@ import {
   DEFAULT_GENERATOR_STATE,
   useGeneratorStore,
 } from '@pages/Generator/model/useGeneratorStore';
+import { readUserSheets } from '@pages/Generator/model/userSheetsStorage';
 import { PaperPicker } from '@pages/Generator/ui/Generator/SettingsPane/PaperPicker';
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { IDBFactory } from 'fake-indexeddb';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createSyntheticSheet } from './helpers/synthetic-sheet';
@@ -40,6 +42,25 @@ const RULED_PHOTO = {
   marginLineX: 96,
 };
 
+/**
+ * Снимок листа в клетку: детектор узнаёт на нём клетку, какая бы семья ни была
+ * выбрана.
+ */
+const GRID_PHOTO = {
+  width: 420,
+  height: 560,
+  step: 28,
+  phase: 0,
+  kind: 'grid' as const,
+  margins: { top: 56, right: 56, bottom: 56, left: 56 },
+};
+
+/**
+ * Начало сообщения об отказе записи: оно и есть обещание спеки, причина после
+ * двоеточия — пояснение.
+ */
+const SAVE_FAILURE_MESSAGE = /^Лист не сохранится после перезагрузки/;
+
 const buildPhotoFile = (): File => {
   return new File([new Uint8Array([1, 2, 3])], 'моя тетрадь.jpg', {
     type: 'image/jpeg',
@@ -51,6 +72,7 @@ const store = () => {
 };
 
 beforeEach(() => {
+  globalThis.indexedDB = new IDBFactory();
   useGeneratorStore.setState(DEFAULT_GENERATOR_STATE);
   globalThis.localStorage?.clear();
   decodeSheetImage.mockReset();
@@ -59,6 +81,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
 });
 
 describe('PaperPicker', () => {
@@ -154,7 +177,11 @@ describe('PaperPicker', () => {
 
     expect(tile.querySelector('img')?.getAttribute('src')).toBe(record?.sheet.src);
 
-    store().selectFamily('grid');
+    /**
+     * Выбор семьи снимает закрепление, клик по плитке своего листа
+     * закрепляет его снова.
+     */
+    store().selectFamily(record?.familyId || '');
     await user.click(tile);
 
     expect(store().sheetId).toBe(sheetId);
@@ -165,5 +192,57 @@ describe('PaperPicker', () => {
     );
 
     expect(handleSettingsOpen).toHaveBeenCalledWith(sheetId);
+  });
+
+  it('отказ записи в хранилище виден сообщением, а лист остаётся доступным', async () => {
+    const user = userEvent.setup();
+    const put = vi.spyOn(IDBObjectStore.prototype, 'put').mockImplementation(() => {
+      throw new DOMException('Квота исчерпана', 'QuotaExceededError');
+    });
+
+    decodeSheetImage.mockResolvedValue(createSyntheticSheet(RULED_PHOTO));
+
+    render(<PaperPicker onSheetSettingsOpen={vi.fn()} />);
+
+    expect(screen.queryByText(SAVE_FAILURE_MESSAGE)).toBeNull();
+
+    await user.upload(screen.getByLabelText('Своя фотография листа'), buildPhotoFile());
+
+    const message = await screen.findByText(SAVE_FAILURE_MESSAGE);
+
+    expect(message.getAttribute('role')).toBe('alert');
+    expect(put).toHaveBeenCalled();
+    expect(store().userSheets).toHaveLength(1);
+    expect(
+      within(screen.getByRole('list', { name: 'Свои листы' })).getByRole('button', {
+        name: 'моя тетрадь',
+      })
+    ).toBeDefined();
+  });
+
+  it('лист в клетку, добавленный при выбранной линейке, встаёт в семью клетки', async () => {
+    const user = userEvent.setup();
+
+    decodeSheetImage.mockResolvedValue(createSyntheticSheet(GRID_PHOTO));
+    store().selectFamily('lined');
+
+    render(<PaperPicker onSheetSettingsOpen={vi.fn()} />);
+
+    await user.upload(screen.getByLabelText('Своя фотография листа'), buildPhotoFile());
+
+    await waitFor(() => {
+      expect(store().userSheets).toHaveLength(1);
+    });
+
+    const [record] = store().userSheets;
+
+    expect(record?.kind).toBe('grid');
+    expect(record?.familyId).toBe('grid');
+    expect(store().familyId).toBe('grid');
+
+    const [stored] = await readUserSheets();
+
+    expect(stored?.kind).toBe('grid');
+    expect(stored?.familyId).toBe('grid');
   });
 });

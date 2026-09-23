@@ -8,6 +8,7 @@ import type {
 } from '../../../../lib/paper';
 import { buildSheetRuling } from '../../../../lib/paper';
 import { useGeneratorStore } from '../../../../model/useGeneratorStore';
+import { deriveUserSheetMarkup } from '../../../../model/userSheetsStorageRecord';
 import { analyzeSheetPhoto } from '../useSheetImport';
 
 import type {
@@ -128,7 +129,8 @@ export const useSheetRemeasure = (sheetId: string): SheetRemeasure => {
   }
 
   const remeasure = async (options: SheetRemeasureOptions) => {
-    const { family, sheet, isBlank, bounds } = options;
+    const { family, sheet, kind, bounds } = options;
+    const isBlank = kind === 'blank';
 
     const fail = (message: string) => {
       setFailure({ sheetId: sheet.id, message });
@@ -175,18 +177,25 @@ export const useSheetRemeasure = (sheetId: string): SheetRemeasure => {
         ? rebuildBlankRuling(sheet.ruling, measurement.outline, image)
         : buildSheetRuling(measurement.source, image);
 
+      const remeasured = {
+        ...sheet,
+        width: image.width,
+        height: image.height,
+        ruling,
+        lighting: measurement.lighting,
+        texture,
+      };
+
+      /**
+       * Новое измерение становится и разметкой автомата: «Сбросить к
+       * найденному» после перемера возвращает к нему, а не к прежним границам.
+       */
       addUserSheet({
         familyId: family.id,
-        sheet: {
-          ...sheet,
-          width: image.width,
-          height: image.height,
-          ruling,
-          lighting: measurement.lighting,
-          texture,
-        },
+        sheet: remeasured,
+        kind,
+        ...deriveUserSheetMarkup(remeasured),
         isAnalyzed: true,
-        isBlank,
       });
       setRevision((current) => {
         return current + 1;

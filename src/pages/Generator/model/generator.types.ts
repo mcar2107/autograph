@@ -3,7 +3,7 @@ import type { GeometryCorrection } from '../lib/calibrate/calibrate.types';
 import type { PaperFamily } from '../lib/paper/paper.types';
 import type { DistortionFlags } from '../lib/randomize/randomize.types';
 
-import type { UserSheetRecord } from './userSheetsStorage.types';
+import type { UserSheetMarkup, UserSheetRecord } from './userSheetsStorage.types';
 
 /**
  * Поправка геометрии в сторе: те же дельты, что понимает автокалибровка, но
@@ -227,6 +227,21 @@ export type GeneratorResources = {
   userSheets: UserSheetRecord[];
 
   /**
+   * Свои листы, которые локальное хранилище не приняло: квота исчерпана или
+   * хранение данных сайта запрещено. Такой лист живёт до конца сессии, а
+   * пользователь должен узнать, что после перезагрузки его не будет. Лист
+   * уходит из списка, когда его удалось записать или его удалили.
+   */
+  unsavedUserSheetIds: string[];
+
+  /**
+   * Свои листы прочитаны из локального хранилища. Чтение асинхронное, и до
+   * его конца ссылки сессии на свои листы не проверяются: лист, которого ещё
+   * нет в списке, не считается пропавшим.
+   */
+  hasRestoredUserSheets: boolean;
+
+  /**
    * Семейство загруженного пользователем шрифта. `null` — свой шрифт не
    * загружен; пока не `null`, он важнее выбора из списка.
    */
@@ -376,9 +391,21 @@ export type GeneratorStore = GeneratorState & {
   selectSheet: (sheetId: string) => void;
 
   /**
-   * Добавляет загруженный пользователем лист и сохраняет его локально.
+   * Добавляет загруженный пользователем лист и сохраняет его локально. Лист
+   * доступен сразу, запись идёт следом; её отказ попадает в
+   * `unsavedUserSheetIds`. Первое сохранение за сессию просит браузер не
+   * вытеснять данные сайта.
    */
   addUserSheet: (record: UserSheetRecord) => void;
+
+  /**
+   * Сохраняет разметку своего листа — действие «Сохранить» редактора:
+   * разлиновку с правками, булавки и вид. Найденная автоматом разлиновка
+   * остаётся прежней. Лист, вид которого сменился, переезжает в семью этого
+   * вида, и выбор, стоявший на нём, едет вместе с ним. Отказ записи попадает в
+   * `unsavedUserSheetIds`, лист в памяти правку получает в любом случае.
+   */
+  saveSheetMarkup: (sheetId: string, markup: UserSheetMarkup) => void;
 
   /**
    * Удаляет пользовательский лист из списка и из локального хранилища. Если

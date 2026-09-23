@@ -1,8 +1,11 @@
 import { readFileAsDataUrl } from '@shared/lib/files';
 import { useState } from 'react';
 
+import type { RulingKind, SheetPhotoMeasurement } from '../../../../lib/paper';
 import { buildSheetRuling } from '../../../../lib/paper';
+import { findKindFamily } from '../../../../model/paperSelectors';
 import { useGeneratorStore } from '../../../../model/useGeneratorStore';
+import { deriveUserSheetMarkup } from '../../../../model/userSheetsStorageRecord';
 
 import { analyzeSheetPhoto } from './analyzeSheetPhoto';
 import { requestManualRuling } from './manualRulingRequest';
@@ -44,6 +47,30 @@ const toSheetLabel = (fileName: string): string => {
 };
 
 /**
+ * Вид нового листа: предложенный снимком, а не выбранной семьёй. Если вид
+ * снимок не дал — разлиновка не нашлась или фотография не разобрана, — вид
+ * семьи.
+ *
+ * @param measurement — измерение фотографии; `null` — не разобрана
+ * @param familyKind — вид выбранной семьи
+ * @param isBlank — лист добавлен без разлиновки
+ * @returns вид разлиновки листа
+ */
+const resolveImportKind = (
+  measurement: SheetPhotoMeasurement | null,
+  familyKind: RulingKind,
+  isBlank: boolean
+): RulingKind => {
+  if (isBlank) {
+    return 'blank';
+  }
+
+  return measurement?.diagnostics.isRulingDetected
+    ? measurement.diagnostics.kind
+    : familyKind;
+};
+
+/**
  * Добавление своей фотографии листа: чтение файла, измерения и запись
  * экземпляра в выбранную семью.
  *
@@ -52,6 +79,9 @@ const toSheetLabel = (fileName: string): string => {
 export const useSheetImport = (): SheetImport => {
   const addUserSheet = useGeneratorStore((state) => {
     return state.addUserSheet;
+  });
+  const presetFamilies = useGeneratorStore((state) => {
+    return state.presetFamilies;
   });
   const [isBusy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -92,26 +122,29 @@ export const useSheetImport = (): SheetImport => {
        */
       const ruling = buildSheetRuling(measurement?.source || MISSING_RULING, frame);
       const sheetId = nextSheetId();
+      const kind = resolveImportKind(measurement, family.kind, isBlank);
+      const sheet = {
+        id: sheetId,
+        label: toSheetLabel(file.name),
+        src,
+        width: frame.width,
+        height: frame.height,
+        ruling,
+        lighting: measurement?.lighting || null,
+        texture: analysis?.texture || null,
+      };
 
       addUserSheet({
-        familyId: family.id,
-        sheet: {
-          id: sheetId,
-          label: toSheetLabel(file.name),
-          src,
-          width: frame.width,
-          height: frame.height,
-          ruling,
-          lighting: measurement?.lighting || null,
-          texture: analysis?.texture || null,
-        },
+        familyId: findKindFamily(presetFamilies, family.id, kind)?.id || family.id,
+        sheet,
+        kind,
+        ...deriveUserSheetMarkup(sheet),
         /**
          * Разбор считается пройденным даже тогда, когда разлиновка не нашлась:
          * повторный прогон по той же фотографии дал бы тот же результат, а
          * заданное руками затёр бы.
          */
         isAnalyzed: true,
-        isBlank,
       });
 
       /**

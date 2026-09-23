@@ -7,11 +7,7 @@ import {
   SHEETS_STORE,
 } from './indexedDb';
 import { parseStoredUserSheet } from './paperSheetJson';
-import type {
-  StoredUserSheet,
-  UserSheetMarkup,
-  UserSheetRecord,
-} from './userSheetsStorage.types';
+import type { StoredUserSheet, UserSheetRecord } from './userSheetsStorage.types';
 import {
   clearLegacyUserSheets,
   readLegacyUserSheets,
@@ -140,14 +136,28 @@ const resolveFile = async (src: string): Promise<Blob | null> => {
  * @returns лист стора
  */
 const toUserSheetRecord = (stored: StoredUserSheet): UserSheetRecord => {
-  const { id, familyId, kind, label, width, height, ruling, lighting, texture } = stored;
+  const {
+    id,
+    familyId,
+    kind,
+    label,
+    width,
+    height,
+    ruling,
+    measuredRuling,
+    pins,
+    lighting,
+    texture,
+  } = stored;
 
   const src = createSheetUrl(id, stored.source);
 
   return {
     familyId,
     isAnalyzed: true,
-    isBlank: kind === 'blank',
+    kind,
+    measuredRuling,
+    pins,
     sheet: {
       id,
       label,
@@ -220,17 +230,14 @@ export const readUserSheets = (): Promise<UserSheetRecord[]> => {
 
 /**
  * Сохраняет лист одной записью: фотография и карта текстуры — файлами, рядом
- * характеристики и разметка. Лист с тем же идентификатором перезаписывается.
+ * характеристики и разметка листа в памяти, включая найденную автоматом. Лист
+ * с тем же идентификатором перезаписывается.
  *
  * @param record — лист стора
- * @param markup — разметка, которой нет в экземпляре; не заданное — дефолты
  * @returns удалось ли сохранить; `false` — хранилища нет, оно переполнено
  * или фотографию не удалось прочитать
  */
-export const writeUserSheet = (
-  record: UserSheetRecord,
-  markup?: UserSheetMarkup
-): Promise<boolean> => {
+export const writeUserSheet = (record: UserSheetRecord): Promise<boolean> => {
   return enqueue(async () => {
     const { sheet } = record;
     const source = await resolveFile(sheet.src);
@@ -246,7 +253,7 @@ export const writeUserSheet = (
         return putRecord(
           database,
           SHEETS_STORE,
-          toStoredUserSheet(record, source, textureImage, markup)
+          toStoredUserSheet(record, source, textureImage)
         );
       });
 

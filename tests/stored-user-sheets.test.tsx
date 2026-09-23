@@ -15,6 +15,8 @@ import { cleanup, renderHook, waitFor } from '@testing-library/react';
 import { IDBFactory } from 'fake-indexeddb';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+import { buildUserSheetRecord } from './helpers/user-sheet-record';
+
 const SHEET: PaperSheet = {
   id: 'user-1',
   label: 'Мой лист',
@@ -73,12 +75,7 @@ describe('восстановление своих листов при откры
   });
 
   it('возвращает лист из хранилища в стор', async () => {
-    await writeUserSheet({
-      familyId: 'lined',
-      sheet: SHEET,
-      isAnalyzed: true,
-      isBlank: false,
-    });
+    await writeUserSheet(buildUserSheetRecord({ familyId: 'lined', sheet: SHEET }));
 
     renderHook(() => {
       return useStoredUserSheets();
@@ -95,12 +92,7 @@ describe('восстановление своих листов при откры
   });
 
   it('возвращает лист с контуром и перспективой теми же, что записаны', async () => {
-    await writeUserSheet({
-      familyId: 'grid',
-      sheet: TABLE_SHEET,
-      isAnalyzed: true,
-      isBlank: false,
-    });
+    await writeUserSheet(buildUserSheetRecord({ familyId: 'grid', sheet: TABLE_SHEET }));
 
     renderHook(() => {
       return useStoredUserSheets();
@@ -121,12 +113,7 @@ describe('восстановление своих листов при откры
   });
 
   it('не ставит восстановленный лист в очередь на повторный анализ', async () => {
-    await writeUserSheet({
-      familyId: 'lined',
-      sheet: SHEET,
-      isAnalyzed: true,
-      isBlank: false,
-    });
+    await writeUserSheet(buildUserSheetRecord({ familyId: 'lined', sheet: SHEET }));
 
     renderHook(() => {
       return useStoredUserSheets();

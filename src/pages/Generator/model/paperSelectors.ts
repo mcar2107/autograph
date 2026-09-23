@@ -1,4 +1,4 @@
-import type { PaperFamily, PaperSheet } from '../lib/paper/paper.types';
+import type { PaperFamily, PaperSheet, RulingKind } from '../lib/paper/paper.types';
 
 import type { GeneratorState } from './generator.types';
 import type { UserSheetRecord } from './userSheetsStorage.types';
@@ -52,6 +52,35 @@ export const findFamily = (
     families.find((family) => {
       return family.id === familyId;
     }) || families[0]
+  );
+};
+
+/**
+ * Семья своего листа по его виду: предпочтённая, если её вид совпадает, иначе
+ * первая семья этого вида. Чистому листу своей семьи нет, он остаётся в
+ * предпочтённой. Вид берётся у листа, а не у семьи, поэтому лист в клетку,
+ * добавленный при выбранной линейке, уходит к клетке.
+ *
+ * @param families — доступные семьи
+ * @param preferredFamilyId — выбранная семья или семья, где лист лежит сейчас
+ * @param kind — вид разлиновки листа
+ * @returns семья; `undefined` — семей нет вовсе
+ */
+export const findKindFamily = (
+  families: PaperFamily[],
+  preferredFamilyId: string,
+  kind: RulingKind
+): PaperFamily | undefined => {
+  const preferred = findFamily(families, preferredFamilyId);
+
+  if (kind === 'blank' || preferred?.kind === kind) {
+    return preferred;
+  }
+
+  return (
+    families.find((family) => {
+      return family.kind === kind;
+    }) || preferred
   );
 };
 
@@ -121,5 +150,26 @@ export const selectActiveSheet = (state: GeneratorState): PaperSheet | undefined
 export const selectPendingUserSheets = (state: GeneratorState): UserSheetRecord[] => {
   return state.userSheets.filter((record) => {
     return !record.isAnalyzed;
+  });
+};
+
+/**
+ * Страница стоит на своём листе, которого ещё нет: закреплённый лист сессии не
+ * найден, а свои листы ещё читаются. Пока это так, область листа показывает
+ * ожидание, а не подставленную бумагу: иначе на время чтения мелькнула бы
+ * чужая страница.
+ *
+ * @param state — состояние генератора
+ * @returns ждёт ли страница чтения своих листов
+ */
+export const selectIsAwaitingUserSheets = (state: GeneratorState): boolean => {
+  if (state.hasRestoredUserSheets || !state.isSheetPinned) {
+    return false;
+  }
+
+  return !selectPaperFamilies(state).some((family) => {
+    return family.sheets.some((sheet) => {
+      return sheet.id === state.sheetId;
+    });
   });
 };

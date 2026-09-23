@@ -1,11 +1,10 @@
 import { PRESET_PAPER_FAMILIES } from '../config';
 import { deriveRulingPins } from '../lib/paper/fitRulingPins';
-import type { PaperTexture, RulingKind } from '../lib/paper/paper.types';
+import type { PaperSheet, PaperTexture, RulingKind } from '../lib/paper/paper.types';
 
 import type {
   StoredSheetTexture,
   StoredUserSheet,
-  UserSheetMarkup,
   UserSheetRecord,
 } from './userSheetsStorage.types';
 
@@ -101,34 +100,46 @@ const toStoredTexture = (
 };
 
 /**
- * Запись для IndexedDB из листа стора. Недостающая разметка — дефолты: вид
- * чистого листа или семьи, найденной разлиновкой — текущая, булавки —
- * выведенные из неё.
+ * Разметка автомата у только что измеренного листа: найденная разлиновка —
+ * его разлиновка, булавки выведены из неё. Так собираются листы после импорта,
+ * перемера и чтения записи, у которой разметки ещё не было.
+ *
+ * @param sheet — экземпляр с измеренной разлиновкой
+ * @returns найденная разлиновка и булавки
+ */
+export const deriveUserSheetMarkup = (
+  sheet: Pick<PaperSheet, 'ruling' | 'width' | 'height'>
+): Pick<UserSheetRecord, 'measuredRuling' | 'pins'> => {
+  const { ruling, width, height } = sheet;
+
+  return { measuredRuling: ruling, pins: deriveRulingPins(ruling, { width, height }) };
+};
+
+/**
+ * Запись для IndexedDB из листа стора: разметка — та, что у листа в памяти.
  *
  * @param record — лист стора
  * @param source — исходный файл фотографии
  * @param textureImage — картинка карты текстуры файлом
- * @param markup — разметка, которой нет в экземпляре
  * @returns запись для хранилища
  */
 export const toStoredUserSheet = (
-  { familyId, sheet, isBlank }: UserSheetRecord,
+  { familyId, sheet, kind, measuredRuling, pins }: UserSheetRecord,
   source: Blob,
-  textureImage: Blob | null,
-  markup: UserSheetMarkup = {}
+  textureImage: Blob | null
 ): StoredUserSheet => {
   const { id, label, width, height, ruling, lighting, texture } = sheet;
 
   return {
     id,
     familyId,
-    kind: markup.kind || (isBlank ? 'blank' : resolveFamilyKind(familyId)),
+    kind,
     label,
     width,
     height,
     ruling,
-    measuredRuling: markup.measuredRuling || ruling,
-    pins: markup.pins || deriveRulingPins(ruling, { width, height }),
+    measuredRuling,
+    pins,
     lighting,
     source,
     texture: toStoredTexture(texture, textureImage),

@@ -1,4 +1,9 @@
-import type { PaperFamily, PaperMargins, PaperSheet } from '../../../../lib/paper';
+import type {
+  PaperFamily,
+  PaperMargins,
+  PaperSheet,
+  RulingKind,
+} from '../../../../lib/paper';
 
 /**
  * Что и в каких границах перемерить.
@@ -15,10 +20,10 @@ export type SheetRemeasureOptions = {
   sheet: PaperSheet;
 
   /**
-   * Лист добавлен без разлиновки: линии на нём не ищутся, а шаг, фаза и поля,
-   * заданные руками, остаются.
+   * Вид разлиновки листа; перемер его не меняет. У чистого листа линии не
+   * ищутся, а шаг, фаза и поля, заданные руками, остаются.
    */
-  isBlank: boolean;
+  kind: RulingKind;
 
   /**
    * Границы листа — отступы от краёв кадра в пикселях фотографии.

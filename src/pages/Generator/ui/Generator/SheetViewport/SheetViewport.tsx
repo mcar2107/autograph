@@ -1,9 +1,11 @@
 import { cx } from '@shared/lib/styles';
+import { Spinner } from '@shared/ui/Spinner';
 import type { FC } from 'react';
 import { useRef } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 
 import type { PageRenderSource } from '../../../model/pageRender.types';
+import { selectIsAwaitingUserSheets } from '../../../model/paperSelectors';
 import { useGeneratorStore } from '../../../model/useGeneratorStore';
 
 import { PageCanvas } from './PageCanvas';
@@ -82,19 +84,29 @@ const measureShownPages = (
  * другой делает текущей её.
  */
 export const SheetViewport: FC<SheetViewportProps> = (props) => {
-  const { source, partnerSource = null, plan, detailDeps } = props;
+  const { source: renderedSource, partnerSource = null, plan, detailDeps } = props;
   const viewportRef = useRef<HTMLDivElement>(null);
   const sheetRef = useRef<HTMLDivElement>(null);
-  const { zoomSetting, isSpread } = useGeneratorStore(
+  const { zoomSetting, isSpread, isAwaitingUserSheets } = useGeneratorStore(
     useShallow((state) => {
-      return { zoomSetting: state.zoom, isSpread: state.isSpread };
+      return {
+        zoomSetting: state.zoom,
+        isSpread: state.isSpread,
+        isAwaitingUserSheets: selectIsAwaitingUserSheets(state),
+      };
     })
   );
+  /**
+   * Страница на своём листе ждёт чтения листов, а не рисуется на подставленной
+   * бумаге: иначе на время чтения мелькнула бы чужая страница.
+   */
+  const source = isAwaitingUserSheets ? null : renderedSource;
   const pageCount = plan?.pageCount || 0;
   const shownIndex = plan?.pageIndex || 0;
   const pair = getSpreadPair(shownIndex, pageCount);
   const partnerIndex = getPartnerIndex(shownIndex);
-  const shownPartner = isSpread && pair.right !== null ? partnerSource : null;
+  const shownPartner =
+    isSpread && pair.right !== null && !isAwaitingUserSheets ? partnerSource : null;
   const isCurrentLeft = shownIndex === pair.left;
   const leftSource = isCurrentLeft ? source : shownPartner;
   const rightSource = isCurrentLeft ? shownPartner : source;
@@ -156,6 +168,13 @@ export const SheetViewport: FC<SheetViewportProps> = (props) => {
         )}
       >
         <div className="flex min-h-full w-max min-w-full items-center justify-center p-6">
+          {isAwaitingUserSheets && (
+            <p role="status" className="flex items-center gap-2 text-sm text-fg-muted">
+              <Spinner />
+              Загружаем свои листы…
+            </p>
+          )}
+
           <div ref={sheetRef} className="flex shrink-0 items-center">
             {!isSpread && source && (
               <PageCanvas

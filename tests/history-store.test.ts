@@ -206,10 +206,15 @@ describe('история правок', () => {
   });
 
   it('отмена к снимку с удалённым своим листом снимает закрепление', () => {
+    /**
+     * Свои листы уже прочитаны: пока они читаются, ненайденный лист может
+     * быть ещё не прочитанным, а не удалённым.
+     */
     useGeneratorStore.setState({
       familyId: LINED_FAMILY_ID,
       sheetId: 'user-gone',
       isSheetPinned: true,
+      hasRestoredUserSheets: true,
     });
     store().setText('правка');
 
@@ -218,5 +223,19 @@ describe('история правок', () => {
     expect(store().isSheetPinned).toBe(false);
     expect(store().familyId).toBe(DEFAULT_GENERATOR_STATE.familyId);
     expect(store().sheetId).toBe(DEFAULT_GENERATOR_STATE.sheetId);
+  });
+
+  it('отмена до конца чтения своих листов не снимает закрепление ещё не прочитанного листа', () => {
+    useGeneratorStore.setState({
+      familyId: LINED_FAMILY_ID,
+      sheetId: 'user-pending',
+      isSheetPinned: true,
+    });
+    store().setText('правка');
+
+    store().undo();
+
+    expect(store().isSheetPinned).toBe(true);
+    expect(store().sheetId).toBe('user-pending');
   });
 });

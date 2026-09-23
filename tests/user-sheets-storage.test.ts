@@ -11,6 +11,8 @@ import type { UserSheetRecord } from '@pages/Generator/model/userSheetsStorage.t
 import { IDBFactory } from 'fake-indexeddb';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { buildUserSheetRecord } from './helpers/user-sheet-record';
+
 /**
  * Байты фотографии и карты текстуры: по ним видно, что из базы вернулся тот же
  * файл, а не пустой.
@@ -106,7 +108,7 @@ const buildSheet = (id: string): PaperSheet => {
  * @returns лист стора
  */
 const buildRecord = (id: string): UserSheetRecord => {
-  return { familyId: 'lined', sheet: buildSheet(id), isAnalyzed: true, isBlank: false };
+  return buildUserSheetRecord({ familyId: 'lined', sheet: buildSheet(id) });
 };
 
 /**
@@ -187,7 +189,7 @@ describe('свои листы в IndexedDB', () => {
 
     expect(restored?.familyId).toBe('lined');
     expect(restored?.isAnalyzed).toBe(true);
-    expect(restored?.isBlank).toBe(false);
+    expect(restored?.kind).toBe('lined');
     expect(restored && withoutUrls(restored.sheet)).toStrictEqual(
       withoutUrls(record.sheet)
     );
@@ -223,7 +225,7 @@ describe('свои листы в IndexedDB', () => {
     ]);
   });
 
-  it('без заданной разметки пишет вид семьи, найденную — текущей, булавки — выведенными', async () => {
+  it('лист импорта пишется с видом семьи, найденной разлиновкой — текущей, булавками — выведенными', async () => {
     const storage = await reloadStorage();
 
     await storage.writeUserSheet(buildRecord('user-1'));
@@ -237,7 +239,7 @@ describe('свои листы в IndexedDB', () => {
     );
   });
 
-  it('заданная разметка сохраняется как есть', async () => {
+  it('разметка листа, отличная от найденной, сохраняется и читается как есть', async () => {
     const storage = await reloadStorage();
     const measuredRuling: SheetRuling = { ...RULING, step: 66, mirrorOverride: null };
     const pins: RulingPin[] = [
@@ -245,7 +247,8 @@ describe('свои листы в IndexedDB', () => {
       { index: 20, left: { x: 118, y: 1480 }, right: { x: 1082, y: 1460 } },
     ];
 
-    await storage.writeUserSheet(buildRecord('user-1'), {
+    await storage.writeUserSheet({
+      ...buildRecord('user-1'),
       kind: 'blank',
       measuredRuling,
       pins,
@@ -257,7 +260,9 @@ describe('свои листы в IndexedDB', () => {
     expect(stored?.kind).toBe('blank');
     expect(stored?.measuredRuling).toStrictEqual(measuredRuling);
     expect(stored?.pins).toStrictEqual(pins);
-    expect(restored?.isBlank).toBe(true);
+    expect(restored?.kind).toBe('blank');
+    expect(restored?.measuredRuling).toStrictEqual(measuredRuling);
+    expect(restored?.pins).toStrictEqual(pins);
   });
 
   it('повторная запись прочитанного листа берёт файл по его адресу', async () => {

@@ -79,16 +79,18 @@ export const PaperPicker: FC<PaperPickerProps> = (props) => {
   const { onSheetSettingsOpen } = props;
   const titleId = useId();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { presetFamilies, userSheets, familyId, pageSheetId } = useGeneratorStore(
-    useShallow((state) => {
-      return {
-        presetFamilies: state.presetFamilies,
-        userSheets: state.userSheets,
-        familyId: state.familyId,
-        pageSheetId: selectPageSheetId(state, state.pageIndex),
-      };
-    })
-  );
+  const { presetFamilies, userSheets, familyId, pageSheetId, hasUnsavedSheets } =
+    useGeneratorStore(
+      useShallow((state) => {
+        return {
+          presetFamilies: state.presetFamilies,
+          userSheets: state.userSheets,
+          familyId: state.familyId,
+          pageSheetId: selectPageSheetId(state, state.pageIndex),
+          hasUnsavedSheets: state.unsavedUserSheetIds.length > 0,
+        };
+      })
+    );
   const selectFamily = useGeneratorStore((state) => {
     return state.selectFamily;
   });
@@ -180,6 +182,17 @@ export const PaperPicker: FC<PaperPickerProps> = (props) => {
       {sheetImport.error ? (
         <p role="alert" className="text-xs text-danger">
           {sheetImport.error}
+        </p>
+      ) : null}
+
+      {/**
+       * Причину отказа хранилище не называет, поэтому сообщение перечисляет обе:
+       * исчерпанную квоту и запрет хранения данных сайта.
+       */}
+      {hasUnsavedSheets ? (
+        <p role="alert" className="text-xs text-danger">
+          Лист не сохранится после перезагрузки: браузеру не хватает места или хранение
+          данных сайта запрещено.
         </p>
       ) : null}
 

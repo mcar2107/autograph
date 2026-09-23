@@ -224,8 +224,8 @@ describe('перенос своих листов из localStorage в IndexedDB'
     expect(
       sheets.find(({ sheet }) => {
         return sheet.id === 'user-blank';
-      })?.isBlank
-    ).toBe(true);
+      })?.kind
+    ).toBe('blank');
   });
 
   it('перенесённый лист читается после следующего запуска уже из IndexedDB', async () => {

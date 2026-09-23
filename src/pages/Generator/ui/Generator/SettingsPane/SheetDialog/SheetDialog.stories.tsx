@@ -9,6 +9,7 @@ import {
   DEFAULT_GENERATOR_STATE,
   useGeneratorStore,
 } from '../../../../model/useGeneratorStore';
+import { deriveUserSheetMarkup } from '../../../../model/userSheetsStorageRecord';
 
 import { SheetDialog } from './SheetDialog';
 import type { SheetDialogProps } from './SheetDialog.types';
@@ -45,7 +46,8 @@ const meta = {
           {
             familyId: LINED_FAMILY_ID,
             sheet: { ...preset, id: USER_SHEET_ID, label: USER_SHEET_LABEL },
-            isBlank: false,
+            kind: 'lined',
+            ...deriveUserSheetMarkup(preset),
             isAnalyzed: true,
           },
         ],
