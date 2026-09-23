@@ -14,7 +14,7 @@
 - **K2 булавки** — `RulingPin = {index, left: {x, y}, right: {x, y}}` в px фото; `fitRulingPins` → разлиновка или отказ +
   невязка каждой; `deriveRulingPins(ruling, frame)` — начальные (D2; контур берётся из `ruling.outline`, кадр нужен правому и нижнему полям). Владелец G1; потребители G4, G6, G7.
 - **K3 изгиб и магнит** — `editRulingBend(ruling, point, delta, {radius, radiusX, isWholeColumn})`;
-  `snapToRulingLine(image, point, step)` → точка или `null` (яркость, ±s/3, парабола). Владелец G3; потребители G7, G8, G10.
+  `snapToRulingLine(image, point, step)` → точка или `null` (яркость, ±s/3, парабола); `snapToMarginLine(image, point, step)` — яркостный магнит линии поля (запасной путь серого снимка для G10); `refitRulingBend(image, ruling)` — «Подогнать по фото»; `resolveBendRadius(ruling, frame)` — радиусы по умолчанию; у `editRulingBend` опция `frame`. Вес узла гаснет к 2R (`FADE_REACH·R`) — G8 рисует кольцо на 2R. Владелец G3; потребители G7, G8, G10.
 - **K4 детектор заморожен** — `git diff 6bd473b -- 'src/pages/Generator/lib/paper/'{detect,measure,trace,marginLine}'*'` пуст,
   кроме: G3 — необязательный `perspective` в `BendBaseRuling` (без него вывод до бита, `detectRuling.ts` не меняется);
   G1 — литералы `mirrorOverride: null`, если их требует тип. `profiles.json` бит-в-бит, `build:paper` не запускать. Все.
