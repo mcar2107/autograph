@@ -213,8 +213,10 @@ const buildInput = (
  *
  * Эталон построен без отражённой разлиновки: линия исходной фотографии —
  * точки `(x, y₀ + tanθ·x)`, отражённая фотография переносит каждую точку в
- * `(W − x, y)`. Точка базовой линии переводится из системы блока в систему
- * страницы тем же поворотом, которым её кладёт рендерер, и возвращается на
+ * `(W − x, y)`. Высота базовой линии по модели строчного бокса отсчитана вдоль
+ * линий и в систему блока переходит множителем cos θ, как у рендерера. Точка
+ * переводится из системы блока в систему страницы тем же поворотом, которым её
+ * кладёт рендерер, и возвращается на
  * исходную фотографию отражением.
  *
  * @param params — параметры отрисовки зеркальной страницы
@@ -233,9 +235,11 @@ const measureMirroredBaselineDrift = (
     params.geometry;
   const { step, firstLinePhase, skewAngle } = sheet.ruling;
   const lineStep = fontSizePx * fontMetrics.lineHeight + lineSpacing;
-  const localX = leftPadding + blockX;
-  const localY = topOffset + fontMetrics.fontAscent * fontSizePx + lineIndex * lineStep;
   const angle = blockRotate / DEGREES_IN_RADIAN;
+  const localX = leftPadding + blockX;
+  const localY =
+    (topOffset + fontMetrics.fontAscent * fontSizePx + lineIndex * lineStep) *
+    Math.cos(angle);
   const pageX = localX * Math.cos(angle) - localY * Math.sin(angle);
   const pageY = localX * Math.sin(angle) + localY * Math.cos(angle);
   const photoX = sheet.width - pageX;

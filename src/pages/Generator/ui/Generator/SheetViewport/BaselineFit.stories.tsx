@@ -183,9 +183,10 @@ const LONG_TEXT = [
 const SPREAD_TEXT = [LONG_TEXT, LONG_TEXT, LONG_TEXT].join('\n');
 
 /**
- * Допустимое отклонение базовой линии от линии разлиновки в долях шага.
+ * Допуск спеки: базовая линия строки отходит от линии разлиновки не больше
+ * чем на пиксель фотографии.
  */
-const DRIFT_TOLERANCE = 0.1;
+const PIXEL_TOLERANCE = 1;
 
 /**
  * Допуск сравнения шага строк с шагом разлиновки: шаг строк складывается из
@@ -206,8 +207,8 @@ const MIN_LINE_COUNT = 8;
 const DRIFT_POINT_COUNT = 9;
 
 /**
- * Наибольший отход растянутого изгиба в долях шага: вчетверо больше допуска,
- * чтобы строка без изгиба заметно уходила с линий.
+ * Наибольший отход растянутого изгиба в долях шага: на шаге пресет-пака это
+ * десятки пикселей, и строка без изгиба заметно уходит с линий за допуск.
  */
 const AMPLIFIED_BEND_SHARE = 0.4;
 
@@ -331,8 +332,8 @@ const toRadians = (degrees: number): number => {
 };
 
 /**
- * Расстояние от точки страницы до ближайшей линии разлиновки листа в долях
- * шага, по вертикали.
+ * Расстояние от точки страницы до ближайшей линии разлиновки листа в
+ * пикселях фотографии, по вертикали.
  *
  * Линия k проходит через столбец x на высоте `Y(x, фаза + k × шаг)` плюс изгиб
  * линии в этом столбце: `Y` переводит координату вдоль линий в высоту на
@@ -344,7 +345,7 @@ const toRadians = (degrees: number): number => {
  * @param probe — снимок разлиновки страницы
  * @param x — столбец точки в пикселях страницы
  * @param y — высота точки в пикселях страницы
- * @returns расстояние в долях шага
+ * @returns расстояние в пикселях
  */
 const measurePointDrift = (probe: BaselineProbe, x: number, y: number): number => {
   const { step, firstLinePhase, skewAngle, rulingBend, rulingPerspective } = probe;
@@ -360,18 +361,20 @@ const measurePointDrift = (probe: BaselineProbe, x: number, y: number): number =
       straightY +
       (rulingBend ? sampleRulingBend(rulingBend, projection, x, straightY) : 0);
 
-    drift = Math.min(drift, Math.abs(y - lineY) / step);
+    drift = Math.min(drift, Math.abs(y - lineY));
   }
 
   return drift;
 };
 
 /**
- * Наибольшее отклонение базовых линий страницы от линий разлиновки в долях
- * шага по точкам каждой строки от левого до правого края блока.
+ * Наибольшее отклонение базовых линий страницы от линий разлиновки в пикселях
+ * фотографии по точкам каждой строки от левого до правого края блока.
  *
  * Базовые линии считаются по модели рендерера: до поворота строка n стоит на
- * высоте `topOffset + fontAscent × кегль + n × шаг строк`, блок поворачивается
+ * высоте `(topOffset + fontAscent × кегль + n × шаг строк) × cos θ` — модель
+ * отсчитывает высоты вдоль линий, а в повёрнутой системе блока та же высота
+ * короче в cos θ раз, — блок поворачивается
  * вокруг левого верхнего угла страницы, и точка P встаёт на высоту
  * `Y(P.x, U) + d` своей линии: `U = P.y − P.x × tg θ` — координата вдоль линий
  * прямой наклонной гребёнки, по которой строку разложили, `Y` переводит её в
@@ -384,7 +387,7 @@ const measurePointDrift = (probe: BaselineProbe, x: number, y: number): number =
  *   `null` — тот же расчёт для строк без изгиба
  * @param perspective — перспектива, по которой строки встают на линии; не
  *   задана — перспектива рендерера, `null` — тот же расчёт без перспективы
- * @returns отклонение в долях шага разлиновки
+ * @returns отклонение в пикселях
  */
 const measureBaselineDrift = (
   probe: BaselineProbe,
@@ -402,7 +405,7 @@ const measureBaselineDrift = (
   let drift = 0;
 
   for (let index = 0; index < lineCount; index += 1) {
-    const baseline = topOffset + fontAscent * fontSizePx + index * lineStep;
+    const baseline = (topOffset + fontAscent * fontSizePx + index * lineStep) * cos;
 
     for (let point = 0; point < DRIFT_POINT_COUNT; point += 1) {
       const along = leftPadding + (blockWidth * point) / (DRIFT_POINT_COUNT - 1);
@@ -483,7 +486,7 @@ const expectBaselinesOnRuling = async (probe: BaselineProbe): Promise<void> => {
   await expect(measureLineStep(probe)).toBeGreaterThanOrEqual(
     probe.step * (1 - STEP_EPSILON)
   );
-  await expect(measureBaselineDrift(probe)).toBeLessThanOrEqual(DRIFT_TOLERANCE);
+  await expect(measureBaselineDrift(probe)).toBeLessThanOrEqual(PIXEL_TOLERANCE);
 };
 
 /**
@@ -774,9 +777,9 @@ export const PhotoRulingOnSheet: Story = {
  * Строки повторяют изгиб линий по всей длине — на нечётной и на зеркальной
  * странице, — а тот же расчёт для прямых строк уходит с линий за допуск.
  *
- * Отход изгиба у экземпляров пресет-пака не больше десятой шага: прямые строки
- * на них укладываются в допуск, и отрицательный контроль ничего бы не
- * проверил. Поэтому берётся самый изогнутый экземпляр, а размах его изгиба
+ * Отход изгиба у экземпляров пресет-пака не больше десятой шага, и
+ * отрицательный контроль держался бы на считаных пикселях сверх допуска.
+ * Поэтому берётся самый изогнутый экземпляр, а размах его изгиба
  * растягивается до четырёх десятых шага — форма линий остаётся снятой с
  * фотографии.
  *
@@ -804,7 +807,7 @@ export const BentRulingOnSheet: Story = {
 
       await expect(probe.bend).not.toBeNull();
       await expectBaselinesOnRuling(probe);
-      await expect(measureBaselineDrift(probe, null)).toBeGreaterThan(DRIFT_TOLERANCE);
+      await expect(measureBaselineDrift(probe, null)).toBeGreaterThan(PIXEL_TOLERANCE);
     }
   },
 };
@@ -839,7 +842,7 @@ export const PerspectiveRulingOnSheet: Story = {
       await expect(probe.perspective).not.toBeNull();
       await expectBaselinesOnRuling(probe);
       await expect(measureBaselineDrift(probe, probe.bend, null)).toBeGreaterThan(
-        DRIFT_TOLERANCE
+        PIXEL_TOLERANCE
       );
     }
   },

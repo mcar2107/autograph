@@ -877,19 +877,30 @@ const drawPage = (
       ? createLineContext(ctx, bend, { skewAngle: blockRotate, perspective })
       : ctx;
 
+    /**
+     * Высоты модели строчного бокса отсчитаны в координате вдоль линий
+     * `U = y − x·tg θ`, а в системе блока, повёрнутой на θ, высота `v` лежит на
+     * `U = v / cos θ`. Поэтому высоты строк переводятся в систему блока
+     * множителем cos θ, а кегль и длины вдоль строки — нет: сжатие самих букв
+     * исказило бы почерк. Без множителя строка n уходила бы с линии на
+     * `(1/cos θ − 1)·U`: на листе с наклоном в три градуса — на пять пикселей к
+     * низу кадра. Без наклона множитель — ровно единица, и числа не меняются.
+     */
+    const lineScale = Math.cos(toRadians(blockRotate));
+
     if (blockRotate !== 0) {
       inkContext.rotate(toRadians(blockRotate));
     }
 
-    inkContext.translate(leftPadding, topOffset);
+    inkContext.translate(leftPadding, topOffset * lineScale);
 
     inkContext.fillStyle = inkColor;
     inkContext.textBaseline = 'alphabetic';
     inkContext.font = baseFont;
 
     const spaceWidth = measureSpace(inkContext, glyphs, fontSizePx);
-    const lineStep = fontSizePx * lineHeight + lineSpacing;
-    const firstBaselineY = fontAscent * fontSizePx;
+    const lineStep = (fontSizePx * lineHeight + lineSpacing) * lineScale;
+    const firstBaselineY = fontAscent * fontSizePx * lineScale;
 
     page.lines.forEach((line, index) => {
       drawLine(
