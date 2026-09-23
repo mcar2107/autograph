@@ -29,3 +29,15 @@
 Отступление K2: deriveRulingPins(ruling, frame) — принято аудитом, plan.md поправлен; G4/G6/G7 передают кадр (width/height записи).
 Аудит: ok с первого круга.
 Долг: G9 — перед fitRulingPins упорядочивать концы булавки после x → W − x (right.x < left.x даёт degenerate); G9 — не допускать бокового поля зеркала ≤ 0 (разбор JSON выбросит замену целиком); tests/fit-ruling-pins.test.ts:197 — нет явной проверки невязки ≤ 1 px у трёх булавок; scripts/build-paper-profiles.ts при следующем build:paper впишет "mirrorOverride":null в profiles.json — нужен strip (сейчас файл бит-в-бит).
+
+### G2: сверка на живых снимках и вердикт по 3.2 / #18
+
+Сверка «воркер = основной поток» (усиление G2 из plan.md): разовый прогон исполнителем G2 по 26 снимкам /Users/corvus278/Projects/autograph/paper_photos_examples/ — 26/26 совпали до бита (каналы luminance/redMinusGreen, всё измерение, textureMap, PNG текстуры); на 8 пресетах то же держит MeasureSheetWorker.stories.tsx (9/9).
+3.2 / #18: критерии 1 (UI отзывчив — story, таймер ≤ 50 мс; перемер идёт тем же analyzeSheetPhoto → воркер), 3 (чанк measureSheet.worker-*.js в precache, test:pwa) и 4 (запасной путь без Worker, юнит-тест) закрыты. Критерий 2 закрыт как «воркер = основной поток до бита»; буквально против measure:sheet — нет: scripts/sheet-photo-report.ts:207 квантует яркость до 8 бит (Math.round), приложение — float; на пресетах фаза до 0,251 px (lined/3), прочие ≤ 0,08 px, шаг ≤ 0,015 px, marginLineX ≤ 0,005 px, различаются margins и bend (grid/3, lined/2, lined/4). Расхождение было и до G2. Решение Closes #18 / Refs #18 — вопрос пользователю (в пачку финала).
+test:stories: флак окружения, не регресс G2 — дерево без G2 падало на SheetViewport > Fit (1/93) при load average 11; с G2 — 102/102.
+
+### G2 · Разбор снимка в воркере
+
+Решения: воркер получает Blob и декодирует сам (createImageBitmap imageOrientation 'from-image' + OffscreenCanvas) — декодирование не на главном потоке; в главный поток transfer буферов luminance/redMinusGreen/textureMap.values; единый путь analyzeSheetPhoto, без Worker (jsdom) — прежние decodeSheetImage + measureSheetPhoto; упавший воркер отказывает ждущим, следующее задание открывает новый; перемер строит outline по кадру записи.
+Аудит: critical — нет записей в журнале (сверка на 26 снимках, вердикт 3.2); закрыт координатором записью «G2: сверка на живых снимках и вердикт по 3.2 / #18» по числам исполнителя и аудитора, без круга исполнителя. question по #18 — в пачку пользователю.
+Долг: две копии encodeTexture (measureSheetRequest.ts:14, analyzeSheetPhoto.ts:19); transfer буферов (measureSheetRequest.ts:59) не держит ни один тест; createMeasureSheetClient.ts:197 — нет обработки messageerror, задание повиснет без отказа; plan.md G2 «Файлы» — маска не покрывает measureSheetImage.ts/measureSheetRequest.ts.

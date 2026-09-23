@@ -2,19 +2,13 @@ import { useState } from 'react';
 
 import type {
   PaperMargins,
-  PaperTexture,
   SheetFrame,
   SheetOutline,
   SheetRuling,
-  TextureMap,
 } from '../../../../lib/paper';
-import {
-  buildSheetRuling,
-  encodeTextureMap,
-  measureSheetPhoto,
-} from '../../../../lib/paper';
+import { buildSheetRuling } from '../../../../lib/paper';
 import { useGeneratorStore } from '../../../../model/useGeneratorStore';
-import { decodeSheetImage } from '../useSheetImport';
+import { analyzeSheetPhoto } from '../useSheetImport';
 
 import type {
   SheetRemeasure,
@@ -112,21 +106,6 @@ const rebuildBlankRuling = (
 };
 
 /**
- * Кодирует карту текстуры. Там, где канвы нет, лист остаётся без текстуры: она
- * украшает чернила, но не влияет на раскладку.
- *
- * @param textureMap — карта текстуры листа
- * @returns карта текстуры; `null` — закодировать не удалось
- */
-const encodeTexture = async (textureMap: TextureMap): Promise<PaperTexture | null> => {
-  try {
-    return await encodeTextureMap(textureMap);
-  } catch {
-    return null;
-  }
-};
-
-/**
  * Перемер своего листа в границах, заданных руками: тот же путь измерения, что
  * при добавлении фотографии, только контур не ищется, а берётся из границ.
  *
@@ -169,19 +148,25 @@ export const useSheetRemeasure = (sheetId: string): SheetRemeasure => {
     setFailure(null);
 
     try {
-      const image = await decodeSheetImage(sheet.src);
+      /**
+       * Контур строится по кадру записи, а не по декодированному снимку: кадр
+       * записи и есть кадр этой фотографии, а снимок декодирует воркер.
+       */
+      const analysis = await analyzeSheetPhoto(
+        { src: sheet.src },
+        {
+          kind: isBlank ? 'blank' : family.kind,
+          outline: toBoundsOutline(bounds, sheet),
+        }
+      );
 
-      if (!image) {
+      if (!analysis) {
         fail(DECODE_ERROR);
 
         return;
       }
 
-      const measurement = measureSheetPhoto(image, {
-        kind: isBlank ? 'blank' : family.kind,
-        outline: toBoundsOutline(bounds, image),
-      });
-      const texture = await encodeTexture(measurement.textureMap);
+      const { image, measurement, texture } = analysis;
       /**
        * Лист с разлиновкой получает всё измеримое, включая заданное руками:
        * поля ручной правки меряли по прежним границам и к новым не относятся.

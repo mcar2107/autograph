@@ -1,15 +1,10 @@
 import { readFileAsDataUrl } from '@shared/lib/files';
 import { useState } from 'react';
 
-import type { PaperTexture, TextureMap } from '../../../../lib/paper';
-import {
-  buildSheetRuling,
-  encodeTextureMap,
-  measureSheetPhoto,
-} from '../../../../lib/paper';
+import { buildSheetRuling } from '../../../../lib/paper';
 import { useGeneratorStore } from '../../../../model/useGeneratorStore';
 
-import { decodeSheetImage } from './decodeSheetImage';
+import { analyzeSheetPhoto } from './analyzeSheetPhoto';
 import { requestManualRuling } from './manualRulingRequest';
 import type { SheetImport, SheetImportOptions } from './useSheetImport.types';
 
@@ -49,21 +44,6 @@ const toSheetLabel = (fileName: string): string => {
 };
 
 /**
- * Кодирует карту текстуры. Кодирование идёт через канву, и там, где её нет,
- * лист остаётся без текстуры: она украшает чернила, но не влияет на раскладку.
- *
- * @param textureMap — карта текстуры листа
- * @returns карта текстуры; `null` — закодировать не удалось
- */
-const encodeTexture = async (textureMap: TextureMap): Promise<PaperTexture | null> => {
-  try {
-    return await encodeTextureMap(textureMap);
-  } catch {
-    return null;
-  }
-};
-
-/**
  * Добавление своей фотографии листа: чтение файла, измерения и запись
  * экземпляра в выбранную семью.
  *
@@ -84,16 +64,17 @@ export const useSheetImport = (): SheetImport => {
 
     try {
       const src = await readFileAsDataUrl(file);
-      const image = await decodeSheetImage(src);
       /**
        * Измерение тем же путём, что собирает пресеты: контур листа, разлиновка
        * внутри него с наклоном, перспективой и изгибом, свет и текстура только
        * по бумаге. У чистого листа разлиновка не ищется, остальное — так же.
        */
-      const measurement = image
-        ? measureSheetPhoto(image, { kind: isBlank ? 'blank' : family.kind })
-        : null;
-      const texture = measurement ? await encodeTexture(measurement.textureMap) : null;
+      const analysis = await analyzeSheetPhoto(
+        { src, blob: file },
+        { kind: isBlank ? 'blank' : family.kind }
+      );
+      const image = analysis?.image || null;
+      const measurement = analysis?.measurement || null;
       /**
        * Кадр неразобранной фотографии неизвестен, а сама она не отбрасывается:
        * берётся кадр первого листа семьи. Без него страница такого листа
@@ -122,7 +103,7 @@ export const useSheetImport = (): SheetImport => {
           height: frame.height,
           ruling,
           lighting: measurement?.lighting || null,
-          texture,
+          texture: analysis?.texture || null,
         },
         /**
          * Разбор считается пройденным даже тогда, когда разлиновка не нашлась:

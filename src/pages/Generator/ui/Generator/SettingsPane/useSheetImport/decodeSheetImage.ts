@@ -1,13 +1,5 @@
 import type { SheetImageData } from '../../../../lib/paper';
-
-/**
- * Веса каналов при переводе цвета в яркость: та же свёртка, что у sRGB-яркости.
- * Разлиновка печатается серым или синим, и по одному зелёному каналу синяя
- * линия почти не видна — поэтому берутся все три.
- */
-const RED_WEIGHT = 0.2126;
-const GREEN_WEIGHT = 0.7152;
-const BLUE_WEIGHT = 0.0722;
+import { toSheetImageData } from '../../../../model/measureSheetImage';
 
 /**
  * Загружает картинку из data URL.
@@ -69,19 +61,6 @@ export const decodeSheetImage = async (src: string): Promise<SheetImageData | nu
   context.drawImage(image, 0, 0);
 
   const { data } = context.getImageData(0, 0, width, height);
-  const luminance = new Float32Array(width * height);
-  const redMinusGreen = new Int16Array(width * height);
 
-  for (let index = 0; index < luminance.length; index += 1) {
-    const offset = index * 4;
-    const red = data[offset] || 0;
-    const green = data[offset + 1] || 0;
-
-    luminance[index] =
-      (red * RED_WEIGHT + green * GREEN_WEIGHT + (data[offset + 2] || 0) * BLUE_WEIGHT) /
-      255;
-    redMinusGreen[index] = red - green;
-  }
-
-  return { width, height, luminance, redMinusGreen };
+  return toSheetImageData(data, width, height);
 };
