@@ -16,6 +16,8 @@ export {
   resolveLightingGrid,
 } from './extractLighting';
 export { extractTexture } from './extractTexture';
+export { deriveRulingPins, fitRulingPins } from './fitRulingPins';
+export type { RulingPinsFit } from './fitRulingPins.types';
 export { measureSheetPhoto } from './measureSheetPhoto';
 export type {
   SheetPhotoBandedReport,
@@ -38,7 +40,9 @@ export type {
   RulingBend,
   RulingDetection,
   RulingKind,
+  RulingMirrorOverride,
   RulingPerspective,
+  RulingPin,
   RulingProjection,
   SheetFrame,
   SheetImageData,

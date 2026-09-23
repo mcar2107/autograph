@@ -47,6 +47,7 @@ const buildMeasuredSheet = (id: string): PaperSheet => {
       bend: null,
       perspective: null,
       outline: null,
+      mirrorOverride: null,
     },
     lighting: {
       gridWidth: 2,
@@ -238,6 +239,7 @@ describe('форма записи в хранилище', () => {
       bend: null,
       perspective: null,
       outline: null,
+      mirrorOverride: null,
     });
   });
 
@@ -273,6 +275,7 @@ describe('форма записи в хранилище', () => {
       bend: null,
       perspective: null,
       outline: null,
+      mirrorOverride: null,
     });
     expect(family?.sheets.at(-1)?.id).toBe('user-legacy');
   });

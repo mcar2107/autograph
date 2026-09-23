@@ -31,6 +31,7 @@ const USER_SHEET: PaperSheet = {
     bend: null,
     perspective: null,
     outline: null,
+    mirrorOverride: null,
   },
   lighting: null,
   texture: null,

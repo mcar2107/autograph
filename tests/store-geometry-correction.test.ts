@@ -42,6 +42,7 @@ const NARROW_SHEET = buildSheet(
     bend: null,
     perspective: null,
     outline: null,
+    mirrorOverride: null,
   },
   { width: 1600, height: 2003 }
 );
@@ -58,6 +59,7 @@ const WIDE_SHEET = buildSheet(
     bend: null,
     perspective: null,
     outline: null,
+    mirrorOverride: null,
   },
   { width: 1600, height: 2050 }
 );
@@ -85,6 +87,7 @@ const GRID_SHEET = buildSheet(
     bend: null,
     perspective: null,
     outline: null,
+    mirrorOverride: null,
   },
   { width: 1600, height: 2050 }
 );
@@ -172,6 +175,7 @@ const getExpectedMirroredRuling = (sheet: PaperSheet): SheetRuling => {
     bend: null,
     perspective: null,
     outline: null,
+    mirrorOverride: null,
   };
 };
 

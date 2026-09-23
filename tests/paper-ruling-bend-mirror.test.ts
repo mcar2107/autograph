@@ -54,6 +54,7 @@ const RULING: SheetRuling = {
   bend: BEND,
   perspective: null,
   outline: null,
+  mirrorOverride: null,
 };
 
 /**

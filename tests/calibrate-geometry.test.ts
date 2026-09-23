@@ -28,6 +28,7 @@ const LINE_LEFT: SheetCalibration = {
     bend: null,
     perspective: null,
     outline: null,
+    mirrorOverride: null,
   },
 };
 
@@ -49,6 +50,7 @@ const LINE_RIGHT: SheetCalibration = {
     bend: null,
     perspective: null,
     outline: null,
+    mirrorOverride: null,
   },
 };
 
@@ -69,6 +71,7 @@ const NO_LINE: SheetCalibration = {
     bend: null,
     perspective: null,
     outline: null,
+    mirrorOverride: null,
   },
 };
 
@@ -90,6 +93,7 @@ const OFF_PHASE: SheetCalibration = {
     bend: null,
     perspective: null,
     outline: null,
+    mirrorOverride: null,
   },
 };
 
@@ -112,6 +116,7 @@ const BLANK: SheetCalibration = {
     bend: null,
     perspective: null,
     outline: null,
+    mirrorOverride: null,
   },
 };
 

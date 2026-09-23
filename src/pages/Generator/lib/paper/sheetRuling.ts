@@ -99,6 +99,7 @@ export const buildSheetRuling = (
     bend: step > 0 ? source.bend || null : null,
     perspective: step > 0 ? source.perspective || null : null,
     outline: source.outline || null,
+    mirrorOverride: source.mirrorOverride || null,
   };
 
   /**

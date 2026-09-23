@@ -5,6 +5,7 @@ import type {
   PaperSheet,
   PaperTexture,
   RulingBend,
+  RulingMirrorOverride,
   RulingPerspective,
   SheetFrame,
   SheetOutline,
@@ -263,6 +264,35 @@ const parseSheetOutline = (value: unknown): SheetOutline | null => {
 };
 
 /**
+ * Отдельно заданные поля зеркальной страницы из JSON. Нечитаемое боковое поле
+ * снимает всю замену, а не одно поле: половина замены с отражённой второй
+ * половиной дала бы блок, которого пользователь не задавал.
+ *
+ * @param value — разобранное значение
+ * @returns замена полей зеркала; `null` — зеркало берёт их отражением
+ */
+const parseMirrorOverride = (value: unknown): RulingMirrorOverride | null => {
+  if (
+    !isJsonRecord(value) ||
+    !isPositiveNumber(value.marginLeft) ||
+    !isPositiveNumber(value.marginRight)
+  ) {
+    return null;
+  }
+
+  const marginLineX = toFiniteNumber(value.marginLineX, 0) || null;
+  const marginLineSide = parseMarginLineSide(value.marginLineSide);
+  const hasMarginLine = marginLineX !== null && marginLineSide !== null;
+
+  return {
+    marginLineX: hasMarginLine ? marginLineX : null,
+    marginLineSide: hasMarginLine ? marginLineSide : null,
+    marginLeft: value.marginLeft,
+    marginRight: value.marginRight,
+  };
+};
+
+/**
  * Лежит ли перспектива по эту сторону горизонта во всём кадре: и вес `w`
  * координаты вдоль линий, и знаменатель `1 − a·q` высоты линии положительны.
  * Оба дробно-линейны по кадру, поэтому хватает его углов. Один знаменатель
@@ -375,6 +405,7 @@ const parseSheetRuling = (
       bend: parseRulingBend(ruling.bend),
       perspective: parseRulingPerspective(ruling.perspective, skewAngle, frame),
       outline: parseSheetOutline(ruling.outline),
+      mirrorOverride: parseMirrorOverride(ruling.mirrorOverride),
     },
     frame
   );

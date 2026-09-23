@@ -46,6 +46,7 @@ const buildRuling = (step: number): SheetRuling => {
     bend: null,
     perspective: null,
     outline: null,
+    mirrorOverride: null,
   };
 };
 

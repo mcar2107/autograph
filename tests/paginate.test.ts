@@ -45,6 +45,7 @@ const buildCalibration = (
       bend: null,
       perspective: null,
       outline: null,
+      mirrorOverride: null,
     },
     kind,
     ...size,

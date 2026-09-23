@@ -277,3 +277,51 @@ describe('разбор контура листа и перспективы из 
     }
   );
 });
+
+describe('разбор полей зеркала из JSON', () => {
+  const MIRROR_OVERRIDE = {
+    marginLineX: 120,
+    marginLineSide: 'left',
+    marginLeft: 140,
+    marginRight: 50,
+  };
+
+  it('читает поля зеркала строго равными записанным', () => {
+    const sheet = parsePaperSheet(
+      buildEntry({ ...RULING, mirrorOverride: MIRROR_OVERRIDE })
+    );
+
+    expect(sheet?.ruling.mirrorOverride).toStrictEqual(MIRROR_OVERRIDE);
+  });
+
+  it('читает запись без полей зеркала отражением', () => {
+    expect(parsePaperSheet(buildEntry(RULING))?.ruling.mirrorOverride).toBeNull();
+  });
+
+  it.each([
+    { name: 'боковое поле строкой', value: { ...MIRROR_OVERRIDE, marginLeft: '140' } },
+    { name: 'нет правого поля', value: { ...MIRROR_OVERRIDE, marginRight: undefined } },
+    { name: 'нулевое поле', value: { ...MIRROR_OVERRIDE, marginRight: 0 } },
+    { name: 'не объектом', value: [140, 50] },
+  ])('оставляет лист с испорченными полями зеркала отражением: $name', ({ value }) => {
+    const sheet = parsePaperSheet(buildEntry({ ...RULING, mirrorOverride: value }));
+
+    expect(sheet?.ruling.mirrorOverride).toBeNull();
+    expect(sheet?.ruling.step).toBe(40);
+  });
+
+  it('линию поля зеркала без стороны читает отсутствующей', () => {
+    const sheet = parsePaperSheet(
+      buildEntry({
+        ...RULING,
+        mirrorOverride: { ...MIRROR_OVERRIDE, marginLineSide: 'top' },
+      })
+    );
+
+    expect(sheet?.ruling.mirrorOverride).toStrictEqual({
+      ...MIRROR_OVERRIDE,
+      marginLineX: null,
+      marginLineSide: null,
+    });
+  });
+});

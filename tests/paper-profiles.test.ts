@@ -81,6 +81,7 @@ describe('разбор артефакта профилей', () => {
       ...PROFILE_RULING,
       perspective: null,
       outline: null,
+      mirrorOverride: null,
     });
   });
 
@@ -185,6 +186,7 @@ describe('сборка предустановленных семей', () => {
       ...PROFILE_RULING,
       perspective: null,
       outline: null,
+      mirrorOverride: null,
     });
     expect(lined?.sheets).toHaveLength(4);
   });

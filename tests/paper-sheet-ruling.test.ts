@@ -159,6 +159,7 @@ describe('сборка разлиновки экземпляра из резул
       bend: null,
       perspective: null,
       outline: null,
+      mirrorOverride: null,
     });
   });
 

@@ -16,6 +16,7 @@ const LINED_SHEET_RULING: SheetRuling = {
   bend: null,
   perspective: null,
   outline: null,
+  mirrorOverride: null,
 };
 
 const LINED_SHEET_SIZE: SheetSize = { width: 1600, height: 2000 };
@@ -35,6 +36,7 @@ export const RENDER_SHEET_RULING: SheetRuling = {
   bend: null,
   perspective: null,
   outline: null,
+  mirrorOverride: null,
 };
 
 const RENDER_SHEET_SIZE: SheetSize = { width: 200, height: 400 };

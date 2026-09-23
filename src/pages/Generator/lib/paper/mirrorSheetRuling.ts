@@ -147,6 +147,9 @@ const mirrorOutline = (
  * сокращает, поэтому проверять её нужно попаданием строки на линию отражённой
  * фотографии.
  *
+ * Отдельно заданные у зеркала линия поля и боковые поля (`mirrorOverride`)
+ * заменяют отражённые; у результата `mirrorOverride` всегда `null`.
+ *
  * @param ruling — разлиновка листа
  * @param frame — кадр фотографии в пикселях: нижнее поле отсчитывается от низа
  *   кадра, поэтому одной ширины мало
@@ -175,7 +178,7 @@ export const mirrorSheetRuling = (
     return lineHeightAt(ruling, width, lineCoordinateAt(ruling, 0, y));
   };
 
-  return {
+  const mirrored: SheetRuling = {
     step,
     firstLinePhase: step > 0 ? toPositiveModulo(phase, step) : phase,
     /**
@@ -194,5 +197,26 @@ export const mirrorSheetRuling = (
     bend: mirrorRulingBend(ruling.bend, shift, width),
     perspective: mirrorPerspective(ruling.perspective, width),
     outline: mirrorOutline(ruling.outline, width),
+    /**
+     * Отражённая разлиновка — уже зеркальная страница: своего зеркала у неё
+     * нет, и повторное отражение не должно было бы применять поля зеркала к
+     * оригиналу.
+     */
+    mirrorOverride: null,
+  };
+
+  if (!ruling.mirrorOverride) {
+    return mirrored;
+  }
+
+  const { marginLeft, marginRight, ...marginLine } = ruling.mirrorOverride;
+  const hasMarginLine =
+    marginLine.marginLineX !== null && marginLine.marginLineSide !== null;
+
+  return {
+    ...mirrored,
+    margins: { ...mirrored.margins, left: marginLeft, right: marginRight },
+    marginLineX: hasMarginLine ? marginLine.marginLineX : null,
+    marginLineSide: hasMarginLine ? marginLine.marginLineSide : null,
   };
 };

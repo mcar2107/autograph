@@ -39,6 +39,7 @@ const toSheetFingerprint = (sheet: PaperSheet): unknown[] => {
     marginLineX,
     marginLineSide,
     perspective,
+    mirrorOverride,
   } = ruling;
 
   return [
@@ -64,6 +65,16 @@ const toSheetFingerprint = (sheet: PaperSheet): unknown[] => {
       perspective.originY,
       perspective.convergenceX,
       perspective.convergenceY,
+    ],
+    /**
+     * Поля зеркала меняют блок правой страницы разворота, а идентификатор
+     * листа при их правке прежний.
+     */
+    mirrorOverride && [
+      mirrorOverride.marginLineX,
+      mirrorOverride.marginLineSide,
+      mirrorOverride.marginLeft,
+      mirrorOverride.marginRight,
     ],
   ];
 };

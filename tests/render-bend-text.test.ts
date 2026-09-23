@@ -143,6 +143,7 @@ const BENT_SHEET: PaperSheet = {
     bend: BEND,
     perspective: null,
     outline: null,
+    mirrorOverride: null,
   },
   lighting: null,
   texture: null,
