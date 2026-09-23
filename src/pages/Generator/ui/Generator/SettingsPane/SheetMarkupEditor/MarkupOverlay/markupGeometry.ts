@@ -10,7 +10,7 @@ import {
   sampleRulingBend,
 } from '../../../../../lib/paper';
 
-import type { MarkupBox, RulingLinePath } from './markupGeometry.types';
+import type { MarginGuides, MarkupBox, RulingLinePath } from './markupGeometry.types';
 
 /**
  * Больше линий оверлей не рисует: шаг в доли пикселя — это не разлиновка, а
@@ -186,6 +186,48 @@ export const buildRulingLines = (
       }),
     };
   });
+};
+
+/**
+ * Верхняя и нижняя границы области письма — линии гребёнки с координатой
+ * поля. Поле задано высотой у левого края кадра, и так же его читает
+ * автокалибровка (`lib/calibrate/deriveGeometry.ts`): горизонталь кадра на
+ * наклонном листе разошлась бы с первой строкой на `x·tgθ`, а на листе с
+ * перспективой — ещё и на схождение. Изгиб не учитывается: раскладка его не
+ * читает.
+ *
+ * С перспективой линия с постоянной координатой остаётся прямой, поэтому
+ * двух концов у краёв листа хватает.
+ *
+ * @param ruling — разлиновка страницы
+ * @param frame — кадр фотографии
+ * @returns границы полей в пикселях фотографии
+ */
+export const buildMarginGuides = (
+  ruling: SheetRuling,
+  frame: SheetFrame
+): MarginGuides => {
+  const { margins } = ruling;
+  const box = toOutlineBox(ruling.outline, frame);
+
+  /**
+   * Линия гребёнки через высоту поля у левого края кадра.
+   *
+   * @param y — высота поля у левого края кадра
+   * @returns концы у краёв листа
+   */
+  const toGuide = (y: number): SheetPoint[] => {
+    const u = lineCoordinateAt(ruling, 0, y);
+
+    return [box.left, box.right].map((x) => {
+      return { x, y: lineHeightAt(ruling, x, u) };
+    });
+  };
+
+  return {
+    top: toGuide(margins.top),
+    bottom: toGuide(frame.height - margins.bottom),
+  };
 };
 
 /**

@@ -39,3 +39,18 @@ export type MarkupBox = {
    */
   bottom: number;
 };
+
+/**
+ * Верхняя и нижняя границы области письма в оверлее: концы у краёв листа.
+ */
+export type MarginGuides = {
+  /**
+   * Граница верхнего поля.
+   */
+  top: SheetPoint[];
+
+  /**
+   * Граница нижнего поля.
+   */
+  bottom: SheetPoint[];
+};

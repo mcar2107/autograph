@@ -45,7 +45,7 @@ export const remeasureOutline = async (
   const isBlank = kind === 'blank';
   const frame = { width: sheet.width, height: sheet.height };
 
-  setRemeasuring(true);
+  setRemeasuring('outline', true);
 
   try {
     const analysis = await analyzeSheetPhoto({ src: sheet.src }, { kind, outline });
@@ -85,7 +85,7 @@ export const remeasureOutline = async (
      * сохранение по-прежнему ждёт.
      */
     if (request === latestRequest) {
-      useMarkupEditorStore.getState().setRemeasuring(false);
+      useMarkupEditorStore.getState().setRemeasuring('outline', false);
     }
   }
 };

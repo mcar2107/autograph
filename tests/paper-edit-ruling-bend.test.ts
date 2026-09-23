@@ -3,6 +3,7 @@ import {
   editRulingBend,
   lineHeightAt,
   resolveBendRadius,
+  resolveBendReach,
   sampleRulingBend,
 } from '@pages/Generator/lib/paper';
 import { describe, expect, it } from 'vitest';
@@ -208,8 +209,19 @@ describe('editRulingBend: перетаскивание точки линии', (
     expect(measureShift(ruling, edited, toFarLines(line), COLUMNS)).toBeLessThanOrEqual(
       STILL_TOLERANCE_PX
     );
-    expect(edited.bend?.columnCount).toBe(WAVY_BEND.columnCount);
-    expect(edited.bend?.rowCount).toBe(WAVY_BEND.rowCount);
+
+    /**
+     * Сетка прежняя: строк столько же, а столбцы достроены копиями по краям
+     * с тем же промежутком, и прежние узлы остались узлами.
+     */
+    const bend = edited.bend as RulingBend;
+    const shiftedColumns =
+      (WAVY_BEND.columnOrigin - bend.columnOrigin) / bend.columnSpacing;
+
+    expect(bend.rowCount).toBe(WAVY_BEND.rowCount);
+    expect(bend.columnSpacing).toBe(WAVY_BEND.columnSpacing);
+    expect(shiftedColumns).toBeCloseTo(Math.round(shiftedColumns), 9);
+    expect(bend.columnCount).toBeGreaterThanOrEqual(WAVY_BEND.columnCount);
   });
 
   it('узкий радиус и точка между узлами: линия всё равно доходит до точки', () => {
@@ -279,6 +291,37 @@ describe('editRulingBend: перетаскивание точки линии', (
     );
   });
 
+  it('линия у крайней строки сетки: линии за ней в поле дальше двух радиусов не сдвигаются', () => {
+    /**
+     * Сетка накрывает линии 8…43. За крайней строкой выборка держит её
+     * значение, и без достройки сетки линии в нижнем и верхнем полях ушли бы
+     * вместе с крайней строкой, хотя от перетаскиваемой линии они дальше
+     * двух радиусов.
+     */
+    const ruling: SheetRuling = { ...PERSPECTIVE_RULING, bend: WAVY_BEND };
+    const cases = [
+      { line: 42, delta: 7, outside: [49, 50, 52, 55] },
+      { line: 9, delta: -6, outside: [0, 1, 2, 3] },
+    ];
+
+    cases.forEach(({ line, delta, outside }) => {
+      const x = 300;
+      const point = { x, y: toLineY(ruling, line, x) };
+      const edited = editRulingBend(ruling, point, delta, OPTIONS);
+      const farOutside = outside.filter((other) => {
+        return Math.abs(other - line) * STEP >= 2 * RADIUS;
+      });
+
+      expect(farOutside).toStrictEqual(outside);
+      expect(Math.abs(toLineY(edited, line, x) - (point.y + delta))).toBeLessThanOrEqual(
+        POINT_TOLERANCE_PX
+      );
+      expect(measureShift(ruling, edited, farOutside, COLUMNS)).toBeLessThanOrEqual(
+        STILL_TOLERANCE_PX
+      );
+    });
+  });
+
   it('весь столбец: все линии в столбце точки сдвигаются на тот же сдвиг', () => {
     const line = 20;
     const x = 300;
@@ -303,8 +346,12 @@ describe('editRulingBend: перетаскивание точки линии', (
     const bend = editRulingBend(PERSPECTIVE_RULING, point, 3, OPTIONS).bend as RulingBend;
     const regionWidth = FRAME.width - LEFT_MARGIN - RIGHT_MARGIN;
 
-    expect(bend.columnCount).toBe(Math.round(regionWidth / (2 * STEP)));
-    expect(bend.columnSpacing).toBeCloseTo(regionWidth / bend.columnCount, 9);
+    const stripCount = Math.round(regionWidth / (2 * STEP));
+    const firstNode = LEFT_MARGIN - 0.5 + regionWidth / stripCount / 2;
+    const shiftedColumns = (firstNode - bend.columnOrigin) / bend.columnSpacing;
+
+    expect(bend.columnSpacing).toBeCloseTo(regionWidth / stripCount, 9);
+    expect(shiftedColumns).toBeCloseTo(Math.round(shiftedColumns), 9);
     expect(bend.rowSpacing).toBe(STEP);
     expect((bend.rowOrigin - PHASE) / STEP).toBe(
       Math.round((bend.rowOrigin - PHASE) / STEP)
@@ -312,6 +359,108 @@ describe('editRulingBend: перетаскивание точки линии', (
     bend.offsets.forEach((offset) => {
       expect(Math.round(offset * 100)).toBeCloseTo(offset * 100, 9);
     });
+  });
+
+  it('правка у края области: линии в боковом поле за охватом правки не сдвигаются', () => {
+    /**
+     * Широкое левое поле: сетка изгиба начинается у 300 px, и правка у её
+     * края с узким радиусом не должна тянуть поле до края листа.
+     */
+    const ruling: SheetRuling = {
+      ...PERSPECTIVE_RULING,
+      margins: { ...PERSPECTIVE_RULING.margins, left: 300 },
+    };
+    const line = 20;
+    const x = 320;
+    const point = { x, y: toLineY(ruling, line, x) };
+    const radius = { radius: STEP, radiusX: STEP };
+    const edited = editRulingBend(ruling, point, 12, { ...OPTIONS, ...radius });
+    const reach = resolveBendReach(ruling, FRAME, radius);
+    const farColumns = COLUMNS.filter((column) => {
+      return Math.abs(column - x) >= reach.radiusX;
+    });
+
+    expect(Math.abs(toLineY(edited, line, x) - (point.y + 12))).toBeLessThanOrEqual(
+      POINT_TOLERANCE_PX
+    );
+    expect(
+      farColumns.some((column) => {
+        return column < x;
+      })
+    ).toBe(true);
+    expect(measureShift(ruling, edited, LINES, farColumns)).toBe(0);
+  });
+
+  it('прогиб у пружины: правка в середине бокового поля не сдвигает линии за рамкой', () => {
+    /**
+     * Точка за крайним столбцом сетки, в широком боковом поле, а рамка у неё
+     * упирается в край кадра. Затухание обязано идти от самой точки: от
+     * крайнего столбца оно ушло бы в область письма за рамку.
+     */
+    const cases = [
+      {
+        margins: { ...PERSPECTIVE_RULING.margins, left: 300 },
+        x: 150,
+      },
+      {
+        margins: { ...PERSPECTIVE_RULING.margins, right: 300 },
+        x: 750,
+      },
+    ];
+
+    cases.forEach(({ margins, x }) => {
+      const ruling: SheetRuling = { ...PERSPECTIVE_RULING, margins };
+
+      [1, 3].forEach((steps) => {
+        [false, true].forEach((isWholeColumn) => {
+          const line = 20;
+          const point = { x, y: toLineY(ruling, line, x) };
+          const radius = { radius: steps * STEP, radiusX: (RADIUS_X * steps) / 3 };
+          const edited = editRulingBend(ruling, point, 12, {
+            ...OPTIONS,
+            ...radius,
+            isWholeColumn,
+          });
+          const reach = resolveBendReach(ruling, FRAME, radius);
+          const farColumns = COLUMNS.filter((column) => {
+            return Math.abs(column - x) >= reach.radiusX;
+          });
+
+          expect(Math.abs(toLineY(edited, line, x) - (point.y + 12))).toBeLessThanOrEqual(
+            POINT_TOLERANCE_PX
+          );
+          expect(farColumns.length).toBeGreaterThan(0);
+          expect(measureShift(ruling, edited, LINES, farColumns)).toBe(0);
+        });
+      });
+    });
+  });
+
+  it('прогиб у пружины поверх готового изгиба: ни одна линия за рамкой не сдвигается', () => {
+    /**
+     * Сетка начинается у 84 px, точка — в поле левее. Рамка у точки упирается
+     * в край кадра, и достройка столбцов сдвинула бы у прежнего края сетки
+     * линии всех строк, в том числе дальних по высоте.
+     */
+    const ruling: SheetRuling = { ...PERSPECTIVE_RULING, bend: WAVY_BEND };
+    const line = 25;
+    const x = 30;
+    const point = { x, y: toLineY(ruling, line, x) };
+    const radius = { radius: STEP, radiusX: RADIUS_X / 3 };
+    const edited = editRulingBend(ruling, point, 12, { ...OPTIONS, ...radius });
+    const reach = resolveBendReach(ruling, FRAME, radius);
+    const farLines = LINES.filter((other) => {
+      return Math.abs(other - line) * STEP >= reach.radius;
+    });
+    const farColumns = COLUMNS.filter((column) => {
+      return Math.abs(column - x) >= reach.radiusX;
+    });
+
+    expect(Math.abs(toLineY(edited, line, x) - (point.y + 12))).toBeLessThanOrEqual(
+      POINT_TOLERANCE_PX
+    );
+    expect(measureShift(ruling, edited, farLines, COLUMNS)).toBe(0);
+    expect(measureShift(ruling, edited, LINES, farColumns)).toBe(0);
   });
 
   it('без шага разлиновки правка не применяется', () => {

@@ -28,7 +28,11 @@ export const getPageRuling = (sheet: PaperSheet, pageIndex: number): SheetRuling
 /**
  * Лист страницы в том виде, в каком по нему считается геометрия.
  *
- * @param family — семья листов: из неё берётся вид разлиновки
+ * Вид разлиновки — у листа: у своего листа он свой, у пресета — семейный.
+ * Чистый свой лист лежит в семье клетки или линейки, и вид семьи удвоил бы на
+ * нём строку в клетке.
+ *
+ * @param family — семья листов: из неё берётся вид разлиновки листа
  * @param sheet — лист, доставшийся странице
  * @param pageIndex — номер страницы, считая с нуля
  * @returns разлиновка страницы и кадр её листа
@@ -40,7 +44,7 @@ export const getPageCalibration = (
 ): SheetCalibration => {
   return {
     ruling: getPageRuling(sheet, pageIndex),
-    kind: family.kind,
+    kind: family.sheetKinds?.[sheet.id] || family.kind,
     width: sheet.width,
     height: sheet.height,
   };

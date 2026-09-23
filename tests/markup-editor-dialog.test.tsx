@@ -211,7 +211,9 @@ describe('редактор после импорта', () => {
     ).toBeDefined();
     expect(editor.querySelector('[data-layer="outline"] polygon')).not.toBeNull();
     expect(editor.querySelector('[data-layer="marginLine"] line')).not.toBeNull();
-    expect(editor.querySelectorAll('[data-layer="margins"] line')).toHaveLength(4);
+    expect(editor.querySelectorAll('[data-layer="margins"] [data-margin]')).toHaveLength(
+      4
+    );
     expect(readLines(editor).length).toBeGreaterThan(
       RULED_PHOTO.height / RULED_PHOTO.step - 2
     );
@@ -382,7 +384,9 @@ describe('редактор с плитки листа', () => {
 
     expect(readLines(editor)).toHaveLength(0);
     expect(editor.querySelector('[data-layer="outline"] polygon')).not.toBeNull();
-    expect(editor.querySelectorAll('[data-layer="margins"] line')).toHaveLength(4);
+    expect(editor.querySelectorAll('[data-layer="margins"] [data-margin]')).toHaveLength(
+      4
+    );
 
     await user.click(within(editor).getByRole('checkbox', { name: 'Контур' }));
 

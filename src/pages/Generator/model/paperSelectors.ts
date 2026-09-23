@@ -22,15 +22,22 @@ export const mergeFamilySheets = (
   userSheets: UserSheetRecord[]
 ): PaperFamily[] => {
   return presetFamilies.reduce<PaperFamily[]>((acc, family) => {
-    const own = userSheets.reduce<PaperSheet[]>((sheetAcc, record) => {
-      if (record.familyId === family.id) {
-        sheetAcc.push(record.sheet);
-      }
+    /**
+     * Свой лист несёт в семью и свой вид: число шагов на строку у него своё.
+     */
+    acc.push(
+      userSheets.reduce<PaperFamily>((merged, { familyId, sheet, kind }) => {
+        if (familyId !== family.id) {
+          return merged;
+        }
 
-      return sheetAcc;
-    }, []);
-
-    acc.push(own.length > 0 ? { ...family, sheets: [...family.sheets, ...own] } : family);
+        return {
+          ...merged,
+          sheets: [...merged.sheets, sheet],
+          sheetKinds: { ...merged.sheetKinds, [sheet.id]: kind },
+        };
+      }, family)
+    );
 
     return acc;
   }, []);

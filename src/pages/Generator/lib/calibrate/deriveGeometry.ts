@@ -61,7 +61,7 @@ const MIN_FONT_SIZE_PX = 1;
  * У чистого листа линий нет: шаг задаёт пользователь, и строка занимает
  * ровно его — удваивать нечего.
  *
- * @param kind — вид разлиновки семьи
+ * @param kind — вид разлиновки листа
  * @returns множитель шага
  */
 const getRowSteps = (kind: RulingKind): number => {

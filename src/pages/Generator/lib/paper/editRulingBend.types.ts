@@ -34,3 +34,18 @@ export type RulingBendEdit = RulingBendRadius & {
    */
   frame: SheetFrame;
 };
+
+/**
+ * Столбцы кадра, до которых должна доходить сетка изгиба слева и справа.
+ */
+export type ColumnTargets = {
+  /**
+   * Левый столбец, px.
+   */
+  left: number;
+
+  /**
+   * Правый столбец, px.
+   */
+  right: number;
+};

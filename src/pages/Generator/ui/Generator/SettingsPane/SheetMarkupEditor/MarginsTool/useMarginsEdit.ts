@@ -1,0 +1,262 @@
+import { useEffect, useRef, useState } from 'react';
+
+import type { SheetFrame, SheetPoint } from '../../../../../lib/paper';
+import { useMarkupEditorStore } from '../../../../../model/useMarkupEditorStore';
+import type { MarkupDraft } from '../../../../../model/useMarkupEditorStore.types';
+import { toPhotoPoint } from '../BendTool/bendGeometry';
+
+import {
+  placeMargin,
+  placeMarginLine,
+  resolveAddedMarginLineX,
+  snapMarginLineX,
+} from './marginsGeometry';
+import type { MarginSide } from './marginsGeometry.types';
+import type { MarginsEdit } from './useMarginsEdit.types';
+
+/**
+ * Показывает линию поля в столбце точки — без шага истории.
+ *
+ * @param frame — кадр фотографии
+ * @param point — точка, px фотографии
+ */
+const previewMarginLine = (frame: SheetFrame, point: SheetPoint) => {
+  const { draft, preview } = useMarkupEditorStore.getState();
+
+  if (!draft) {
+    return;
+  }
+
+  preview({
+    ruling: { ...draft.ruling, ...placeMarginLine(draft.ruling, frame, point.x) },
+  });
+};
+
+/**
+ * Ставит линию поля в столбец точки, притянув её к черте фотографии, — шаг
+ * истории. Каналы фотографии для магнита берутся из стора в момент вызова:
+ * при открытии с плитки они приходят позже редактора, и до них магнита нет.
+ * У листа без разлиновки магнита нет вовсе — притягивать не к чему.
+ *
+ * @param frame — кадр фотографии
+ * @param point — точка, px фотографии
+ */
+const commitMarginLine = (frame: SheetFrame, point: SheetPoint) => {
+  const { draft, image, commit } = useMarkupEditorStore.getState();
+
+  if (!draft) {
+    return;
+  }
+
+  const x =
+    image && draft.kind !== 'blank'
+      ? snapMarginLineX(image, draft.ruling, point)
+      : point.x;
+
+  commit({ ruling: { ...draft.ruling, ...placeMarginLine(draft.ruling, frame, x) } });
+};
+
+/**
+ * Столбец фотографии в середине видимой части окна просмотра. Окно — блок, в
+ * котором позиционирована сцена с фотографией и оверлеем; обратная экранная
+ * матрица SVG переводит его середину в пиксели фотографии с приближением и
+ * сдвигом.
+ *
+ * @param svg — SVG оверлея
+ * @returns столбец, px фотографии; `null` — окна или матрицы нет
+ */
+const readVisibleCenterX = (svg: SVGSVGElement | null | undefined): number | null => {
+  const viewport = svg?.parentElement?.offsetParent;
+
+  if (!viewport) {
+    return null;
+  }
+
+  const { left, right, top, bottom } = viewport.getBoundingClientRect();
+
+  if (!(right > left)) {
+    return null;
+  }
+
+  const point = toPhotoPoint(svg, (left + right) / 2, (top + bottom) / 2);
+
+  return point ? point.x : null;
+};
+
+/**
+ * Правка полей и линии поля черновика. Перетаскивание показывает
+ * направляющую, где указатель, без шага истории; отпускание ставит верхнюю и
+ * нижнюю на линию разлиновки, а линию поля — на черту фотографии, и
+ * записывает шаг.
+ *
+ * Добавленная линия поля встаёт в восьмую ширины листа от стороны, ближайшей
+ * к середине видимой части фотографии, и сразу тянется: идёт за указателем
+ * над фотографией, пока нажатие на фотографии её не поставит. Указатель,
+ * ушедший с фотографии, возвращает её на место появления — иначе путь к
+ * панели утащил бы её к краю листа. Любая другая правка черновика, отмена в
+ * том числе, ведение прекращает.
+ *
+ * @param frame — кадр фотографии
+ * @param handleLayer — слой ручек оверлея; `null` — линию поля не ведут
+ *   указателем, а только ставят
+ * @returns методы правки и идёт ли ведение добавленной линии
+ */
+export const useMarginsEdit = (
+  frame: SheetFrame,
+  handleLayer: SVGGElement | null
+): MarginsEdit => {
+  const [isFollowing, setIsFollowing] = useState(false);
+
+  /**
+   * Черновик сразу после добавления линии: ведение идёт, пока правки поверх
+   * него — только показ ведомой линии.
+   */
+  const addedRef = useRef<MarkupDraft | null>(null);
+
+  useEffect(() => {
+    const svg = handleLayer?.ownerSVGElement;
+
+    if (!isFollowing || !svg) {
+      return;
+    }
+
+    /**
+     * Черновик, от которого идёт ведение, если его не сменила другая правка.
+     *
+     * @returns черновик добавления; `null` — ведение пора прекратить
+     */
+    const readAdded = (): MarkupDraft | null => {
+      const { draft, history } = useMarkupEditorStore.getState();
+      const added = addedRef.current;
+
+      return added && (history.previewBase || draft) === added ? added : null;
+    };
+
+    const stop = () => {
+      addedRef.current = null;
+      setIsFollowing(false);
+    };
+
+    const handlePointerMove = (event: globalThis.PointerEvent) => {
+      const point = toPhotoPoint(svg, event.clientX, event.clientY);
+
+      if (!readAdded()) {
+        stop();
+
+        return;
+      }
+
+      if (point) {
+        previewMarginLine(frame, point);
+      }
+    };
+
+    const handlePointerLeave = () => {
+      const added = readAdded();
+
+      if (!added) {
+        stop();
+
+        return;
+      }
+
+      useMarkupEditorStore.getState().preview({ ruling: added.ruling });
+    };
+
+    /**
+     * Нажатие ставит линию и дальше не идёт: окно просмотра под ним иначе
+     * начало бы сдвигать фотографию, а ручка — перетаскивание. Нажатие в
+     * режиме сдвига пробелом остаётся окну.
+     *
+     * @param event — нажатие
+     */
+    const handlePointerDown = (event: globalThis.PointerEvent) => {
+      const point = toPhotoPoint(svg, event.clientX, event.clientY);
+
+      if (svg.closest('[data-pan-mode]') || !point) {
+        return;
+      }
+
+      if (readAdded()) {
+        event.stopPropagation();
+        commitMarginLine(frame, point);
+      }
+
+      stop();
+    };
+
+    svg.addEventListener('pointermove', handlePointerMove);
+    svg.addEventListener('pointerleave', handlePointerLeave);
+    svg.addEventListener('pointerdown', handlePointerDown);
+
+    return () => {
+      svg.removeEventListener('pointermove', handlePointerMove);
+      svg.removeEventListener('pointerleave', handlePointerLeave);
+      svg.removeEventListener('pointerdown', handlePointerDown);
+    };
+  }, [isFollowing, handleLayer, frame]);
+
+  const moveMargin = (side: MarginSide, point: SheetPoint) => {
+    const { draft, preview } = useMarkupEditorStore.getState();
+
+    if (!draft) {
+      return;
+    }
+
+    const margins = placeMargin(draft.ruling, frame, side, point, false);
+
+    preview({ ruling: { ...draft.ruling, margins } });
+  };
+
+  const releaseMargin = (side: MarginSide, point: SheetPoint) => {
+    const { draft, commit } = useMarkupEditorStore.getState();
+
+    if (!draft) {
+      return;
+    }
+
+    const margins = placeMargin(draft.ruling, frame, side, point, true);
+
+    commit({ ruling: { ...draft.ruling, margins } });
+  };
+
+  const moveMarginLine = (point: SheetPoint) => {
+    previewMarginLine(frame, point);
+  };
+
+  const releaseMarginLine = (point: SheetPoint) => {
+    commitMarginLine(frame, point);
+  };
+
+  const removeMarginLine = () => {
+    const { commit } = useMarkupEditorStore.getState();
+
+    commit((draft) => {
+      return { ruling: { ...draft.ruling, marginLineX: null, marginLineSide: null } };
+    });
+  };
+
+  const addMarginLine = () => {
+    const svg = handleLayer?.ownerSVGElement;
+    const { commit } = useMarkupEditorStore.getState();
+
+    commit((draft) => {
+      const x = resolveAddedMarginLineX(draft.ruling, frame, readVisibleCenterX(svg));
+
+      return { ruling: { ...draft.ruling, ...placeMarginLine(draft.ruling, frame, x) } };
+    });
+
+    addedRef.current = useMarkupEditorStore.getState().draft;
+    setIsFollowing(Boolean(svg && addedRef.current));
+  };
+
+  return {
+    isFollowing,
+    moveMargin,
+    releaseMargin,
+    moveMarginLine,
+    releaseMarginLine,
+    removeMarginLine,
+    addMarginLine,
+  };
+};

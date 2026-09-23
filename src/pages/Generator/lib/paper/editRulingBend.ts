@@ -1,5 +1,9 @@
 import type { RulingBendRegion } from './detectRulingBend';
-import type { RulingBendEdit, RulingBendRadius } from './editRulingBend.types';
+import type {
+  ColumnTargets,
+  RulingBendEdit,
+  RulingBendRadius,
+} from './editRulingBend.types';
 import type { RulingBend, SheetFrame, SheetPoint, SheetRuling } from './paper.types';
 import { lineCoordinateAt, lineHeightAt } from './rulingPerspective';
 import { sampleRulingBend } from './sampleRulingBend';
@@ -43,6 +47,12 @@ const FADE_REACH = 2;
  * соседних за границей линиях ступеньку в седьмую часть сдвига.
  */
 const FADE_FLOOR = Math.exp(-(FADE_REACH ** 2) / 2);
+
+/**
+ * Сколько промежутков узлов за последним узлом с весом Катмулл — Ром ещё
+ * сдвигает линию: между узлами он берёт по два соседа с каждой стороны.
+ */
+const CATMULL_ROM_SUPPORT = 2;
 
 /**
  * Запас на погрешность деления при округлении к номеру линии или строки.
@@ -212,6 +222,102 @@ const extendRows = (bend: RulingBend, u: number): RulingBend => {
 };
 
 /**
+ * Достраивает сетку столбцами до столбца кадра `x`. Новый столбец — копия
+ * крайнего: за крайним столбцом выборка и так держит его значение, поэтому
+ * линии за прежним краем сетки от достройки не сдвигаются. Между двумя
+ * крайними прежними узлами Катмулл — Ром брал в соседи отражённый узел, а
+ * теперь берёт копию, и линия там меняется на долю разности этих узлов —
+ * меньше тринадцатой её части.
+ *
+ * @param bend — сетка изгиба
+ * @param x — столбец кадра, px
+ * @returns сетка, столбцы которой накрывают `x`
+ */
+const extendColumns = (bend: RulingBend, x: number): RulingBend => {
+  const { columnOrigin, columnSpacing, columnCount, rowCount, offsets } = bend;
+
+  if (columnSpacing <= 0 || columnCount < 1) {
+    return bend;
+  }
+
+  const lastColumn = columnOrigin + (columnCount - 1) * columnSpacing;
+  const before = Math.max(
+    0,
+    Math.ceil((columnOrigin - x) / columnSpacing - SNAP_EPSILON)
+  );
+  const after = Math.max(0, Math.ceil((x - lastColumn) / columnSpacing - SNAP_EPSILON));
+
+  if (before === 0 && after === 0) {
+    return bend;
+  }
+
+  const extendedCount = columnCount + before + after;
+
+  return {
+    ...bend,
+    columnOrigin: columnOrigin - before * columnSpacing,
+    columnCount: extendedCount,
+    offsets: Array.from({ length: rowCount * extendedCount }, (_item, index) => {
+      const row = Math.floor(index / extendedCount);
+      const column = clamp((index % extendedCount) - before, 0, columnCount - 1);
+
+      return offsets[row * columnCount + column] || 0;
+    }),
+  };
+};
+
+/**
+ * Докуда достраивать сетку столбцами при правке в столбце `x`. За крайним
+ * столбцом выборка держит его значение, и правка, задевшая крайний узел,
+ * увела бы линии бокового поля до края листа, далеко за рамкой. Поэтому
+ * сторона достраивается до охвата затухания и ещё на столбец — дальше узлы
+ * без веса держат линии на месте.
+ *
+ * Достройка не бесплатна: Катмулл — Ром у прежнего края брал в соседи
+ * отражённый узел, а после неё — копию, и линии у края во всех строках
+ * меняются на долю разности крайних узлов. Поэтому сторона достраивается,
+ * только когда без этого сдвинулись бы линии за рамкой: крайний узел
+ * получает вес, а рамка кончается внутри кадра. Иначе граница — прежний
+ * крайний столбец.
+ *
+ * Точка за крайним столбцом — в боковом поле, у пружины или переплёта —
+ * берёт веса от себя (`computeNodeWeights`), а крайний узел доводит линию до
+ * неё: выборка держит его значение до края кадра, внутри рамки. Достройка
+ * нужна ей по тому же правилу, а ещё — когда крайний узел вне затухания:
+ * тогда линию через точку провести нечем, и сторона достраивается до охвата
+ * затухания вокруг точки.
+ *
+ * @param grid — сетка изгиба
+ * @param x — столбец правки, px
+ * @param fade — радиусы затухания
+ * @param frameWidth — ширина кадра, px
+ * @returns столбцы, до которых сетка должна доходить слева и справа, px
+ */
+const resolveColumnTargets = (
+  grid: RulingBend,
+  x: number,
+  fade: RulingBendRadius,
+  frameWidth: number
+): ColumnTargets => {
+  const { columnOrigin, columnSpacing, columnCount } = grid;
+  const lastColumn = columnOrigin + (columnCount - 1) * columnSpacing;
+  const reach = FADE_REACH * fade.radiusX;
+  const drawn = reach + CATMULL_ROM_SUPPORT * columnSpacing;
+  const extended = reach + columnSpacing;
+  const shouldExtendLeft =
+    x - columnOrigin < reach &&
+    (x - drawn > 0 || fadeWeight(columnOrigin - x, fade.radiusX) < MIN_RESPONSE);
+  const shouldExtendRight =
+    lastColumn - x < reach &&
+    (x + drawn < frameWidth || fadeWeight(x - lastColumn, fade.radiusX) < MIN_RESPONSE);
+
+  return {
+    left: shouldExtendLeft ? Math.max(0, x - extended) : columnOrigin,
+    right: shouldExtendRight ? Math.min(frameWidth, x + extended) : lastColumn,
+  };
+};
+
+/**
  * Высота линии с координатой `u` в столбце `x` вместе с изгибом — та же модель,
  * что у отрисовки и оверлея.
  *
@@ -282,10 +388,65 @@ const fadeWeight = (distance: number, radius: number): number => {
 };
 
 /**
- * Веса узлов сетки для точки. Точка за крайним узлом берёт веса от крайнего
- * узла: за ним выборка постоянна, и правка крайнего узла проводит линию через
- * точку. Радиус не меньше промежутка узлов: у более узкого у точки между
- * узлами не нашлось бы ни одного узла с весом.
+ * Радиусы затухания, с которыми правка раздаёт сдвиг узлам: не меньше
+ * промежутка узлов — у более узкого у точки между узлами не нашлось бы ни
+ * одного узла с весом.
+ *
+ * @param bend — сетка изгиба
+ * @param radius — заданные радиусы
+ * @returns радиусы затухания, px
+ */
+const resolveFadeRadius = (
+  bend: RulingBend,
+  { radius, radiusX }: RulingBendRadius
+): RulingBendRadius => {
+  return {
+    radius: Math.max(radius, bend.rowSpacing),
+    radiusX: Math.max(radiusX, bend.columnSpacing),
+  };
+};
+
+/**
+ * Докуда дотягивается правка изгиба с заданными радиусами: поперёк линий —
+ * по координате вдоль линий, вдоль них — по горизонтали кадра. Линии дальше
+ * не сдвигаются, поэтому рамка у курсора рисуется по этой мере, а не по
+ * радиусам слайдера. Поперёк линий это два радиуса затухания: линии стоят на
+ * строках сетки, и строка без веса линию не двигает. Вдоль линий к двум
+ * радиусам прибавлены два промежутка узлов: Катмулл — Ром между узлами берёт
+ * по два соседа с каждой стороны, и узел с весом сдвигает линию до второго
+ * узла за собой. У радиуса уже промежутка узлов правка берёт промежуток.
+ *
+ * @param ruling — разлиновка листа
+ * @param frame — кадр фотографии: по нему заводится сетка, если изгиба нет
+ * @param radius — заданные радиусы
+ * @returns дальность правки, px; без шага или без сетки — два заданных
+ *   радиуса
+ */
+export const resolveBendReach = (
+  ruling: SheetRuling,
+  frame: SheetFrame,
+  radius: RulingBendRadius
+): RulingBendRadius => {
+  const grid = ruling.step > 0 ? ruling.bend || createBendGrid(ruling, frame) : null;
+
+  if (!grid) {
+    return { radius: FADE_REACH * radius.radius, radiusX: FADE_REACH * radius.radiusX };
+  }
+
+  const fade = resolveFadeRadius(grid, radius);
+
+  return {
+    radius: FADE_REACH * fade.radius,
+    radiusX: FADE_REACH * fade.radiusX + CATMULL_ROM_SUPPORT * grid.columnSpacing,
+  };
+};
+
+/**
+ * Веса узлов сетки для точки. Вдоль линий веса считаются от самой точки, и
+ * за крайним столбцом тоже: затухание кончается там же, где рамка вокруг
+ * точки, а выборка за крайним узлом держит его значение, и масштаб добавка
+ * по отклику доводит линию до точки. Поперёк линий точка за крайней строкой
+ * берёт веса от крайней строки.
  *
  * @param bend — сетка изгиба
  * @param x — столбец точки
@@ -301,16 +462,12 @@ const computeNodeWeights = (
 ): number[] => {
   const { columnOrigin, columnSpacing, columnCount, rowOrigin, rowSpacing, rowCount } =
     bend;
-  const anchorX = clamp(
-    x,
-    columnOrigin,
-    columnOrigin + (columnCount - 1) * columnSpacing
-  );
   const anchorU = clamp(u, rowOrigin, rowOrigin + (rowCount - 1) * rowSpacing);
-  const reachX = Math.max(radiusX, columnSpacing);
-  const reachU = Math.max(radius, rowSpacing);
+  const fade = resolveFadeRadius(bend, { radius, radiusX });
+  const reachX = fade.radiusX;
+  const reachU = fade.radius;
   const columnWeights = Array.from({ length: columnCount }, (_item, column) => {
-    return fadeWeight(columnOrigin + column * columnSpacing - anchorX, reachX);
+    return fadeWeight(columnOrigin + column * columnSpacing - x, reachX);
   });
 
   return Array.from({ length: rowCount * columnCount }, (_item, index) => {
@@ -369,7 +526,21 @@ export const editRulingBend = (
   }
 
   const u = findGrabbedLine(ruling, grid, point);
-  const bend = extendRows(grid, u);
+
+  /**
+   * Сетка дорастает до линий, до которых дотягивается затухание, и ещё на
+   * строку за ними: за крайней строкой выборка держит её значение, и правка
+   * у края сетки иначе увела бы все линии поля за ней, сколь угодно далёкие.
+   * Достроенные строки дальше двух радиусов получают нулевой вес и держат
+   * линии за собой на месте. Столбцы — см. `resolveColumnTargets`.
+   */
+  const fade = resolveFadeRadius(grid, options);
+  const reachU = FADE_REACH * fade.radius + grid.rowSpacing;
+  const columns = resolveColumnTargets(grid, point.x, fade, options.frame.width);
+  const bend = extendColumns(
+    extendColumns(extendRows(extendRows(grid, u - reachU), u + reachU), columns.left),
+    columns.right
+  );
   const straight = lineHeightAt(ruling, point.x, u);
   const shift = point.y + delta - toBentLineY(ruling, bend, point.x, u);
   const weights = computeNodeWeights(bend, point.x, u, options);

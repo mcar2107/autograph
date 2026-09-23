@@ -30,6 +30,7 @@ const CLOSED_EDITOR: MarkupEditorState = {
   image: null,
   history: EMPTY_MARKUP_HISTORY,
   isCloseConfirming: false,
+  remeasuringSources: [],
   isRemeasuring: false,
 };
 
@@ -106,6 +107,7 @@ export const useMarkupEditorStore = create<MarkupEditorStore>()((set, get) => {
         image,
         history: EMPTY_MARKUP_HISTORY,
         isCloseConfirming: false,
+        remeasuringSources: [],
         isRemeasuring: false,
       });
     },
@@ -251,8 +253,13 @@ export const useMarkupEditorStore = create<MarkupEditorStore>()((set, get) => {
 
       return set({ image });
     },
-    setRemeasuring: (isRemeasuring) => {
-      return set({ isRemeasuring });
+    setRemeasuring: (source, isRemeasuring) => {
+      const others = get().remeasuringSources.filter((item) => {
+        return item !== source;
+      });
+      const remeasuringSources = isRemeasuring ? [...others, source] : others;
+
+      return set({ remeasuringSources, isRemeasuring: remeasuringSources.length > 0 });
     },
   };
 });

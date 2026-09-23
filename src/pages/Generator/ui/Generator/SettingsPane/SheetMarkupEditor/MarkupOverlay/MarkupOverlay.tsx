@@ -3,7 +3,12 @@ import { useId, useMemo } from 'react';
 
 import { useMarkupScale } from '../MarkupViewport';
 
-import { buildRulingLines, toOutlinePolygon, toPointsAttribute } from './markupGeometry';
+import {
+  buildMarginGuides,
+  buildRulingLines,
+  toOutlinePolygon,
+  toPointsAttribute,
+} from './markupGeometry';
 import type { MarkupOverlayProps } from './MarkupOverlay.types';
 
 /**
@@ -44,6 +49,7 @@ export const MarkupOverlay: FC<MarkupOverlayProps> = (props) => {
   const { width, height } = frame;
   const { margins, marginLineX } = ruling;
   const polygon = toPointsAttribute(toOutlinePolygon(ruling.outline, frame));
+  const marginGuides = buildMarginGuides(ruling, frame);
 
   /**
    * Ломаные пересчитываются только по разлиновке: изогнутый лист — это
@@ -95,22 +101,16 @@ export const MarkupOverlay: FC<MarkupOverlayProps> = (props) => {
           strokeDasharray="6 4"
           className="fill-none stroke-fg-subtle"
         >
-          <line
+          <polyline
             data-margin="top"
-            x1={0}
-            y1={margins.top}
-            x2={width}
-            y2={margins.top}
+            points={toPointsAttribute(marginGuides.top)}
             strokeWidth={STROKE_WIDTH}
             vectorEffect="non-scaling-stroke"
           />
 
-          <line
+          <polyline
             data-margin="bottom"
-            x1={0}
-            y1={height - margins.bottom}
-            x2={width}
-            y2={height - margins.bottom}
+            points={toPointsAttribute(marginGuides.bottom)}
             strokeWidth={STROKE_WIDTH}
             vectorEffect="non-scaling-stroke"
           />

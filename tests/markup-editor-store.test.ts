@@ -219,4 +219,25 @@ describe('стор редактора разметки', () => {
 
     expect(store().image).toBe(IMAGE);
   });
+
+  it('перемер контура и поиск линий не снимают ожидание друг друга', () => {
+    store().open(buildEditedRecord());
+
+    store().setRemeasuring('outline', true);
+    store().setRemeasuring('lines', true);
+    store().setRemeasuring('lines', false);
+
+    expect(store().isRemeasuring).toBe(true);
+    expect(store().remeasuringSources).toStrictEqual(['outline']);
+
+    store().setRemeasuring('lines', true);
+    store().setRemeasuring('outline', false);
+
+    expect(store().isRemeasuring).toBe(true);
+
+    store().setRemeasuring('lines', false);
+
+    expect(store().isRemeasuring).toBe(false);
+    expect(store().remeasuringSources).toStrictEqual([]);
+  });
 });

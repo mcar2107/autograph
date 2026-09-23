@@ -12,7 +12,7 @@ export type SheetCalibration = {
   ruling: SheetRuling;
 
   /**
-   * Вид разлиновки семьи: сколько шагов разлиновки занимает строка.
+   * Вид разлиновки листа: сколько шагов разлиновки занимает строка.
    */
   kind: RulingKind;
 
@@ -100,7 +100,7 @@ export type GeometryCorrection = {
  */
 export type GeometryBasis = {
   /**
-   * Вид разлиновки семьи.
+   * Вид разлиновки листа.
    */
   kind: RulingKind;
 

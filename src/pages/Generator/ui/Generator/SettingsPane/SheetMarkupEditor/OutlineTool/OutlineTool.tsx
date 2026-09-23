@@ -67,8 +67,12 @@ export const OutlineTool: FC<MarkupToolProps> = (props) => {
   const savedOutline = useMarkupEditorStore((state) => {
     return state.draft?.ruling.outline || null;
   });
+  /**
+   * Статус — только своего перемера: поиск линий после смены вида показывает
+   * свой у переключателя вида.
+   */
   const isRemeasuring = useMarkupEditorStore((state) => {
-    return state.isRemeasuring;
+    return state.remeasuringSources.includes('outline');
   });
   const [pending, setPending] = useState<SheetOutline | null>(null);
   const [message, setMessage] = useState<string | null>(null);

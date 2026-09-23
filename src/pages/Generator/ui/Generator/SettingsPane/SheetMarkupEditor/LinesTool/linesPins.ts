@@ -282,14 +282,38 @@ const pinRulingBend = (
 };
 
 /**
+ * «Подогнать изгиб по фото» при закреплённых линиях: изгиб, заново
+ * прослеженный по фотографии относительно линий разлиновки и доведённый до
+ * булавок. Прослеженный изгиб ведёт линию по снимку, а не по булавке, и без
+ * доводки уводил бы закреплённые линии с их концов.
+ *
+ * @param image — каналы фотографии
+ * @param ruling — разлиновка, относительно линий которой прослеживается изгиб
+ * @param pins — булавки по номерам
+ * @param frame — кадр фотографии
+ * @returns разлиновка с изгибом через булавки; `null` — изгиб по фотографии
+ *   проследить не удалось
+ */
+export const refitBendToPins = (
+  image: SheetImageData,
+  ruling: SheetRuling,
+  pins: RulingPin[],
+  frame: SheetFrame
+): SheetRuling | null => {
+  const { bend } = refitRulingBend(image, ruling);
+
+  return bend ? pinRulingBend({ ...ruling, bend }, pins, frame) : null;
+};
+
+/**
  * Итог правки булавок: подогнанная через них гребёнка с изгибом, заново
  * прослеженным по фотографии относительно новых линий и доведённым до
  * булавок. Прежний изгиб к новой гребёнке не относится — при смене шага его
  * сдвиги легли бы на чужие линии.
  *
- * Без каналов фотографии изгиб не прослеживается — следить не по чему, — и
- * остаётся только доводка до булавок: у двух булавок гребёнка через них
- * проходит сама, и лист остаётся ровным.
+ * Без каналов фотографии или без прослеженного изгиба остаётся только
+ * доводка до булавок: у двух булавок гребёнка через них проходит сама, и лист
+ * остаётся ровным.
  *
  * @param ruling — разлиновка до правки
  * @param pins — булавки по номерам
@@ -309,9 +333,14 @@ export const fitPinsWithBend = (
     return fit;
   }
 
-  const traced = image
-    ? { ...fit.ruling, bend: refitRulingBend(image, fit.ruling).bend }
-    : fit.ruling;
+  if (!image) {
+    return { ...fit, ruling: pinRulingBend(fit.ruling, pins, frame) };
+  }
 
-  return { ...fit, ruling: pinRulingBend(traced, pins, frame) };
+  return {
+    ...fit,
+    ruling:
+      refitBendToPins(image, fit.ruling, pins, frame) ||
+      pinRulingBend({ ...fit.ruling, bend: null }, pins, frame),
+  };
 };

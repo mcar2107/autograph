@@ -100,11 +100,25 @@ export type MarkupEditorState = {
   isCloseConfirming: boolean;
 
   /**
-   * Идёт перемер фотографии по новому контуру: сохранение ждёт его, иначе на
-   * лист легла бы разметка прежнего контура.
+   * Что сейчас разбирает фотографию: перемер по новому контуру, поиск линий
+   * после смены вида. Каждый разбор отмечает только себя, поэтому конец одного
+   * не снимает ожидание другого.
+   */
+  remeasuringSources: MarkupRemeasureSource[];
+
+  /**
+   * Идёт хоть один разбор фотографии: сохранение ждёт его, иначе на лист легла
+   * бы разметка прежнего контура или прежнего вида. Производное от
+   * `remeasuringSources`, держится тем же сеттером.
    */
   isRemeasuring: boolean;
 };
+
+/**
+ * Разбор фотографии, который ждёт сохранение: перемер по новому контуру или
+ * поиск линий после смены вида с «Без разлиновки».
+ */
+export type MarkupRemeasureSource = 'outline' | 'lines';
 
 /**
  * Действия редактора разметки.
@@ -164,9 +178,9 @@ export type MarkupEditorActions = {
   setImage: (sheetId: string, image: SheetImageData) => void;
 
   /**
-   * Отмечает начало или конец перемера по новому контуру.
+   * Отмечает начало или конец разбора фотографии из своего источника.
    */
-  setRemeasuring: (isRemeasuring: boolean) => void;
+  setRemeasuring: (source: MarkupRemeasureSource, isRemeasuring: boolean) => void;
 };
 
 /**
