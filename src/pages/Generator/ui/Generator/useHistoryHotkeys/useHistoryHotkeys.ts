@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 
 import { useGeneratorStore } from '../../../model/useGeneratorStore';
+import { useMarkupEditorStore } from '../../../model/useMarkupEditorStore';
 
 type HistoryCommand = 'undo' | 'redo';
 
@@ -35,15 +36,37 @@ const resolveCommand = (event: KeyboardEvent): HistoryCommand | null => {
 };
 
 /**
+ * История, которой достаётся нажатие: пока открыт редактор разметки — его
+ * черновика, иначе — документа генератора. Отмена в редакторе не должна
+ * трогать текст или реализм, а свои листы в историю генератора не входят.
+ *
+ * @returns отмена, повтор и признак идущего перетаскивания
+ */
+const resolveHistoryTarget = () => {
+  const markupEditor = useMarkupEditorStore.getState();
+
+  if (markupEditor.record) {
+    const { history, undo, redo } = markupEditor;
+
+    return { isDragging: history.previewBase !== null, undo, redo };
+  }
+
+  const { history, undo, redo } = useGeneratorStore.getState();
+
+  return { isDragging: history.previewBase !== null, undo, redo };
+};
+
+/**
  * Клавиши отмены и повтора на весь документ: Ctrl/⌘+Z, Ctrl/⌘+Shift+Z и
- * Ctrl+Y.
+ * Ctrl+Y. Пока открыт редактор разметки, они отменяют и повторяют его
+ * правки, а история генератора стоит.
  *
  * Перехватываются и в поле текста: поле контролируемое и получает значение
  * из истории, а посимвольная отмена браузера после программной установки
  * значения ведёт себя непредсказуемо.
  *
- * Пока идёт перетаскивание слайдера, клавиши ничего не делают: отмена
- * посреди перетаскивания унесла бы в повтор промежуточное значение и
+ * Пока идёт перетаскивание слайдера или ручки, клавиши ничего не делают:
+ * отмена посреди перетаскивания унесла бы в повтор промежуточное значение и
  * потеряла бы значение до перетаскивания, к которому отменяется шаг
  * отпускания.
  */
@@ -58,9 +81,9 @@ export const useHistoryHotkeys = (): void => {
 
       event.preventDefault();
 
-      const { history, undo, redo } = useGeneratorStore.getState();
+      const { isDragging, undo, redo } = resolveHistoryTarget();
 
-      if (history.previewBase) {
+      if (isDragging) {
         return;
       }
 

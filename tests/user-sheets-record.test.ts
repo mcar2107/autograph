@@ -75,6 +75,7 @@ const buildRecord = (): Record<string, unknown> => {
     height: FRAME.height,
     ruling: RULING,
     measuredRuling: MEASURED_RULING,
+    measuredKind: 'grid',
     pins: PINS,
     lighting: null,
     source: new Blob(['jpeg'], { type: 'image/jpeg' }),
@@ -111,6 +112,7 @@ describe('запись своего листа в IndexedDB', () => {
     expect(sheet?.ruling.step).toBe(40);
     expect(sheet?.ruling.mirrorOverride).toEqual(MIRROR_OVERRIDE);
     expect(sheet?.measuredRuling.step).toBe(41);
+    expect(sheet?.measuredKind).toBe('grid');
     expect(sheet?.pins).toEqual(PINS);
     expect(sheet?.source).toBe(record.source);
     expect(sheet?.texture).toEqual({
@@ -174,6 +176,17 @@ describe('запись своего листа в IndexedDB', () => {
     const sheet = parseStoredUserSheet(omitField('measuredRuling'), resolveFamilyKind);
 
     expect(sheet?.measuredRuling).toEqual(sheet?.ruling);
+  });
+
+  it('запись без найденного вида и с нечитаемым найденным видом берёт вид листа', () => {
+    const missing = parseStoredUserSheet(omitField('measuredKind'), resolveFamilyKind);
+    const broken = parseStoredUserSheet(
+      { ...buildRecord(), measuredKind: 'spiral' },
+      resolveFamilyKind
+    );
+
+    expect(missing?.measuredKind).toBe('lined');
+    expect(broken?.measuredKind).toBe('lined');
   });
 
   it('запись без булавок получает выведенные из разлиновки', () => {

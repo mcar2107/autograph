@@ -162,17 +162,18 @@ const readRecord = (
   }
 
   const familyId = toText(entry.familyId);
+  /**
+   * Запись без признака чистого листа читается листом с разлиновкой семьи,
+   * а не отбрасывается: у записи прежней формы поля нет, и это не порча.
+   */
+  const kind = entry.isBlank === true ? 'blank' : resolveFamilyKind(familyId);
 
   return {
     familyId,
     sheet,
     isAnalyzed: entry.isAnalyzed === true,
-    /**
-     * Запись без признака чистого листа читается листом с разлиновкой семьи,
-     * а не отбрасывается: у записи прежней формы поля нет, и это не порча.
-     */
-    kind: entry.isBlank === true ? 'blank' : resolveFamilyKind(familyId),
-    ...deriveUserSheetMarkup(sheet),
+    kind,
+    ...deriveUserSheetMarkup(sheet, kind),
   };
 };
 

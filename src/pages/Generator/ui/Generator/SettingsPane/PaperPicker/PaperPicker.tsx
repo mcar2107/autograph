@@ -11,9 +11,7 @@ import type { PaperFamily, PaperSheet } from '../../../../lib/paper';
 import { selectPageSheetId } from '../../../../model/recipeSelectors';
 import { useGeneratorStore } from '../../../../model/useGeneratorStore';
 import type { UserSheetRecord } from '../../../../model/userSheetsStorage.types';
-import { useSheetImport } from '../useSheetImport';
-
-import type { PaperPickerProps } from './PaperPicker.types';
+import { openSheetEditor, useSheetImport } from '../useSheetImport';
 
 /**
  * Классы плитки — те же, что у плиток семей в `TileRadio`: свои листы и
@@ -55,16 +53,15 @@ const toFamilyOptions = (families: PaperFamily[]): TileRadioOption[] => {
  *
  * @param records — все загруженные пользователем листы
  * @param familyId — выбранная семья
- * @returns экземпляры семьи в порядке добавления
+ * @returns записи листов семьи в порядке добавления
  */
-const listOwnSheets = (records: UserSheetRecord[], familyId: string): PaperSheet[] => {
-  return records.reduce<PaperSheet[]>((acc, record) => {
-    if (record.familyId === familyId) {
-      acc.push(record.sheet);
-    }
-
-    return acc;
-  }, []);
+const listOwnSheets = (
+  records: UserSheetRecord[],
+  familyId: string
+): UserSheetRecord[] => {
+  return records.filter((record) => {
+    return record.familyId === familyId;
+  });
 };
 
 /**
@@ -75,8 +72,7 @@ const listOwnSheets = (records: UserSheetRecord[], familyId: string): PaperSheet
  * страницам. Выбор своего листа закрепляет его: иначе добавленную фотографию
  * пришлось бы ждать, пока рецепт выдаст её какой-нибудь странице.
  */
-export const PaperPicker: FC<PaperPickerProps> = (props) => {
-  const { onSheetSettingsOpen } = props;
+export const PaperPicker: FC = () => {
   const titleId = useId();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { presetFamilies, userSheets, familyId, pageSheetId, hasUnsavedSheets } =
@@ -198,7 +194,8 @@ export const PaperPicker: FC<PaperPickerProps> = (props) => {
 
       {ownSheets.length > 0 ? (
         <ul aria-label="Свои листы" className="flex flex-wrap gap-2">
-          {ownSheets.map((sheet) => {
+          {ownSheets.map((record) => {
+            const { sheet } = record;
             const { id, label } = sheet;
             const isSelected = id === pageSheetId;
 
@@ -207,7 +204,7 @@ export const PaperPicker: FC<PaperPickerProps> = (props) => {
             };
 
             const handleSettingsClick = () => {
-              onSheetSettingsOpen(id);
+              void openSheetEditor(record);
             };
 
             return (
@@ -228,8 +225,14 @@ export const PaperPicker: FC<PaperPickerProps> = (props) => {
                   <span className="w-full truncate">{label}</span>
                 </button>
 
+                {/**
+                 * Пока разбирается новая фотография, настройка недоступна: по
+                 * концу разбора редактор откроется на новом листе и сменил бы
+                 * открытый с правками.
+                 */}
                 <IconButton
                   label={`Настроить «${label}»`}
+                  isDisabled={sheetImport.isBusy}
                   className="absolute top-0.5 right-0.5 size-6"
                   onClick={handleSettingsClick}
                 >

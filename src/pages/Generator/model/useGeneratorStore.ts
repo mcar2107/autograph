@@ -20,7 +20,11 @@ import {
 import type { PaperFamily } from '../lib/paper/paper.types';
 import { DEFAULT_INK_TONE_ID } from '../lib/recipe';
 
-import type { GeneratorRealism, GeneratorState } from './generator.types';
+import type {
+  GeneratorDocument,
+  GeneratorRealism,
+  GeneratorState,
+} from './generator.types';
 import { findKindFamily, selectPaperFamilies } from './paperSelectors';
 import { SESSION_VERSION, toSession } from './sessionSchema';
 import { createSessionStorage } from './sessionStorage';
@@ -526,14 +530,39 @@ export const useGeneratorStore = create<GeneratorStoreWithHistory>()(
             sheet: { ...record.sheet, ruling },
           };
 
+          /**
+           * Переезд листа в семью другого вида — правка ресурса, а не
+           * документа: шага истории он не ставит, а снимки, выбравшие этот лист
+           * в прежней семье, переезжают вместе с ним. Иначе отмена правки
+           * текста вернула бы выбор в семью, где листа уже нет, и починка
+           * ссылок сбросила бы его на чужой лист.
+           */
+          const relocate = (document: GeneratorDocument): GeneratorDocument => {
+            return document.sheetId === sheetId && document.familyId === record.familyId
+              ? { ...document, familyId }
+              : document;
+          };
+
           set((state) => {
             const next = state.userSheets.map((item) => {
               return item.sheet.id === sheetId ? saved : item;
             });
+            const { history } = state;
+            const relocated =
+              familyId === record.familyId
+                ? {}
+                : {
+                    history: {
+                      ...history,
+                      past: history.past.map(relocate),
+                      future: history.future.map(relocate),
+                      previewBase: history.previewBase && relocate(history.previewBase),
+                    },
+                  };
 
             return state.sheetId === sheetId
-              ? { userSheets: next, familyId }
-              : { userSheets: next };
+              ? { userSheets: next, familyId, ...relocated }
+              : { userSheets: next, ...relocated };
           });
           void saveUserSheet(saved);
         },

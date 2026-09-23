@@ -194,6 +194,26 @@ describe('сохранение разметки своего листа', () => 
     expect(stored?.familyId).toBe('lined');
   });
 
+  it('отмена в генераторе после смены вида не возвращает лист в прежнюю семью', () => {
+    const record = buildRecord('user-1');
+
+    store().addUserSheet(record);
+    store().commit({ text: 'первая правка' });
+    store().commit({ text: 'вторая правка' });
+    store().saveSheetMarkup('user-1', { ...buildEdit(record), kind: 'lined' });
+    store().undo();
+
+    expect(store().text).toBe('первая правка');
+    expect(store().familyId).toBe('lined');
+    expect(store().sheetId).toBe('user-1');
+    expect(store().isSheetPinned).toBe(true);
+
+    store().redo();
+
+    expect(store().text).toBe('вторая правка');
+    expect(store().familyId).toBe('lined');
+  });
+
   it('чистый лист остаётся в своей семье', () => {
     const record = buildRecord('user-1');
 

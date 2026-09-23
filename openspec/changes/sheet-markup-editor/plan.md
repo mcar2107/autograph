@@ -78,7 +78,7 @@
 ### G6 · Каркас редактора разметки · M · волна 4
 - Задачи: 4.1, 4.2, 4.11
 - Зависит от: G1, G2, G5
-- Файлы: `ui/Generator/SettingsPane/{SheetMarkupEditor,SheetDialog,PaperPicker}/**`, `ui/Generator/SettingsPane/{SettingsPane.tsx,useSheetImport/*manualRulingRequest*}`, `model/useMarkupEditorStore*.ts`, `ui/Generator/useHistoryHotkeys/**`, `.storybook/visual-setup.ts`, `tests/{sheet-dialog,markup-editor-*}*`
+- Файлы: `ui/Generator/SettingsPane/{SheetMarkupEditor,SheetDialog,PaperPicker}/**`, `ui/Generator/SettingsPane/{SettingsPane.tsx,useSheetImport/*manualRulingRequest*}`, `model/useMarkupEditorStore*.ts`, `ui/Generator/useHistoryHotkeys/**`, `.storybook/visual-setup.ts`, `tests/{sheet-dialog,markup-editor-*,generator-screen,paper-picker,store-sheet-save}*`; вынужденно: `model/{useGeneratorStore,userSheetsStorage*,generator.types}.ts`, `useSheetImport/useSheetImport.ts`, клиент воркера разбора (setImage)
 - Требования: `sheet-markup-editor` → «Редактор открывается после импорта», «Разметка видна поверх фотографии», «Правка в редакторе отменяема до сохранения»; `generator-settings` → «Свой лист настраивается в отдельном диалоге»
 - Design: D1, D13
 - Контракты: вводит K8, K9; потребляет K2, K5, K7

@@ -216,6 +216,7 @@ describe('свои листы в IndexedDB', () => {
       'kind',
       'label',
       'lighting',
+      'measuredKind',
       'measuredRuling',
       'pins',
       'ruling',
@@ -233,6 +234,7 @@ describe('свои листы в IndexedDB', () => {
     const [stored] = await readRawRecords();
 
     expect(stored?.kind).toBe('lined');
+    expect(stored?.measuredKind).toBe('lined');
     expect(stored?.measuredRuling).toStrictEqual(RULING);
     expect(stored?.pins).toStrictEqual(
       deriveRulingPins(RULING, { width: 1200, height: 1600 })
@@ -251,6 +253,7 @@ describe('свои листы в IndexedDB', () => {
       ...buildRecord('user-1'),
       kind: 'blank',
       measuredRuling,
+      measuredKind: 'grid',
       pins,
     });
 
@@ -261,6 +264,8 @@ describe('свои листы в IndexedDB', () => {
     expect(stored?.measuredRuling).toStrictEqual(measuredRuling);
     expect(stored?.pins).toStrictEqual(pins);
     expect(restored?.kind).toBe('blank');
+    expect(restored?.measuredKind).toBe('grid');
+    expect(stored?.measuredKind).toBe('grid');
     expect(restored?.measuredRuling).toStrictEqual(measuredRuling);
     expect(restored?.pins).toStrictEqual(pins);
   });

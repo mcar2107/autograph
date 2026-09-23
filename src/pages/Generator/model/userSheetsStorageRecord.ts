@@ -1,5 +1,6 @@
 import { PRESET_PAPER_FAMILIES } from '../config';
 import { deriveRulingPins } from '../lib/paper/fitRulingPins';
+import type { SheetPhotoMeasurement } from '../lib/paper/measureSheetPhoto.types';
 import type { PaperSheet, PaperTexture, RulingKind } from '../lib/paper/paper.types';
 
 import type {
@@ -100,19 +101,48 @@ const toStoredTexture = (
 };
 
 /**
+ * Вид листа, предложенный снимком, а не выбранной семьёй. Если вид снимок не
+ * дал — разлиновка не нашлась или фотография не разобрана, — запасной вид.
+ *
+ * @param measurement — измерение фотографии; `null` — не разобрана
+ * @param fallbackKind — вид, когда снимок его не дал
+ * @param isBlank — лист добавлен без разлиновки
+ * @returns вид разлиновки листа
+ */
+export const resolveMeasuredKind = (
+  measurement: SheetPhotoMeasurement | null,
+  fallbackKind: RulingKind,
+  isBlank: boolean
+): RulingKind => {
+  if (isBlank) {
+    return 'blank';
+  }
+
+  return measurement?.diagnostics.isRulingDetected
+    ? measurement.diagnostics.kind
+    : fallbackKind;
+};
+
+/**
  * Разметка автомата у только что измеренного листа: найденная разлиновка —
  * его разлиновка, булавки выведены из неё. Так собираются листы после импорта,
  * перемера и чтения записи, у которой разметки ещё не было.
  *
  * @param sheet — экземпляр с измеренной разлиновкой
- * @returns найденная разлиновка и булавки
+ * @param measuredKind — вид, предложенный автоматом
+ * @returns найденные разлиновка и вид, булавки
  */
 export const deriveUserSheetMarkup = (
-  sheet: Pick<PaperSheet, 'ruling' | 'width' | 'height'>
-): Pick<UserSheetRecord, 'measuredRuling' | 'pins'> => {
+  sheet: Pick<PaperSheet, 'ruling' | 'width' | 'height'>,
+  measuredKind: RulingKind
+): Pick<UserSheetRecord, 'measuredRuling' | 'measuredKind' | 'pins'> => {
   const { ruling, width, height } = sheet;
 
-  return { measuredRuling: ruling, pins: deriveRulingPins(ruling, { width, height }) };
+  return {
+    measuredRuling: ruling,
+    measuredKind,
+    pins: deriveRulingPins(ruling, { width, height }),
+  };
 };
 
 /**
@@ -124,7 +154,7 @@ export const deriveUserSheetMarkup = (
  * @returns запись для хранилища
  */
 export const toStoredUserSheet = (
-  { familyId, sheet, kind, measuredRuling, pins }: UserSheetRecord,
+  { familyId, sheet, kind, measuredRuling, measuredKind, pins }: UserSheetRecord,
   source: Blob,
   textureImage: Blob | null
 ): StoredUserSheet => {
@@ -139,6 +169,7 @@ export const toStoredUserSheet = (
     height,
     ruling,
     measuredRuling,
+    measuredKind,
     pins,
     lighting,
     source,

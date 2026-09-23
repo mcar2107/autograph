@@ -1,8 +1,12 @@
 import type { PaperTexture, SheetPhotoMeasurement } from '../lib/paper';
+import type { SheetImageData } from '../lib/paper';
 import { encodeTextureMap, measureSheetPhoto } from '../lib/paper';
 
 import { decodeSheetPhotoBlob } from './measureSheetImage';
-import type { MeasureSheetRequest, SheetPhotoAnalysis } from './measureSheetWorker.types';
+import type {
+  MeasureSheetMeasureRequest,
+  SheetPhotoAnalysis,
+} from './measureSheetWorker.types';
 
 /**
  * Кодирует карту текстуры. Не вышло — лист остаётся без текстуры: она украшает
@@ -29,7 +33,7 @@ const encodeTexture = async (
  * @returns разбор; `null` — фотография не декодировалась
  */
 export const measureSheetRequest = async (
-  request: MeasureSheetRequest
+  request: MeasureSheetMeasureRequest
 ): Promise<SheetPhotoAnalysis | null> => {
   const image = await decodeSheetPhotoBlob(request.photo);
 
@@ -41,6 +45,25 @@ export const measureSheetRequest = async (
   const texture = await encodeTexture(measurement);
 
   return { image, measurement, texture };
+};
+
+/**
+ * Буферы массивов по одному разу: буфер, дважды попавший в список передачи,
+ * роняет отправку, а у двух массивов он может быть общим.
+ *
+ * @param channels — массивы каналов; `undefined` — канала нет
+ * @returns буферы без повторов
+ */
+const collectBuffers = (channels: (ArrayBufferView | undefined)[]): ArrayBuffer[] => {
+  const buffers = new Set<ArrayBuffer>();
+
+  channels.forEach((channel) => {
+    if (channel?.buffer instanceof ArrayBuffer) {
+      buffers.add(channel.buffer);
+    }
+  });
+
+  return [...buffers];
 };
 
 /**
@@ -57,15 +80,21 @@ export const measureSheetRequest = async (
  */
 export const collectAnalysisTransfer = (analysis: SheetPhotoAnalysis): ArrayBuffer[] => {
   const { image, measurement } = analysis;
-  const buffers = new Set<ArrayBuffer>();
 
-  [image.luminance, image.redMinusGreen, measurement.textureMap.values].forEach(
-    (channel) => {
-      if (channel?.buffer instanceof ArrayBuffer) {
-        buffers.add(channel.buffer);
-      }
-    }
-  );
+  return collectBuffers([
+    image.luminance,
+    image.redMinusGreen,
+    measurement.textureMap.values,
+  ]);
+};
 
-  return [...buffers];
+/**
+ * Буферы каналов снимка для передачи владения — те же, что у разбора, но без
+ * карты текстуры: декодирование её не строит.
+ *
+ * @param image — каналы снимка
+ * @returns буферы для списка передачи
+ */
+export const collectImageTransfer = (image: SheetImageData): ArrayBuffer[] => {
+  return collectBuffers([image.luminance, image.redMinusGreen]);
 };

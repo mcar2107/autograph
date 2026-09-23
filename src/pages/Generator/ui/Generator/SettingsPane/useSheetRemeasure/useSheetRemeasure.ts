@@ -8,7 +8,10 @@ import type {
 } from '../../../../lib/paper';
 import { buildSheetRuling } from '../../../../lib/paper';
 import { useGeneratorStore } from '../../../../model/useGeneratorStore';
-import { deriveUserSheetMarkup } from '../../../../model/userSheetsStorageRecord';
+import {
+  deriveUserSheetMarkup,
+  resolveMeasuredKind,
+} from '../../../../model/userSheetsStorageRecord';
 import { analyzeSheetPhoto } from '../useSheetImport';
 
 import type {
@@ -194,7 +197,10 @@ export const useSheetRemeasure = (sheetId: string): SheetRemeasure => {
         familyId: family.id,
         sheet: remeasured,
         kind,
-        ...deriveUserSheetMarkup(remeasured),
+        ...deriveUserSheetMarkup(
+          remeasured,
+          resolveMeasuredKind(measurement, kind, isBlank)
+        ),
         isAnalyzed: true,
       });
       setRevision((current) => {

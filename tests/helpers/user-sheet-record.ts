@@ -47,5 +47,5 @@ export const buildUserSheetRecord = (params: UserSheetRecordParams): UserSheetRe
     isAnalyzed = true,
   } = params;
 
-  return { familyId, sheet, kind, isAnalyzed, ...deriveUserSheetMarkup(sheet) };
+  return { familyId, sheet, kind, isAnalyzed, ...deriveUserSheetMarkup(sheet, kind) };
 };

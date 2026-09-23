@@ -1,6 +1,12 @@
-import type { PaperTexture, SheetPhotoOptions, TextureMap } from '../../../../lib/paper';
+import type {
+  PaperTexture,
+  SheetImageData,
+  SheetPhotoOptions,
+  TextureMap,
+} from '../../../../lib/paper';
 import { encodeTextureMap, measureSheetPhoto } from '../../../../lib/paper';
 import {
+  decodeSheetInWorker,
   hasMeasureSheetWorker,
   measureSheetInWorker,
 } from '../../../../model/createMeasureSheetClient';
@@ -72,4 +78,22 @@ export const analyzeSheetPhoto = async (
   const texture = await encodeTexture(measurement.textureMap);
 
   return { image, measurement, texture };
+};
+
+/**
+ * Каналы снимка уже разобранного листа — для магнитов редактора, открытого с
+ * плитки. Лист не перемеряется: декодирование идёт в воркере тем же путём,
+ * что у разбора, а без воркера — в основном потоке.
+ *
+ * @param photo — фотография листа
+ * @returns каналы снимка; `null` — фотография не декодировалась
+ */
+export const loadSheetImage = async (
+  photo: SheetPhotoInput
+): Promise<SheetImageData | null> => {
+  if (hasMeasureSheetWorker()) {
+    return await decodeSheetInWorker(await toPhotoBlob(photo));
+  }
+
+  return await decodeSheetImage(photo.src);
 };

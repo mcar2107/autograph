@@ -7,7 +7,10 @@ import type {
   MeasureSheetResponse,
   SheetPhotoAnalysis,
 } from '@pages/Generator/model/measureSheetWorker.types';
-import { analyzeSheetPhoto } from '@pages/Generator/ui/Generator/SettingsPane/useSheetImport';
+import {
+  analyzeSheetPhoto,
+  loadSheetImage,
+} from '@pages/Generator/ui/Generator/SettingsPane/useSheetImport';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createSyntheticSheet } from './helpers/synthetic-sheet';
@@ -122,8 +125,8 @@ describe('клиент воркера разбора листа', () => {
 
     expect(ports).toHaveLength(1);
     expect(
-      port?.requests.map(({ options }) => {
-        return options;
+      port?.requests.map((request) => {
+        return request.task === 'measure' ? request.options : null;
       })
     ).toStrictEqual([GRID_OPTIONS, { kind: 'blank', outline: null }]);
     expect(port?.requests[0]?.photo).toBe(PHOTO);
@@ -162,6 +165,29 @@ describe('клиент воркера разбора листа', () => {
     });
 
     await expect(job).rejects.toThrow('Канва недоступна');
+  });
+
+  it('декодирует фотографию без измерения и отдаёт каналы снимка', async () => {
+    const port = createRecordingPort();
+    const client = createMeasureSheetClient({
+      createPort: () => {
+        return port;
+      },
+    });
+
+    const job = client.decode(PHOTO);
+
+    expect(port.requests).toStrictEqual([
+      { requestId: port.requests[0]?.requestId, task: 'decode', photo: PHOTO },
+    ]);
+
+    port.reply({
+      requestId: port.requests[0]?.requestId || 0,
+      status: 'decoded',
+      image: SMALL_SHEET,
+    });
+
+    await expect(job).resolves.toBe(SMALL_SHEET);
   });
 
   it('при падении воркера отказывает всем ждущим и открывает новый порт', async () => {
@@ -218,6 +244,16 @@ describe('разбор фотографии там, где воркера нет
     expect(analysis?.measurement.source.step).toBeGreaterThan(0);
   });
 
+  it('каналы снимка для редактора снимаются в основном потоке', async () => {
+    vi.stubGlobal('Worker', undefined);
+    decodeSheetImage.mockResolvedValue(SMALL_SHEET);
+
+    await expect(loadSheetImage({ src: 'data:image/jpeg;base64,' })).resolves.toBe(
+      SMALL_SHEET
+    );
+    expect(decodeSheetImage).toHaveBeenCalledWith('data:image/jpeg;base64,');
+  });
+
   it('неразобранная фотография даёт пустой разбор, а не отказ', async () => {
     vi.stubGlobal('Worker', undefined);
     decodeSheetImage.mockResolvedValue(null);
@@ -257,7 +293,10 @@ describe('разбор фотографии, когда воркер есть', 
         queueMicrotask(() => {
           this.listener?.(
             new MessageEvent('message', {
-              data: { requestId: request.requestId, status: 'done', analysis: null },
+              data:
+                request.task === 'decode'
+                  ? { requestId: request.requestId, status: 'decoded', image: null }
+                  : { requestId: request.requestId, status: 'done', analysis: null },
             })
           );
         });
@@ -274,7 +313,12 @@ describe('разбор фотографии, когда воркер есть', 
     ).resolves.toBeNull();
     expect(posted).toHaveLength(1);
     expect(posted[0]?.photo).toBe(PHOTO);
-    expect(posted[0]?.options).toStrictEqual(GRID_OPTIONS);
+    expect(posted[0]).toMatchObject({ task: 'measure', options: GRID_OPTIONS });
+
+    await expect(
+      loadSheetImage({ src: 'data:image/jpeg;base64,', blob: PHOTO })
+    ).resolves.toBeNull();
+    expect(posted[1]).toMatchObject({ task: 'decode', photo: PHOTO });
     expect(decodeSheetImage).not.toHaveBeenCalled();
   });
 });

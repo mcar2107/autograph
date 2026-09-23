@@ -145,6 +145,7 @@ const toUserSheetRecord = (stored: StoredUserSheet): UserSheetRecord => {
     height,
     ruling,
     measuredRuling,
+    measuredKind,
     pins,
     lighting,
     texture,
@@ -157,6 +158,7 @@ const toUserSheetRecord = (stored: StoredUserSheet): UserSheetRecord => {
     isAnalyzed: true,
     kind,
     measuredRuling,
+    measuredKind,
     pins,
     sheet: {
       id,

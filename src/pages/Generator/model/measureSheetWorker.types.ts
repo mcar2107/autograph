@@ -34,11 +34,16 @@ export type SheetPhotoAnalysis = {
 /**
  * Задание воркеру: разобрать одну фотографию листа.
  */
-export type MeasureSheetRequest = {
+export type MeasureSheetMeasureRequest = {
   /**
    * Номер задания: воркер отвечает по нему, порядок ответов не обещан.
    */
   requestId: number;
+
+  /**
+   * Что сделать: декодировать и измерить.
+   */
+  task: 'measure';
 
   /**
    * Файл фотографии как есть: декодирование тоже уходит из основного потока.
@@ -50,6 +55,32 @@ export type MeasureSheetRequest = {
    */
   options: SheetPhotoOptions;
 };
+
+/**
+ * Задание воркеру: только снять каналы снимка — для магнитов редактора,
+ * открытого на уже разобранном листе. Мерить его заново незачем.
+ */
+export type MeasureSheetDecodeRequest = {
+  /**
+   * Номер задания: воркер отвечает по нему, порядок ответов не обещан.
+   */
+  requestId: number;
+
+  /**
+   * Что сделать: только декодировать.
+   */
+  task: 'decode';
+
+  /**
+   * Файл фотографии как есть.
+   */
+  photo: Blob;
+};
+
+/**
+ * Задание воркеру.
+ */
+export type MeasureSheetRequest = MeasureSheetMeasureRequest | MeasureSheetDecodeRequest;
 
 /**
  * Разбор закончен.
@@ -70,6 +101,26 @@ export type MeasureSheetDone = {
    * добавляется, разлиновку к нему задают руками.
    */
   analysis: SheetPhotoAnalysis | null;
+};
+
+/**
+ * Каналы снимка сняты.
+ */
+export type MeasureSheetDecoded = {
+  /**
+   * Номер задания.
+   */
+  requestId: number;
+
+  /**
+   * Признак исхода.
+   */
+  status: 'decoded';
+
+  /**
+   * Каналы снимка. `null` — браузер фотографию не декодировал.
+   */
+  image: SheetImageData | null;
 };
 
 /**
@@ -95,7 +146,8 @@ export type MeasureSheetFailed = {
 /**
  * Ответ воркера на задание.
  */
-export type MeasureSheetResponse = MeasureSheetDone | MeasureSheetFailed;
+export type MeasureSheetResponse =
+  MeasureSheetDone | MeasureSheetDecoded | MeasureSheetFailed;
 
 /**
  * Порт воркера глазами клиента: только то, чем клиент пользуется. Приложение
@@ -146,4 +198,11 @@ export type MeasureSheetClient = {
     photo: Blob,
     options: SheetPhotoOptions
   ) => Promise<SheetPhotoAnalysis | null>;
+
+  /**
+   * Снимает каналы снимка без измерения. `null` — фотография не
+   * декодировалась; отказ — воркер упал или декодирование кончилось
+   * исключением.
+   */
+  decode: (photo: Blob) => Promise<SheetImageData | null>;
 };

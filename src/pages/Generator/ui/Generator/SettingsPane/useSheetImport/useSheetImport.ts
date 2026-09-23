@@ -1,19 +1,23 @@
 import { readFileAsDataUrl } from '@shared/lib/files';
 import { useState } from 'react';
 
-import type { RulingKind, SheetPhotoMeasurement } from '../../../../lib/paper';
 import { buildSheetRuling } from '../../../../lib/paper';
 import { findKindFamily } from '../../../../model/paperSelectors';
 import { useGeneratorStore } from '../../../../model/useGeneratorStore';
-import { deriveUserSheetMarkup } from '../../../../model/userSheetsStorageRecord';
+import { useMarkupEditorStore } from '../../../../model/useMarkupEditorStore';
+import type { UserSheetRecord } from '../../../../model/userSheetsStorage.types';
+import {
+  deriveUserSheetMarkup,
+  resolveMeasuredKind,
+} from '../../../../model/userSheetsStorageRecord';
 
 import { analyzeSheetPhoto } from './analyzeSheetPhoto';
-import { requestManualRuling } from './manualRulingRequest';
 import type { SheetImport, SheetImportOptions } from './useSheetImport.types';
 
 /**
- * Разлиновка, которой нет: нулевой шаг помечает экземпляр как ждущий ручного
- * ввода — по нему панель и понимает, что автоопределение не дало результата.
+ * Разлиновка, которой нет: нулевой шаг помечает экземпляр, на котором
+ * автоопределение не дало результата, — по нему редактор разметки сообщает,
+ * что линии не найдены, и ставит две булавки для ручного закрепления.
  */
 const MISSING_RULING = { step: 0, firstLinePhase: 0, skewAngle: 0 };
 
@@ -47,30 +51,6 @@ const toSheetLabel = (fileName: string): string => {
 };
 
 /**
- * Вид нового листа: предложенный снимком, а не выбранной семьёй. Если вид
- * снимок не дал — разлиновка не нашлась или фотография не разобрана, — вид
- * семьи.
- *
- * @param measurement — измерение фотографии; `null` — не разобрана
- * @param familyKind — вид выбранной семьи
- * @param isBlank — лист добавлен без разлиновки
- * @returns вид разлиновки листа
- */
-const resolveImportKind = (
-  measurement: SheetPhotoMeasurement | null,
-  familyKind: RulingKind,
-  isBlank: boolean
-): RulingKind => {
-  if (isBlank) {
-    return 'blank';
-  }
-
-  return measurement?.diagnostics.isRulingDetected
-    ? measurement.diagnostics.kind
-    : familyKind;
-};
-
-/**
  * Добавление своей фотографии листа: чтение файла, измерения и запись
  * экземпляра в выбранную семью.
  *
@@ -82,6 +62,9 @@ export const useSheetImport = (): SheetImport => {
   });
   const presetFamilies = useGeneratorStore((state) => {
     return state.presetFamilies;
+  });
+  const openMarkupEditor = useMarkupEditorStore((state) => {
+    return state.open;
   });
   const [isBusy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -122,7 +105,7 @@ export const useSheetImport = (): SheetImport => {
        */
       const ruling = buildSheetRuling(measurement?.source || MISSING_RULING, frame);
       const sheetId = nextSheetId();
-      const kind = resolveImportKind(measurement, family.kind, isBlank);
+      const kind = resolveMeasuredKind(measurement, family.kind, isBlank);
       const sheet = {
         id: sheetId,
         label: toSheetLabel(file.name),
@@ -134,26 +117,28 @@ export const useSheetImport = (): SheetImport => {
         texture: analysis?.texture || null,
       };
 
-      addUserSheet({
+      const record: UserSheetRecord = {
         familyId: findKindFamily(presetFamilies, family.id, kind)?.id || family.id,
         sheet,
         kind,
-        ...deriveUserSheetMarkup(sheet),
+        ...deriveUserSheetMarkup(sheet, kind),
         /**
          * Разбор считается пройденным даже тогда, когда разлиновка не нашлась:
          * повторный прогон по той же фотографии дал бы тот же результат, а
          * заданное руками затёр бы.
          */
         isAnalyzed: true,
-      });
+      };
 
       /**
-       * Нулевой шаг — разлиновки нет: без ручного ввода строки встали бы по
-       * синтетической гребёнке, не совпадающей с линиями снимка.
+       * Лист встаёт в выбор бумаги до редактора, а не по его сохранению:
+       * закрытый без сохранения редактор оставляет лист с разметкой автомата.
+       * Редактор открывается после каждого импорта — и когда разлиновка
+       * нашлась, и когда нет: ошибку автомата видно только на снимке. Каналы
+       * фотографии уходят магнитам редактора и отпускаются с его закрытием.
        */
-      if (ruling.step <= 0) {
-        requestManualRuling(sheetId);
-      }
+      addUserSheet(record);
+      openMarkupEditor(record, image);
     } catch {
       setError('Не удалось прочитать фотографию');
     } finally {

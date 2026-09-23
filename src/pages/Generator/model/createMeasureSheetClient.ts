@@ -1,8 +1,10 @@
-import type { SheetPhotoOptions } from '../lib/paper';
+import type { SheetImageData, SheetPhotoOptions } from '../lib/paper';
 
 import type {
   MeasureSheetClient,
   MeasureSheetClientDeps,
+  MeasureSheetDecodeRequest,
+  MeasureSheetMeasureRequest,
   MeasureSheetPort,
   MeasureSheetRequest,
   MeasureSheetResponse,
@@ -14,15 +16,22 @@ import type {
  */
 type PendingMeasure = {
   /**
-   * Отдать разбор.
+   * Отдать ответ воркера тому, кто ждёт задание.
    */
-  resolve: (analysis: SheetPhotoAnalysis | null) => void;
+  resolve: (response: MeasureSheetResponse) => void;
 
   /**
-   * Сообщить, что разбор не удался.
+   * Сообщить, что задание не удалось.
    */
   reject: (error: Error) => void;
 };
+
+/**
+ * Задание без номера: номер ставит клиент.
+ */
+type UnnumberedRequest =
+  | Omit<MeasureSheetMeasureRequest, 'requestId'>
+  | Omit<MeasureSheetDecodeRequest, 'requestId'>;
 
 const CRASH_MESSAGE = 'Воркер разбора листа упал';
 
@@ -58,23 +67,13 @@ export const createMeasureSheetClient = (
 
     pending.delete(response.requestId);
 
-    switch (response.status) {
-      case 'done': {
-        waiting.resolve(response.analysis);
+    if (response.status === 'failed') {
+      waiting.reject(new Error(response.message));
 
-        return;
-      }
-
-      case 'failed': {
-        waiting.reject(new Error(response.message));
-
-        return;
-      }
-
-      default: {
-        throw new Error('Воркер ответил неизвестным исходом');
-      }
+      return;
     }
+
+    waiting.resolve(response);
   };
 
   /**
@@ -115,15 +114,18 @@ export const createMeasureSheetClient = (
     return opened;
   };
 
-  const measure = (
-    photo: Blob,
-    options: SheetPhotoOptions
-  ): Promise<SheetPhotoAnalysis | null> => {
+  /**
+   * Отправляет задание и ждёт ответ воркера на него.
+   *
+   * @param unnumbered — задание без номера
+   * @returns ответ воркера; отказ — задание не удалось
+   */
+  const send = (unnumbered: UnnumberedRequest): Promise<MeasureSheetResponse> => {
     lastRequestId += 1;
 
-    const request: MeasureSheetRequest = { requestId: lastRequestId, photo, options };
+    const request: MeasureSheetRequest = { ...unnumbered, requestId: lastRequestId };
 
-    return new Promise<SheetPhotoAnalysis | null>((resolve, reject) => {
+    return new Promise<MeasureSheetResponse>((resolve, reject) => {
       pending.set(request.requestId, { resolve, reject });
 
       try {
@@ -141,7 +143,40 @@ export const createMeasureSheetClient = (
     });
   };
 
-  return { measure };
+  /**
+   * Ответ не на то задание — ошибка протокола, а не пустой результат.
+   *
+   * @param response — ответ воркера
+   * @returns ошибка несовпавшего исхода
+   */
+  const toMismatch = (response: MeasureSheetResponse): Error => {
+    return new Error(`Воркер ответил не тем исходом: ${response.status}`);
+  };
+
+  const measure = async (
+    photo: Blob,
+    options: SheetPhotoOptions
+  ): Promise<SheetPhotoAnalysis | null> => {
+    const response = await send({ task: 'measure', photo, options });
+
+    if (response.status !== 'done') {
+      throw toMismatch(response);
+    }
+
+    return response.analysis;
+  };
+
+  const decode = async (photo: Blob): Promise<SheetImageData | null> => {
+    const response = await send({ task: 'decode', photo });
+
+    if (response.status !== 'decoded') {
+      throw toMismatch(response);
+    }
+
+    return response.image;
+  };
+
+  return { measure, decode };
 };
 
 /**
@@ -162,19 +197,11 @@ export const hasMeasureSheetWorker = (): boolean => {
 };
 
 /**
- * Разбирает фотографию листа в воркере: декодирование, каналы снимка,
- * измерение и кодирование карты текстуры идут вне основного потока, и
- * интерфейс отвечает всё время разбора. Числа те же, что у `measureSheetPhoto`
- * в основном потоке, до бита.
+ * Клиент приложения с настоящим воркером: создаётся на первое задание.
  *
- * @param photo — файл фотографии
- * @param options — настройки измерения
- * @returns разбор; `null` — фотография не декодировалась
+ * @returns клиент разбора
  */
-export const measureSheetInWorker = (
-  photo: Blob,
-  options: SheetPhotoOptions
-): Promise<SheetPhotoAnalysis | null> => {
+const getAppClient = (): MeasureSheetClient => {
   if (!appClient) {
     appClient = createMeasureSheetClient({
       createPort: () => {
@@ -205,5 +232,34 @@ export const measureSheetInWorker = (
     });
   }
 
-  return appClient.measure(photo, options);
+  return appClient;
+};
+
+/**
+ * Разбирает фотографию листа в воркере: декодирование, каналы снимка,
+ * измерение и кодирование карты текстуры идут вне основного потока, и
+ * интерфейс отвечает всё время разбора. Числа те же, что у `measureSheetPhoto`
+ * в основном потоке, до бита.
+ *
+ * @param photo — файл фотографии
+ * @param options — настройки измерения
+ * @returns разбор; `null` — фотография не декодировалась
+ */
+export const measureSheetInWorker = (
+  photo: Blob,
+  options: SheetPhotoOptions
+): Promise<SheetPhotoAnalysis | null> => {
+  return getAppClient().measure(photo, options);
+};
+
+/**
+ * Снимает каналы снимка в воркере, без измерения: для магнитов редактора,
+ * открытого на уже разобранном листе. Декодирование идёт вне основного
+ * потока, буферы приходят передачей владения.
+ *
+ * @param photo — файл фотографии
+ * @returns каналы снимка; `null` — фотография не декодировалась
+ */
+export const decodeSheetInWorker = (photo: Blob): Promise<SheetImageData | null> => {
+  return getAppClient().decode(photo);
 };

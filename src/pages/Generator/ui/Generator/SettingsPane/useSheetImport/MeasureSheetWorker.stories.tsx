@@ -6,7 +6,10 @@ import { expect } from 'storybook/test';
 
 import type { RulingKind } from '../../../../lib/paper';
 import { encodeTextureMap, measureSheetPhoto } from '../../../../lib/paper';
-import { measureSheetInWorker } from '../../../../model/createMeasureSheetClient';
+import {
+  decodeSheetInWorker,
+  measureSheetInWorker,
+} from '../../../../model/createMeasureSheetClient';
 import type { SheetPhotoAnalysis } from '../../../../model/measureSheetWorker.types';
 
 import { decodeSheetImage } from './decodeSheetImage';
@@ -233,6 +236,29 @@ const createPresetStory = (kind: RulingKind, index: number): Story => {
       await expect(measurement.source.step).toBeGreaterThan(0);
     },
   };
+};
+
+/**
+ * Каналы снимка для магнитов редактора, открытого с плитки: воркер декодирует
+ * без измерения, и каналы совпадают с основным потоком до бита.
+ */
+export const DecodeMatchesMainThread: Story = {
+  play: async () => {
+    const src = toPresetSrc('grid', 1);
+    const actual = await decodeSheetInWorker(await fetchPhoto(src));
+    const expected = await decodeSheetImage(src);
+
+    if (!actual || !expected) {
+      throw new Error(`Фотография ${src} не декодировалась`);
+    }
+
+    await expect(actual.width).toBe(expected.width);
+    await expect(actual.height).toBe(expected.height);
+    await expect(countByteMismatches(actual.luminance, expected.luminance)).toBe(0);
+    await expect(countByteMismatches(actual.redMinusGreen, expected.redMinusGreen)).toBe(
+      0
+    );
+  },
 };
 
 export const GridPreset1MatchesMainThread = createPresetStory('grid', 1);

@@ -586,16 +586,18 @@ export const parseStoredUserSheet = (
     ? parseSheetRuling({ ruling: value.measuredRuling }, frame)
     : ruling;
   const legacyKind = value.isBlank === true ? 'blank' : resolveFamilyKind(familyId);
+  const kind = parseRulingKind(value.kind) || legacyKind;
 
   return {
     id,
     familyId,
-    kind: parseRulingKind(value.kind) || legacyKind,
+    kind,
     label: toText(value.label) || id,
     width: frame.width,
     height: frame.height,
     ruling,
     measuredRuling,
+    measuredKind: parseRulingKind(value.measuredKind) || kind,
     pins: parseRulingPins(value.pins, ruling, frame),
     lighting: parseLighting(value.lighting),
     source: value.source,

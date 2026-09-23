@@ -5,6 +5,7 @@ import {
   DEFAULT_GENERATOR_STATE,
   useGeneratorStore,
 } from '@pages/Generator/model/useGeneratorStore';
+import { useMarkupEditorStore } from '@pages/Generator/model/useMarkupEditorStore';
 import { readUserSheets } from '@pages/Generator/model/userSheetsStorage';
 import { PaperPicker } from '@pages/Generator/ui/Generator/SettingsPane/PaperPicker';
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
@@ -86,7 +87,7 @@ afterEach(() => {
 
 describe('PaperPicker', () => {
   it('показывает каждую семью плиткой с изображением и подписью', () => {
-    render(<PaperPicker onSheetSettingsOpen={vi.fn()} />);
+    render(<PaperPicker />);
 
     const { presetFamilies } = store();
 
@@ -109,7 +110,7 @@ describe('PaperPicker', () => {
 
     expect(store().isSheetPinned).toBe(true);
 
-    render(<PaperPicker onSheetSettingsOpen={vi.fn()} />);
+    render(<PaperPicker />);
 
     await user.click(screen.getByRole('radio', { name: 'В линейку' }));
 
@@ -130,7 +131,7 @@ describe('PaperPicker', () => {
       });
     });
 
-    render(<PaperPicker onSheetSettingsOpen={vi.fn()} />);
+    render(<PaperPicker />);
 
     await user.upload(screen.getByLabelText('Своя фотография листа'), buildPhotoFile());
 
@@ -158,11 +159,10 @@ describe('PaperPicker', () => {
 
   it('добавленный лист — плитка с выбором и кнопкой настройки', async () => {
     const user = userEvent.setup();
-    const handleSettingsOpen = vi.fn();
 
     decodeSheetImage.mockResolvedValue(createSyntheticSheet(RULED_PHOTO));
 
-    render(<PaperPicker onSheetSettingsOpen={handleSettingsOpen} />);
+    render(<PaperPicker />);
 
     await user.upload(screen.getByLabelText('Своя фотография листа'), buildPhotoFile());
 
@@ -187,11 +187,16 @@ describe('PaperPicker', () => {
     expect(store().sheetId).toBe(sheetId);
     expect(store().isSheetPinned).toBe(true);
 
+    /**
+     * Импорт уже открыл редактор листа: кнопка настройки проверяется на
+     * закрытом.
+     */
+    useMarkupEditorStore.getState().close();
     await user.click(
       within(ownSheets).getByRole('button', { name: 'Настроить «моя тетрадь»' })
     );
 
-    expect(handleSettingsOpen).toHaveBeenCalledWith(sheetId);
+    expect(useMarkupEditorStore.getState().record?.sheet.id).toBe(sheetId);
   });
 
   it('отказ записи в хранилище виден сообщением, а лист остаётся доступным', async () => {
@@ -202,7 +207,7 @@ describe('PaperPicker', () => {
 
     decodeSheetImage.mockResolvedValue(createSyntheticSheet(RULED_PHOTO));
 
-    render(<PaperPicker onSheetSettingsOpen={vi.fn()} />);
+    render(<PaperPicker />);
 
     expect(screen.queryByText(SAVE_FAILURE_MESSAGE)).toBeNull();
 
@@ -226,7 +231,7 @@ describe('PaperPicker', () => {
     decodeSheetImage.mockResolvedValue(createSyntheticSheet(GRID_PHOTO));
     store().selectFamily('lined');
 
-    render(<PaperPicker onSheetSettingsOpen={vi.fn()} />);
+    render(<PaperPicker />);
 
     await user.upload(screen.getByLabelText('Своя фотография листа'), buildPhotoFile());
 

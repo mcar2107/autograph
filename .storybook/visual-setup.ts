@@ -25,6 +25,7 @@ const SKIPPED_STORY_FILES = [
   'RealLayout.stories.tsx',
   'BaselineFit.stories.tsx',
   'RasterRuling.stories.tsx',
+  'MarkupOverlayFit.stories.tsx',
 ];
 
 /**
@@ -33,14 +34,8 @@ const SKIPPED_STORY_FILES = [
  * «Narrow Window» проверяет прокрутку в окне уже порога: страница там шире
  * окна предпросмотра, и снимок тела захватил бы за краем окна чужой белый фон
  * вместо раскладки. Сама раскладка снята в «Desktop».
- *
- * «Cancel Closes Dialog» проверяет закрытие диалога: после него на странице
- * пусто, и эталон ничего не сторожит.
  */
-const SKIPPED_STORIES = [
-  'GeneratorLayout.stories.tsx > Narrow Window',
-  'SheetDialog.stories.tsx > Cancel Closes Dialog',
-];
+const SKIPPED_STORIES = ['GeneratorLayout.stories.tsx > Narrow Window'];
 
 /**
  * Снимок после каждой story. Снимается всё окно предпросмотра: у панели и

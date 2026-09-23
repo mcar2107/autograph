@@ -38,6 +38,12 @@ export type UserSheetRecord = {
   measuredRuling: SheetRuling;
 
   /**
+   * Вид разлиновки, предложенный автоматом по снимку: к нему вместе с
+   * разлиновкой возвращает «Сбросить к найденному».
+   */
+  measuredKind: RulingKind;
+
+  /**
    * Булавки, через которые подогнана гребёнка, в пикселях фотографии.
    */
   pins: RulingPin[];
@@ -88,6 +94,12 @@ export type StoredUserSheet = Pick<PaperSheet, 'id' | 'label' | 'width' | 'heigh
    * и после перезапуска.
    */
   measuredRuling: SheetRuling;
+
+  /**
+   * Вид разлиновки, предложенный автоматом по снимку. Запись без поля
+   * читается с видом листа.
+   */
+  measuredKind: RulingKind;
 
   /**
    * Булавки, через которые подогнана гребёнка, в пикселях фотографии.
