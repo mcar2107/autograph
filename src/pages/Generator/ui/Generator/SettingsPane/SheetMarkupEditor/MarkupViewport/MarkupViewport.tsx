@@ -1,6 +1,6 @@
 import { IconButton } from '@shared/ui/IconButton';
 import type { FC, PointerEvent } from 'react';
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 
 import { MarkupScaleContext } from './markupScaleContext';
 import type { MarkupViewportProps, PanPointer } from './MarkupViewport.types';
@@ -20,12 +20,16 @@ const PERCENT = 100;
  * места почти не остаётся, а сдвигать снимок нужно и там.
  */
 export const MarkupViewport: FC<MarkupViewportProps> = (props) => {
-  const { frame, photoSrc, photoLabel, children } = props;
+  const { frame, photoSrc, photoLabel, children, onScaleChange } = props;
   const viewportRef = useRef<HTMLDivElement>(null);
   const pointerRef = useRef<PanPointer | null>(null);
   const { view, zoomIn, zoomOut, fit, panBy } = useMarkupView(viewportRef, frame);
   const isSpacePan = useSpacePan(viewportRef);
   const { scale, x, y } = view;
+
+  useEffect(() => {
+    onScaleChange?.(scale);
+  }, [scale, onScaleChange]);
 
   /**
    * Начало сдвига указателем, нажатым на окне просмотра.

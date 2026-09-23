@@ -510,7 +510,7 @@ export const useGeneratorStore = create<GeneratorStoreWithHistory>()(
           });
         },
         saveSheetMarkup: (sheetId, markup) => {
-          const { ruling, pins, kind } = markup;
+          const { ruling, pins, kind, remeasure } = markup;
           const { userSheets, presetFamilies } = get();
           const record = userSheets.find(({ sheet }) => {
             return sheet.id === sheetId;
@@ -522,13 +522,22 @@ export const useGeneratorStore = create<GeneratorStoreWithHistory>()(
 
           const familyId =
             findKindFamily(presetFamilies, record.familyId, kind)?.id || record.familyId;
-          const saved: UserSheetRecord = {
-            ...record,
-            familyId,
-            kind,
-            pins,
-            sheet: { ...record.sheet, ruling },
-          };
+          const saved: UserSheetRecord = remeasure
+            ? {
+                ...record,
+                familyId,
+                kind,
+                pins,
+                measuredRuling: remeasure.measuredRuling,
+                measuredKind: remeasure.measuredKind,
+                sheet: {
+                  ...record.sheet,
+                  ruling,
+                  lighting: remeasure.lighting,
+                  texture: remeasure.texture,
+                },
+              }
+            : { ...record, familyId, kind, pins, sheet: { ...record.sheet, ruling } };
 
           /**
            * Переезд листа в семью другого вида — правка ресурса, а не

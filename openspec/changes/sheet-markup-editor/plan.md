@@ -24,7 +24,7 @@
 - **K6 запись листа** — IndexedDB `autograph`/`sheets`, ключ `id`: `{id, familyId, kind, label, width, height, ruling,
   measuredRuling, pins, lighting, source: Blob, texture: {image: Blob, width, height, amplitude} | null}` (isAnalyzed не хранится — прочитанное считается разобранным); прежняя: `kind = isBlank ? 'blank' : family.kind`,
   `pins = deriveRulingPins`; память: `UserSheetRecord` несёт `kind`, `measuredRuling`, `pins` (`isBlank` убран — `kind === 'blank'`); API асинхронное, `writeUserSheet(record)` → `Promise<boolean>` пишет разметку из самого листа; импорт и перемер заполняют её через `deriveUserSheetMarkup`. Владелец G4 (форма — G5); потребители G5, G6, G9.
-- **K7 стор** — флаг отказа записи `unsavedUserSheetIds`, статус чтения `hasRestoredUserSheets` + `selectIsAwaitingUserSheets`, действие `saveSheetMarkup(sheetId, {ruling, pins, kind})` (measuredRuling не трогает);
+- **K7 стор** — флаг отказа записи `unsavedUserSheetIds`, статус чтения `hasRestoredUserSheets` + `selectIsAwaitingUserSheets`, действие `saveSheetMarkup(sheetId, {ruling, pins, kind, remeasure?})` — measuredRuling/measuredKind меняет только при перемере контура (`remeasure`: свет, текстура, разметка автомата), иначе не трогает;
   семья по `kind` (D6). Владелец G5; потребители G6, G9.
 - **K8 каркас редактора** — `ui/Generator/SettingsPane/SheetMarkupEditor/` с заглушками `OutlineTool LinesTool BendTool
   MarginsTool RulingKindControl MirrorTab TrialText`; черновик `model/useMarkupEditorStore.ts` (`commit(patch, {coalesceKey})`,

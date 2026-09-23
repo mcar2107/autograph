@@ -91,7 +91,7 @@ const toBoundsOutline = (bounds: PaperMargins, frame: SheetFrame): SheetOutline 
  * @param frame — кадр фотографии
  * @returns разлиновка с новым контуром и полями внутри него
  */
-const rebuildBlankRuling = (
+export const rebuildBlankRuling = (
   ruling: SheetRuling,
   outline: SheetOutline | null,
   frame: SheetFrame

@@ -63,6 +63,7 @@ describe('стор редактора разметки', () => {
       ruling: record.sheet.ruling,
       pins: record.pins,
       kind: record.kind,
+      remeasure: null,
     });
     expect(selectHasMarkupEdits(store())).toBe(false);
   });

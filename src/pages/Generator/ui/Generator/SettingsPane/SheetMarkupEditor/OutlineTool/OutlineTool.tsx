@@ -1,10 +1,217 @@
+import { Spinner } from '@shared/ui/Spinner';
 import type { FC } from 'react';
+import { useState } from 'react';
+import { createPortal } from 'react-dom';
 
+import type { SheetOutline, SheetPoint } from '../../../../../lib/paper';
+import { useMarkupEditorStore } from '../../../../../model/useMarkupEditorStore';
+import { MarkupHandle } from '../MarkupHandle';
 import type { MarkupToolProps } from '../SheetMarkupEditor.types';
 
+import {
+  checkOutline,
+  clampToFrame,
+  isSameOutline,
+  OUTLINE_CORNERS,
+  type OutlineCorner,
+  resolveOutline,
+} from './outlineGeometry';
+import { remeasureOutline } from './remeasureOutline';
+
+const CORNER_LABELS: Record<OutlineCorner, string> = {
+  topLeft: 'Левый верхний угол листа',
+  topRight: 'Правый верхний угол листа',
+  bottomRight: 'Правый нижний угол листа',
+  bottomLeft: 'Левый нижний угол листа',
+};
+
+const INVERTED_MESSAGE =
+  'Контур не применён: он вывернут. Углы должны обходить лист по кругу, не пересекая стороны.';
+
+const NARROW_MESSAGE =
+  'Контур не применён: он слишком узкий — от кадра остаётся меньше четверти ширины или высоты.';
+
+const DECODE_MESSAGE = 'Не удалось прочитать фотографию: разметка осталась прежней.';
+
 /**
- * Инструмент «Контур»: четыре угла листа и перемер внутри них. Каркас редактора его только подключает, ручки и перемер кладёт сам инструмент.
+ * Контур в атрибут `points` многоугольника SVG.
+ *
+ * @param outline — контур
+ * @returns точки по обходу углов
  */
-export const OutlineTool: FC<MarkupToolProps> = () => {
-  return null;
+const toPolygonPoints = (outline: SheetOutline): string => {
+  return OUTLINE_CORNERS.map((corner) => {
+    const { x, y } = outline[corner];
+
+    return `${x},${y}`;
+  }).join(' ');
+};
+
+/**
+ * Инструмент «Контур»: четыре угла листа, каждый перетаскивается отдельно, в
+ * том числе в четырёхугольник, а не прямоугольник, — лист, снятый на столе.
+ *
+ * Отпущенный угол перемеряет лист внутри нового контура. Вывернутый или
+ * слишком узкий контур не применяется: причина видна у инструмента, и
+ * разметка не трогается. Пока идёт перемер, углы стоят, куда их отпустили, а
+ * сохранение ждёт.
+ *
+ * Контур правится на странице самого листа: у зеркальной страницы ручки
+ * появляются вместе с её правкой.
+ */
+export const OutlineTool: FC<MarkupToolProps> = (props) => {
+  const { handleLayer, pageIndex } = props;
+  const record = useMarkupEditorStore((state) => {
+    return state.record;
+  });
+  const savedOutline = useMarkupEditorStore((state) => {
+    return state.draft?.ruling.outline || null;
+  });
+  const isRemeasuring = useMarkupEditorStore((state) => {
+    return state.isRemeasuring;
+  });
+  const [pending, setPending] = useState<SheetOutline | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+
+  if (!record) {
+    return null;
+  }
+
+  const frame = { width: record.sheet.width, height: record.sheet.height };
+  const current = resolveOutline(savedOutline, frame);
+  const outline = pending || current;
+
+  /**
+   * Контур с одним сдвинутым углом.
+   *
+   * @param corner — угол
+   * @param point — куда его сдвинули, px фотографии
+   * @returns контур
+   */
+  const moveCorner = (corner: OutlineCorner, point: SheetPoint): SheetOutline => {
+    return { ...outline, [corner]: clampToFrame(point, frame) };
+  };
+
+  /**
+   * Проверяет отпущенный контур и перемеряет лист внутри него. Контур
+   * остаётся на месте, пока идёт перемер, и уходит, когда итог лёг в
+   * черновик или не лёг вовсе.
+   *
+   * @param next — отпущенный контур
+   */
+  const applyOutline = async (next: SheetOutline) => {
+    if (isSameOutline(next, current)) {
+      setPending(null);
+
+      return;
+    }
+
+    const verdict = checkOutline(next, frame);
+
+    switch (verdict) {
+      case 'inverted': {
+        setPending(null);
+        setMessage(INVERTED_MESSAGE);
+
+        return;
+      }
+
+      case 'narrow': {
+        setPending(null);
+        setMessage(NARROW_MESSAGE);
+
+        return;
+      }
+
+      case 'usable': {
+        break;
+      }
+
+      default: {
+        throw new Error(`Неизвестный вердикт контура: ${String(verdict)}`);
+      }
+    }
+
+    setPending(next);
+    setMessage(null);
+
+    const status = await remeasureOutline(next);
+
+    /**
+     * Пока шёл перемер, угол могли потянуть снова: новый контур не
+     * снимается ответом на прежний.
+     */
+    setPending((shown) => {
+      return shown === next && status !== 'dropped' ? null : shown;
+    });
+
+    if (status === 'failed') {
+      setMessage(DECODE_MESSAGE);
+    }
+  };
+
+  const handles = OUTLINE_CORNERS.map((corner) => {
+    const { x, y } = outline[corner];
+
+    const handleCornerMove = (point: SheetPoint) => {
+      setPending(moveCorner(corner, point));
+    };
+
+    const handleCornerMoveEnd = (point: SheetPoint) => {
+      void applyOutline(moveCorner(corner, point));
+    };
+
+    return (
+      <MarkupHandle
+        key={corner}
+        x={x}
+        y={y}
+        label={CORNER_LABELS[corner]}
+        className="in-data-pan-mode:pointer-events-none"
+        onMove={handleCornerMove}
+        onMoveEnd={handleCornerMoveEnd}
+      />
+    );
+  });
+
+  return (
+    <section aria-label="Контур листа" className="flex flex-col gap-2 text-sm">
+      <p className="text-fg-muted">
+        Перетащите углы на углы листа. Отпущенный угол перемеряет лист внутри контура:
+        линии, поля, свет и текстуру.
+      </p>
+
+      {isRemeasuring ? (
+        <p role="status" className="flex items-center gap-2 text-fg-muted">
+          <Spinner />
+          Лист перемеряется внутри нового контура…
+        </p>
+      ) : null}
+
+      {message ? (
+        <p role="alert" className="rounded-md border border-danger p-2 text-xs text-fg">
+          {message}
+        </p>
+      ) : null}
+
+      {handleLayer && pageIndex === 0
+        ? createPortal(
+            <g data-tool="outline">
+              {pending ? (
+                <polygon
+                  points={toPolygonPoints(pending)}
+                  strokeDasharray="6 4"
+                  strokeWidth={2}
+                  vectorEffect="non-scaling-stroke"
+                  className="fill-none stroke-focus"
+                />
+              ) : null}
+
+              {handles}
+            </g>,
+            handleLayer
+          )
+        : null}
+    </section>
+  );
 };

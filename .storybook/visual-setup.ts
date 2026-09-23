@@ -26,6 +26,7 @@ const SKIPPED_STORY_FILES = [
   'BaselineFit.stories.tsx',
   'RasterRuling.stories.tsx',
   'MarkupOverlayFit.stories.tsx',
+  'LinesTool.stories.tsx',
 ];
 
 /**

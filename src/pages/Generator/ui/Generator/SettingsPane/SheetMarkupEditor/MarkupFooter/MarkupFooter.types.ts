@@ -20,6 +20,11 @@ export type MarkupFooterProps = {
   onCancel: () => void;
 
   /**
+   * «Сохранить» недоступно: разметка ещё не готова к применению.
+   */
+  isSaveDisabled: boolean;
+
+  /**
    * Колбэк на «Сохранить».
    */
   onSave: () => void;

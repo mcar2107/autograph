@@ -10,7 +10,7 @@ import type { MarkupFooterProps } from './MarkupFooter.types';
  * из выбора бумаги и из хранилища.
  */
 export const MarkupFooter: FC<MarkupFooterProps> = (props) => {
-  const { sheetLabel, onReset, onDelete, onCancel, onSave } = props;
+  const { sheetLabel, onReset, onDelete, onCancel, isSaveDisabled, onSave } = props;
   const [isDeleteConfirming, setDeleteConfirming] = useState(false);
 
   const handleResetClick = () => {
@@ -80,7 +80,9 @@ export const MarkupFooter: FC<MarkupFooterProps> = (props) => {
           Отмена
         </Button>
 
-        <Button onClick={handleSaveClick}>Сохранить</Button>
+        <Button isDisabled={isSaveDisabled} onClick={handleSaveClick}>
+          Сохранить
+        </Button>
       </div>
     </div>
   );

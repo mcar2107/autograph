@@ -15,7 +15,7 @@ import { MarkupLayers } from '../MarkupLayers';
 import { MarkupNotices } from '../MarkupNotices';
 import type { MarkupLayerVisibility } from '../MarkupOverlay';
 import { MarkupOverlay } from '../MarkupOverlay';
-import { MarkupViewport } from '../MarkupViewport';
+import { MarkupScaleContext, MarkupViewport } from '../MarkupViewport';
 import { MirrorTab } from '../MirrorTab';
 import { OutlineTool } from '../OutlineTool';
 import { RulingKindControl } from '../RulingKindControl';
@@ -83,6 +83,9 @@ export const MarkupEditorContent: FC<MarkupEditorContentProps> = (props) => {
   const reset = useMarkupEditorStore((state) => {
     return state.reset;
   });
+  const isRemeasuring = useMarkupEditorStore((state) => {
+    return state.isRemeasuring;
+  });
   const saveSheetMarkup = useGeneratorStore((state) => {
     return state.saveSheetMarkup;
   });
@@ -93,6 +96,7 @@ export const MarkupEditorContent: FC<MarkupEditorContentProps> = (props) => {
   const [tool, setTool] = useState<MarkupToolId>(START_TOOL);
   const [layers, setLayers] = useState(ALL_LAYERS_SHOWN);
   const [pageIndex, setPageIndex] = useState(0);
+  const [scale, setScale] = useState(1);
   const ActiveTool = TOOLS[tool];
 
   /**
@@ -110,6 +114,13 @@ export const MarkupEditorContent: FC<MarkupEditorContentProps> = (props) => {
    */
   const handleHandleLayerChange = useCallback((layer: SVGGElement | null) => {
     setHandleLayer(layer);
+  }, []);
+
+  /**
+   * Стабильный колбэк: окно зовёт его из эффекта на каждую смену масштаба.
+   */
+  const handleScaleChange = useCallback((next: number) => {
+    setScale(next);
   }, []);
 
   const handleToolChange = (value: string) => {
@@ -154,6 +165,7 @@ export const MarkupEditorContent: FC<MarkupEditorContentProps> = (props) => {
         frame={sheet}
         photoSrc={sheet.src}
         photoLabel={`Фотография листа «${sheet.label}»`}
+        onScaleChange={handleScaleChange}
       >
         <MarkupOverlay
           frame={sheet}
@@ -179,11 +191,17 @@ export const MarkupEditorContent: FC<MarkupEditorContentProps> = (props) => {
 
         <MarkupNotices tool={tool} draft={draft} />
 
-        <ActiveTool handleLayer={handleLayer} pageIndex={pageIndex} />
+        {/*
+         * Ручки инструментов уходят порталом в оверлей, но в дереве React
+         * лежат здесь, вне окна просмотра, — масштаб им передаётся отсюда.
+         */}
+        <MarkupScaleContext value={scale}>
+          <ActiveTool handleLayer={handleLayer} pageIndex={pageIndex} />
 
-        <MarkupLayers layers={layers} onLayersChange={handleLayersChange} />
+          <MarkupLayers layers={layers} onLayersChange={handleLayersChange} />
 
-        <TrialText handleLayer={handleLayer} pageIndex={pageIndex} />
+          <TrialText handleLayer={handleLayer} pageIndex={pageIndex} />
+        </MarkupScaleContext>
 
         <MirrorTab pageIndex={pageIndex} onPageIndexChange={handlePageIndexChange} />
 
@@ -195,6 +213,7 @@ export const MarkupEditorContent: FC<MarkupEditorContentProps> = (props) => {
             onReset={handleReset}
             onDelete={handleDelete}
             onCancel={handleCancel}
+            isSaveDisabled={isRemeasuring}
             onSave={handleSave}
           />
         </div>

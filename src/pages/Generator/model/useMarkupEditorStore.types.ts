@@ -1,12 +1,23 @@
 import type { SheetImageData } from '../lib/paper';
 
-import type { UserSheetMarkup, UserSheetRecord } from './userSheetsStorage.types';
+import type {
+  UserSheetMarkup,
+  UserSheetRecord,
+  UserSheetRemeasure,
+} from './userSheetsStorage.types';
 
 /**
  * Черновик разметки в редакторе: то, что «Сохранить» применит к листу одним
  * действием.
  */
-export type MarkupDraft = UserSheetMarkup;
+export type MarkupDraft = UserSheetMarkup & {
+  /**
+   * Перемер фотографии по контуру черновика. Лежит в черновике, а не рядом:
+   * отмена правки контура обязана вернуть и свет с текстурой прежнего контура.
+   * `null` — контур в редакторе не менялся.
+   */
+  remeasure: UserSheetRemeasure | null;
+};
 
 /**
  * Правка черновика: поля или функция от текущего черновика.
@@ -87,6 +98,12 @@ export type MarkupEditorState = {
    * подтверждения.
    */
   isCloseConfirming: boolean;
+
+  /**
+   * Идёт перемер фотографии по новому контуру: сохранение ждёт его, иначе на
+   * лист легла бы разметка прежнего контура.
+   */
+  isRemeasuring: boolean;
 };
 
 /**
@@ -145,6 +162,11 @@ export type MarkupEditorActions = {
    * Кладёт каналы фотографии открытого листа.
    */
   setImage: (sheetId: string, image: SheetImageData) => void;
+
+  /**
+   * Отмечает начало или конец перемера по новому контуру.
+   */
+  setRemeasuring: (isRemeasuring: boolean) => void;
 };
 
 /**

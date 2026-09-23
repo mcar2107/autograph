@@ -14,7 +14,7 @@ import type {
 /**
  * Поля черновика: по ним правка сверяется с текущим черновиком.
  */
-const MARKUP_KEYS = ['ruling', 'pins', 'kind'] as const;
+const MARKUP_KEYS = ['ruling', 'pins', 'kind', 'remeasure'] as const;
 
 const EMPTY_MARKUP_HISTORY: MarkupHistory = {
   past: [],
@@ -30,6 +30,7 @@ const CLOSED_EDITOR: MarkupEditorState = {
   image: null,
   history: EMPTY_MARKUP_HISTORY,
   isCloseConfirming: false,
+  isRemeasuring: false,
 };
 
 /**
@@ -101,10 +102,11 @@ export const useMarkupEditorStore = create<MarkupEditorStore>()((set, get) => {
 
       return set({
         record,
-        draft: { ruling: sheet.ruling, pins, kind },
+        draft: { ruling: sheet.ruling, pins, kind, remeasure: null },
         image,
         history: EMPTY_MARKUP_HISTORY,
         isCloseConfirming: false,
+        isRemeasuring: false,
       });
     },
     close: () => {
@@ -225,12 +227,18 @@ export const useMarkupEditorStore = create<MarkupEditorStore>()((set, get) => {
       if (
         draft.ruling === measuredRuling &&
         draft.kind === measuredKind &&
+        draft.remeasure === null &&
         isSamePins(draft.pins, pins)
       ) {
         return;
       }
 
-      get().commit({ ruling: measuredRuling, pins, kind: measuredKind });
+      /**
+       * Сброс снимает и перемер по контуру, заданному в редакторе: найденная
+       * разметка листа — по его сохранённому контуру, и свет с текстурой к ней
+       * тоже прежние.
+       */
+      get().commit({ ruling: measuredRuling, pins, kind: measuredKind, remeasure: null });
     },
     setImage: (sheetId, image) => {
       /**
@@ -242,6 +250,9 @@ export const useMarkupEditorStore = create<MarkupEditorStore>()((set, get) => {
       }
 
       return set({ image });
+    },
+    setRemeasuring: (isRemeasuring) => {
+      return set({ isRemeasuring });
     },
   };
 });

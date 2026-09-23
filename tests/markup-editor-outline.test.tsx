@@ -1,0 +1,361 @@
+/**
+ * @vitest-environment jsdom
+ */
+import {
+  buildSheetRuling,
+  type PaperSheet,
+  type SheetImageData,
+  type SheetOutline,
+  type SheetPoint,
+} from '@pages/Generator/lib/paper';
+import { clearLayoutCache } from '@pages/Generator/model/measureLayout';
+import {
+  DEFAULT_GENERATOR_STATE,
+  useGeneratorStore,
+} from '@pages/Generator/model/useGeneratorStore';
+import { useMarkupEditorStore } from '@pages/Generator/model/useMarkupEditorStore';
+import type { UserSheetRecord } from '@pages/Generator/model/userSheetsStorage.types';
+import { SheetMarkupEditor } from '@pages/Generator/ui/Generator/SettingsPane/SheetMarkupEditor';
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { IDBFactory } from 'fake-indexeddb';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { createSyntheticSheet } from './helpers/synthetic-sheet';
+import { RULED_PHOTO } from './helpers/user-sheet-photo';
+import { buildUserSheetRecord } from './helpers/user-sheet-record';
+
+/**
+ * Подменяется только съём пикселей: канвы в jsdom нет. Перемер идёт настоящим
+ * детектором.
+ */
+const { decodeSheetImage } = vi.hoisted(() => {
+  return { decodeSheetImage: vi.fn() };
+});
+
+vi.mock(
+  '@pages/Generator/ui/Generator/SettingsPane/useSheetImport/decodeSheetImage',
+  () => {
+    return { decodeSheetImage };
+  }
+);
+
+const FRAME = { width: RULED_PHOTO.width, height: RULED_PHOTO.height };
+
+const SHEET_LABEL = 'Лист на столе';
+
+/**
+ * Разлиновка листа до правки контура: лист во весь кадр, поля и линия поля
+ * заданы руками и отличаются от найденных на снимке.
+ */
+const MANUAL_RULING = buildSheetRuling(
+  {
+    step: RULED_PHOTO.step,
+    firstLinePhase: RULED_PHOTO.phase,
+    skewAngle: 0,
+    margins: { top: 150, right: 120, bottom: 150, left: 150 },
+    marginLineX: null,
+    marginLineSide: null,
+  },
+  FRAME
+);
+
+const SHEET: PaperSheet = {
+  id: 'user-outline',
+  label: SHEET_LABEL,
+  src: 'data:image/jpeg;base64,0123456789',
+  ...FRAME,
+  ruling: MANUAL_RULING,
+  lighting: null,
+  texture: null,
+};
+
+/**
+ * Отложенный декодер: перемер ждёт, пока тест не отпустит снимок.
+ *
+ * @returns промис снимка и его разрешение
+ */
+const deferDecode = (): ((image: SheetImageData) => void) => {
+  let resolve: (image: SheetImageData) => void = () => {
+    return undefined;
+  };
+
+  decodeSheetImage.mockReturnValue(
+    new Promise<SheetImageData>((done) => {
+      resolve = done;
+    })
+  );
+
+  return (image) => {
+    resolve(image);
+  };
+};
+
+/**
+ * Редактор, открытый на листе.
+ */
+type OpenedEditor = {
+  /**
+   * Открытый лист.
+   */
+  record: UserSheetRecord;
+
+  /**
+   * Диалог редактора.
+   */
+  editor: HTMLElement;
+};
+
+/**
+ * Кладёт лист в стор и открывает на нём редактор с инструментом «Контур».
+ *
+ * @returns открытый лист и диалог редактора
+ */
+const openOutlineTool = async (): Promise<OpenedEditor> => {
+  const user = userEvent.setup();
+  const record = buildUserSheetRecord({ familyId: 'lined', sheet: SHEET });
+
+  useGeneratorStore.getState().addUserSheet(record);
+  useMarkupEditorStore.getState().open(record);
+  render(<SheetMarkupEditor />);
+
+  const editor = await screen.findByRole('dialog', {
+    name: `Разметка листа «${SHEET_LABEL}»`,
+  });
+
+  await user.click(within(editor).getByRole('radio', { name: 'Контур' }));
+
+  return { record, editor };
+};
+
+/**
+ * Перетаскивает ручку в точку фотографии. Экранная матрица SVG — единичная:
+ * пиксели окна совпадают с пикселями фотографии.
+ *
+ * @param handle — ручка
+ * @param point — куда отпустить, px фотографии
+ */
+const dragHandle = (handle: HTMLElement, point: SheetPoint) => {
+  const svg = handle.closest('svg');
+
+  if (!svg) {
+    throw new Error('Ручка вне SVG');
+  }
+
+  Object.defineProperty(svg, 'getScreenCTM', {
+    configurable: true,
+    value: () => {
+      return {
+        inverse: () => {
+          return { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
+        },
+      };
+    },
+  });
+
+  fireEvent.pointerDown(handle, { pointerId: 1, clientX: 0, clientY: 0 });
+  fireEvent.pointerMove(handle, { pointerId: 1, clientX: point.x, clientY: point.y });
+  fireEvent.pointerUp(handle, { pointerId: 1, clientX: point.x, clientY: point.y });
+};
+
+/**
+ * Ручка угла контура.
+ *
+ * @param editor — диалог редактора
+ * @param name — подпись угла
+ * @returns ручка
+ */
+const getCorner = (editor: HTMLElement, name: string): HTMLElement => {
+  return within(editor).getByRole('button', { name });
+};
+
+beforeEach(() => {
+  clearLayoutCache();
+  useGeneratorStore.setState(DEFAULT_GENERATOR_STATE);
+  useMarkupEditorStore.getState().close();
+  globalThis.indexedDB = new IDBFactory();
+  globalThis.localStorage?.clear();
+  decodeSheetImage.mockReset();
+});
+
+afterEach(() => {
+  cleanup();
+});
+
+describe('инструмент «Контур»', () => {
+  it('показывает четыре угла листа во весь кадр', async () => {
+    const { editor } = await openOutlineTool();
+
+    const topLeft = getCorner(editor, 'Левый верхний угол листа');
+    const bottomRight = getCorner(editor, 'Правый нижний угол листа');
+
+    expect(getCorner(editor, 'Правый верхний угол листа')).toBeDefined();
+    expect(getCorner(editor, 'Левый нижний угол листа')).toBeDefined();
+    expect([topLeft.getAttribute('cx'), topLeft.getAttribute('cy')]).toStrictEqual([
+      '0',
+      '0',
+    ]);
+    expect([
+      bottomRight.getAttribute('cx'),
+      bottomRight.getAttribute('cy'),
+    ]).toStrictEqual([String(FRAME.width), String(FRAME.height)]);
+  });
+
+  it('вывернутый контур не применён: сообщение, разметка прежняя, перемера нет', async () => {
+    const { editor } = await openOutlineTool();
+    const before = useMarkupEditorStore.getState().draft;
+
+    dragHandle(getCorner(editor, 'Левый верхний угол листа'), { x: 400, y: 540 });
+
+    expect((await within(editor).findByRole('alert')).textContent).toMatch(
+      /Контур не применён.*вывернут/
+    );
+    expect(useMarkupEditorStore.getState().draft).toBe(before);
+    expect(decodeSheetImage).not.toHaveBeenCalled();
+    expect(getCorner(editor, 'Левый верхний угол листа').getAttribute('cx')).toBe('0');
+  });
+
+  it('узкий контур — сообщение, разметка прежняя, перемера нет', async () => {
+    const { editor } = await openOutlineTool();
+    const before = useMarkupEditorStore.getState().draft;
+
+    dragHandle(getCorner(editor, 'Левый верхний угол листа'), { x: 0, y: 450 });
+
+    expect((await within(editor).findByRole('alert')).textContent).toMatch(
+      /Контур не применён.*слишком узкий/
+    );
+    expect(useMarkupEditorStore.getState().draft).toBe(before);
+    expect(decodeSheetImage).not.toHaveBeenCalled();
+  });
+
+  it('во время перемера сохранение недоступно, окно отвечает на зум; результат ложится в черновик', async () => {
+    const user = userEvent.setup();
+    const release = deferDecode();
+    const { editor } = await openOutlineTool();
+    const before = useMarkupEditorStore.getState().draft;
+    const outline: SheetOutline = {
+      topLeft: { x: 20, y: 30 },
+      topRight: { x: FRAME.width, y: 0 },
+      bottomRight: { x: FRAME.width, y: FRAME.height },
+      bottomLeft: { x: 0, y: FRAME.height },
+    };
+
+    dragHandle(getCorner(editor, 'Левый верхний угол листа'), outline.topLeft);
+
+    const save = within(editor).getByRole('button', { name: 'Сохранить' });
+
+    await waitFor(() => {
+      expect(save).toHaveProperty('disabled', true);
+    });
+    expect(within(editor).getByRole('status').textContent).toMatch(/перемеряется/);
+    expect(useMarkupEditorStore.getState().draft).toBe(before);
+    /**
+     * Угол стоит, куда его отпустили, пока идёт перемер.
+     */
+    expect(getCorner(editor, 'Левый верхний угол листа').getAttribute('cx')).toBe('20');
+
+    const zoomLabel = within(editor).getByText(/%$/).textContent;
+
+    await user.click(within(editor).getByRole('button', { name: 'Приблизить' }));
+
+    expect(within(editor).getByText(/%$/).textContent).not.toBe(zoomLabel);
+
+    await act(async () => {
+      release(createSyntheticSheet(RULED_PHOTO));
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(save).toHaveProperty('disabled', false);
+    });
+
+    const draft = useMarkupEditorStore.getState().draft;
+
+    expect(draft?.ruling.outline).toStrictEqual(outline);
+    expect(draft?.ruling.step).toBeCloseTo(RULED_PHOTO.step, 0);
+    /**
+     * Поля берутся из перемера, а не из ручной правки.
+     */
+    expect(draft?.ruling.margins.left).toBeLessThan(MANUAL_RULING.margins.left);
+    expect(draft?.ruling.marginLineX).not.toBeNull();
+    expect(draft?.remeasure?.measuredRuling).toBe(draft?.ruling);
+    expect(draft?.pins.length).toBeGreaterThanOrEqual(2);
+    expect(within(editor).queryByRole('status')).toBeNull();
+  });
+
+  it('отмена возвращает прежний контур вместе с разметкой; сохранение кладёт перемер на лист', async () => {
+    const user = userEvent.setup();
+
+    decodeSheetImage.mockResolvedValue(createSyntheticSheet(RULED_PHOTO));
+
+    const { editor } = await openOutlineTool();
+    const before = useMarkupEditorStore.getState().draft;
+
+    dragHandle(getCorner(editor, 'Правый нижний угол листа'), { x: 400, y: 540 });
+
+    await waitFor(() => {
+      expect(useMarkupEditorStore.getState().draft?.remeasure).not.toBeNull();
+    });
+
+    act(() => {
+      useMarkupEditorStore.getState().undo();
+    });
+
+    expect(useMarkupEditorStore.getState().draft).toBe(before);
+
+    act(() => {
+      useMarkupEditorStore.getState().redo();
+    });
+
+    const remeasured = useMarkupEditorStore.getState().draft;
+
+    await user.click(within(editor).getByRole('button', { name: 'Сохранить' }));
+
+    const [saved] = useGeneratorStore.getState().userSheets;
+
+    expect(saved?.sheet.ruling).toBe(remeasured?.ruling);
+    expect(saved?.sheet.ruling.outline?.bottomRight).toStrictEqual({ x: 400, y: 540 });
+    expect(saved?.measuredRuling).toBe(remeasured?.ruling);
+    expect(saved?.sheet.lighting).toBe(remeasured?.remeasure?.lighting);
+    expect(saved?.kind).toBe('lined');
+  });
+
+  it('перемер оставляет заданные отдельно линию поля и поля зеркальной страницы', async () => {
+    decodeSheetImage.mockResolvedValue(createSyntheticSheet(RULED_PHOTO));
+
+    const mirrorOverride = {
+      marginLineX: 300,
+      marginLineSide: 'right' as const,
+      marginLeft: 40,
+      marginRight: 90,
+    };
+    const record = buildUserSheetRecord({
+      familyId: 'lined',
+      sheet: { ...SHEET, ruling: { ...MANUAL_RULING, mirrorOverride } },
+    });
+
+    useGeneratorStore.getState().addUserSheet(record);
+    useMarkupEditorStore.getState().open(record);
+    render(<SheetMarkupEditor />);
+
+    const editor = await screen.findByRole('dialog');
+
+    await userEvent.setup().click(within(editor).getByRole('radio', { name: 'Контур' }));
+    dragHandle(getCorner(editor, 'Левый верхний угол листа'), { x: 10, y: 10 });
+
+    await waitFor(() => {
+      expect(useMarkupEditorStore.getState().draft?.remeasure).not.toBeNull();
+    });
+    expect(useMarkupEditorStore.getState().draft?.ruling.mirrorOverride).toStrictEqual(
+      mirrorOverride
+    );
+  });
+});
