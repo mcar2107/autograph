@@ -15,7 +15,12 @@ import { resolveBendRadius, resolveBendReach } from '../../../../../lib/paper';
 import { useMarkupEditorStore } from '../../../../../model/useMarkupEditorStore';
 import { normalizePins, refitBendToPins } from '../LinesTool/linesPins';
 import { buildRulingLines, toPointsAttribute } from '../MarkupOverlay/markupGeometry';
-import { mirrorMarkupPoint, useMarkupMirrorWidth } from '../MarkupViewport';
+import { MarkupStroke } from '../MarkupStroke';
+import {
+  mirrorMarkupPoint,
+  useMarkupMirrorWidth,
+  useMarkupScale,
+} from '../MarkupViewport';
 import type { MarkupToolProps } from '../SheetMarkupEditor.types';
 
 import { buildBendRing, toPhotoPoint } from './bendGeometry';
@@ -24,8 +29,21 @@ import { useBendDrag } from './useBendDrag';
 /**
  * Толщина полосы, за которую линия берётся указателем, в экранных пикселях:
  * сама линия в полтора пикселя, и попасть в неё мышью и пальцем трудно.
+ * Делится на масштаб просмотра: зум — CSS-преобразование над `<svg>`, и
+ * `non-scaling-stroke` его не учитывает.
  */
 const HIT_WIDTH = 14;
+
+/**
+ * Толщина рамки радиуса правки в экранных пикселях — как у линий гребёнки.
+ */
+const RING_WIDTH = 1.5;
+
+/**
+ * Пунктир рамки радиуса в экранных пикселях: рамка — граница правки, а не
+ * линия листа.
+ */
+const RING_DASH: [number, number] = [4, 4];
 
 /**
  * Радиус по умолчанию в шагах, если шага нет: слайдер всё равно что-то
@@ -108,6 +126,7 @@ const scaleBendRadius = (
 export const BendTool: FC<MarkupToolProps> = (props) => {
   const { handleLayer } = props;
   const mirrorWidth = useMarkupMirrorWidth();
+  const scale = useMarkupScale();
   const record = useMarkupEditorStore((state) => {
     return state.record;
   });
@@ -294,8 +313,7 @@ export const BendTool: FC<MarkupToolProps> = (props) => {
                     key={index}
                     data-bend-line-index={index}
                     points={points}
-                    strokeWidth={HIT_WIDTH}
-                    vectorEffect="non-scaling-stroke"
+                    strokeWidth={HIT_WIDTH / scale}
                     pointerEvents="stroke"
                     className="cursor-ns-resize fill-none stroke-transparent in-data-pan-mode:pointer-events-none"
                   />
@@ -303,15 +321,15 @@ export const BendTool: FC<MarkupToolProps> = (props) => {
               })}
 
               {ring ? (
-                <polygon
-                  data-bend-ring=""
-                  points={toPointsAttribute(ring)}
-                  strokeWidth={1.5}
-                  strokeDasharray="4 4"
-                  vectorEffect="non-scaling-stroke"
+                <MarkupStroke
+                  dash={RING_DASH}
                   pointerEvents="none"
-                  className="fill-none stroke-focus"
-                />
+                  fill="none"
+                  width={RING_WIDTH}
+                  className="stroke-markup-pin"
+                >
+                  <polygon data-bend-ring="" points={toPointsAttribute(ring)} />
+                </MarkupStroke>
               ) : null}
             </g>,
             handleLayer

@@ -23,6 +23,15 @@
  * Межстрочные интервалы размеров остаются из темы Tailwind: имена вида
  * `--text-xs--line-height` не проходят правило имён stylelint.
  *
+ * Разметка листа (`markup-*`) — линии редактора поверх фотографии, а не
+ * поверх панелей. Бумага на снимках бывает и почти белой, и серой в тени
+ * (яркость 0,2…0,7), поэтому один цвет 3:1 везде не держит: штрих двойной —
+ * тёмная краска слоя на белой подложке (`markup-halo`). Каждая краска слоя
+ * контрастна подложке не меньше 9:1, и тогда на любом фоне хотя бы одна из
+ * двух даёт 3:1 (WCAG 1.4.11, техника C40). Краски — ступени 900
+ * палитры Tailwind разных тонов: слои различимы между собой, а синяя линия
+ * разлиновки держится подложкой и на синей клетке снимка.
+ *
  * Размеры — каркас экрана. Вёрстка десктопная: уже `--spacing-desktop`
  * раскладка не перестраивается.
  */
@@ -41,6 +50,12 @@
   --color-focus: oklch(74% 0.14 250deg);
   --color-danger: oklch(66% 0.19 25deg);
   --color-success: oklch(72% 0.15 150deg);
+  --color-markup-halo: var(--color-white);
+  --color-markup-line: var(--color-blue-900);
+  --color-markup-margin: var(--color-emerald-900);
+  --color-markup-margin-line: var(--color-red-900);
+  --color-markup-outline: var(--color-amber-900);
+  --color-markup-pin: var(--color-fuchsia-900);
   --font-ui: system-ui, -apple-system, 'Segoe UI', sans-serif;
   --text-xs: 0.75rem;
   --text-sm: 0.875rem;

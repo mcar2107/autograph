@@ -20,6 +20,12 @@ import type { HandleDrag, MarkupHandleProps } from './MarkupHandle.types';
 const HANDLE_RADIUS = 7;
 
 /**
+ * Обводка ручки в экранных пикселях. Делится на масштаб, как и радиус: зум —
+ * CSS-преобразование над `<svg>`, и `non-scaling-stroke` его не учитывает.
+ */
+const HANDLE_STROKE_WIDTH = 2;
+
+/**
  * Сдвиг стрелкой с Shift, px фотографии: грубая подводка к линии, а
  * стрелкой без модификатора — последний пиксель.
  */
@@ -189,9 +195,9 @@ export const MarkupHandle: FC<MarkupHandleProps> = (props) => {
         cx={x}
         cy={y}
         r={HANDLE_RADIUS / scale}
-        vectorEffect="non-scaling-stroke"
+        strokeWidth={HANDLE_STROKE_WIDTH / scale}
         className={cx(
-          'cursor-move fill-surface-raised stroke-focus stroke-2 outline-none focus-visible:stroke-fg',
+          'cursor-move fill-surface-raised stroke-focus outline-none focus-visible:stroke-fg',
           className
         )}
         onPointerDown={handleHandlePointerDown}

@@ -19,6 +19,8 @@ import {
 } from '@pages/Generator/model/useGeneratorStore';
 import { useMarkupEditorStore } from '@pages/Generator/model/useMarkupEditorStore';
 import { SheetMarkupEditor } from '@pages/Generator/ui/Generator/SettingsPane/SheetMarkupEditor';
+import { BendTool } from '@pages/Generator/ui/Generator/SettingsPane/SheetMarkupEditor/BendTool';
+import { MarkupScaleContext } from '@pages/Generator/ui/Generator/SettingsPane/SheetMarkupEditor/MarkupViewport';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { IDBFactory } from 'fake-indexeddb';
@@ -814,5 +816,36 @@ describe('инструмент «Изгиб»: действия', () => {
       /проследить не удалось/
     );
     expect(readDraftRuling()).toBe(bent);
+  });
+});
+
+describe('инструмент «Изгиб»: полоса попадания', () => {
+  /**
+   * Ширина полосы, за которую линия берётся указателем, в экранных пикселях.
+   */
+  const HIT_SCREEN_WIDTH = 14;
+
+  it.each([0.36, 4])('на масштабе %s полоса линии — 14 экранных пикселей', (scale) => {
+    const record = buildUserSheetRecord({ familyId: 'lined', sheet: SHEET });
+    const handleLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+
+    useMarkupEditorStore.getState().open(record, null);
+    render(
+      <MarkupScaleContext value={scale}>
+        <BendTool handleLayer={handleLayer} pageIndex={0} />
+      </MarkupScaleContext>
+    );
+
+    const lines = handleLayer.querySelectorAll('[data-bend-line-index]');
+
+    expect(lines.length).toBeGreaterThan(0);
+
+    for (const line of lines) {
+      expect(Number(line.getAttribute('stroke-width')) * scale).toBeCloseTo(
+        HIT_SCREEN_WIDTH,
+        6
+      );
+      expect(line.hasAttribute('vector-effect')).toBe(false);
+    }
   });
 });

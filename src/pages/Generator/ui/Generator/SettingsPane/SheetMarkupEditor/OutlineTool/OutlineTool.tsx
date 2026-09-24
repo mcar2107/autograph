@@ -6,6 +6,7 @@ import { createPortal } from 'react-dom';
 import type { SheetOutline, SheetPoint } from '../../../../../lib/paper';
 import { useMarkupEditorStore } from '../../../../../model/useMarkupEditorStore';
 import { MarkupHandle } from '../MarkupHandle';
+import { MarkupStroke } from '../MarkupStroke';
 import { useMarkupMirrorWidth } from '../MarkupViewport';
 import type { MarkupToolProps } from '../SheetMarkupEditor.types';
 
@@ -36,6 +37,16 @@ const MIRROR_CORNER_LABELS: Record<OutlineCorner, string> = {
   bottomRight: CORNER_LABELS.bottomLeft,
   bottomLeft: CORNER_LABELS.bottomRight,
 };
+
+/**
+ * Толщина контура, который тянут, в экранных пикселях — как у контура листа.
+ */
+const PENDING_WIDTH = 2;
+
+/**
+ * Пунктир контура, который тянут, в экранных пикселях: он ещё не применён.
+ */
+const PENDING_DASH: [number, number] = [6, 4];
 
 const INVERTED_MESSAGE =
   'Контур не применён: он вывернут. Углы должны обходить лист по кругу, не пересекая стороны.';
@@ -216,13 +227,14 @@ export const OutlineTool: FC<MarkupToolProps> = (props) => {
         ? createPortal(
             <g data-tool="outline">
               {pending ? (
-                <polygon
-                  points={toPolygonPoints(pending)}
-                  strokeDasharray="6 4"
-                  strokeWidth={2}
-                  vectorEffect="non-scaling-stroke"
-                  className="fill-none stroke-focus"
-                />
+                <MarkupStroke
+                  dash={PENDING_DASH}
+                  fill="none"
+                  width={PENDING_WIDTH}
+                  className="stroke-markup-outline"
+                >
+                  <polygon points={toPolygonPoints(pending)} />
+                </MarkupStroke>
               ) : null}
 
               {handles}

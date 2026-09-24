@@ -8,6 +8,7 @@ import { useMarkupEditorStore } from '../../../../../model/useMarkupEditorStore'
 import type { MarkupMoveSource } from '../MarkupHandle';
 import { MarkupHandle } from '../MarkupHandle';
 import { toPointsAttribute } from '../MarkupOverlay/markupGeometry';
+import { MarkupStroke } from '../MarkupStroke';
 import type { MarkupToolProps } from '../SheetMarkupEditor.types';
 
 import { resolveMarginHandles } from './marginsGeometry';
@@ -179,19 +180,22 @@ export const MarginsTool: FC<MarkupToolProps> = (props) => {
       {handleLayer
         ? createPortal(
             <g data-tool="margins">
-              {guides.map(({ side, points }) => {
-                return (
-                  <polyline
-                    key={side}
-                    data-margin-guide={side}
-                    points={toPointsAttribute(points)}
-                    strokeWidth={GUIDE_WIDTH}
-                    vectorEffect="non-scaling-stroke"
-                    pointerEvents="none"
-                    className="fill-none stroke-focus"
-                  />
-                );
-              })}
+              <MarkupStroke
+                pointerEvents="none"
+                fill="none"
+                width={GUIDE_WIDTH}
+                className="stroke-markup-margin"
+              >
+                {guides.map(({ side, points }) => {
+                  return (
+                    <polyline
+                      key={side}
+                      data-margin-guide={side}
+                      points={toPointsAttribute(points)}
+                    />
+                  );
+                })}
+              </MarkupStroke>
 
               {marginHandles}
 

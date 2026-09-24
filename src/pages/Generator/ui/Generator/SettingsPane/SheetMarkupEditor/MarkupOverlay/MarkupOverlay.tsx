@@ -1,6 +1,7 @@
 import type { FC } from 'react';
 import { useId, useMemo } from 'react';
 
+import { MarkupStroke, toSvgId } from '../MarkupStroke';
 import { useMarkupMirrorWidth, useMarkupScale } from '../MarkupViewport';
 
 import {
@@ -18,20 +19,21 @@ import type { MarkupOverlayProps } from './MarkupOverlay.types';
 const STROKE_WIDTH = 1.5;
 
 /**
+ * Пунктир полей в экранных пикселях: поля отличаются от линий гребёнки не
+ * только цветом.
+ */
+const MARGIN_DASH: [number, number] = [6, 4];
+
+/**
+ * Толщина одиночных линий — линии поля, контура, булавок: их немного, и
+ * они должны читаться поверх гребёнки.
+ */
+const SINGLE_STROKE_WIDTH = 2;
+
+/**
  * Радиус точки на концах булавки в экранных пикселях.
  */
 const PIN_END_RADIUS = 4;
-
-/**
- * Идентификатор для `url(#…)`: `useId` отдаёт двоеточия и кавычки-ёлочки,
- * которые в ссылке на обрезку пришлось бы экранировать.
- *
- * @param id — идентификатор от `useId`
- * @returns идентификатор из букв, цифр и дефисов
- */
-const toSvgId = (id: string): string => {
-  return `markup-${id.replace(/[^a-zA-Z0-9-]/g, '')}`;
-};
 
 /**
  * Разметка листа поверх фотографии: контур, линии разлиновки, поля, линия
@@ -76,10 +78,12 @@ export const MarkupOverlay: FC<MarkupOverlayProps> = (props) => {
       </defs>
 
       {layers.lines ? (
-        <g
+        <MarkupStroke
           data-layer="lines"
           clipPath={`url(#${clipId})`}
-          className="fill-none stroke-accent"
+          fill="none"
+          width={STROKE_WIDTH}
+          className="stroke-markup-line"
         >
           {lines.map(({ index, points }) => {
             return (
@@ -87,33 +91,26 @@ export const MarkupOverlay: FC<MarkupOverlayProps> = (props) => {
                 key={index}
                 data-line-index={index}
                 points={toPointsAttribute(points)}
-                strokeWidth={STROKE_WIDTH}
-                vectorEffect="non-scaling-stroke"
               />
             );
           })}
-        </g>
+        </MarkupStroke>
       ) : null}
 
       {layers.margins ? (
-        <g
+        <MarkupStroke
           data-layer="margins"
           clipPath={`url(#${clipId})`}
-          strokeDasharray="6 4"
-          className="fill-none stroke-fg-subtle"
+          dash={MARGIN_DASH}
+          fill="none"
+          width={STROKE_WIDTH}
+          className="stroke-markup-margin"
         >
-          <polyline
-            data-margin="top"
-            points={toPointsAttribute(marginGuides.top)}
-            strokeWidth={STROKE_WIDTH}
-            vectorEffect="non-scaling-stroke"
-          />
+          <polyline data-margin="top" points={toPointsAttribute(marginGuides.top)} />
 
           <polyline
             data-margin="bottom"
             points={toPointsAttribute(marginGuides.bottom)}
-            strokeWidth={STROKE_WIDTH}
-            vectorEffect="non-scaling-stroke"
           />
 
           <line
@@ -122,8 +119,6 @@ export const MarkupOverlay: FC<MarkupOverlayProps> = (props) => {
             y1={0}
             x2={margins.left}
             y2={height}
-            strokeWidth={STROKE_WIDTH}
-            vectorEffect="non-scaling-stroke"
           />
 
           <line
@@ -132,72 +127,53 @@ export const MarkupOverlay: FC<MarkupOverlayProps> = (props) => {
             y1={0}
             x2={width - margins.right}
             y2={height}
-            strokeWidth={STROKE_WIDTH}
-            vectorEffect="non-scaling-stroke"
           />
-        </g>
+        </MarkupStroke>
       ) : null}
 
       {layers.marginLine && marginLineX !== null ? (
-        <g
+        <MarkupStroke
           data-layer="marginLine"
           clipPath={`url(#${clipId})`}
-          className="fill-none stroke-danger"
+          fill="none"
+          width={SINGLE_STROKE_WIDTH}
+          className="stroke-markup-margin-line"
         >
-          <line
-            x1={marginLineX}
-            y1={0}
-            x2={marginLineX}
-            y2={height}
-            strokeWidth={STROKE_WIDTH * 2}
-            vectorEffect="non-scaling-stroke"
-          />
-        </g>
+          <line x1={marginLineX} y1={0} x2={marginLineX} y2={height} />
+        </MarkupStroke>
       ) : null}
 
       {layers.outline ? (
-        <g data-layer="outline" className="fill-none stroke-focus">
-          <polygon
-            points={polygon}
-            strokeWidth={STROKE_WIDTH * 2}
-            vectorEffect="non-scaling-stroke"
-          />
-        </g>
+        <MarkupStroke
+          data-layer="outline"
+          fill="none"
+          width={SINGLE_STROKE_WIDTH}
+          className="stroke-markup-outline"
+        >
+          <polygon points={polygon} />
+        </MarkupStroke>
       ) : null}
 
       {layers.pins ? (
-        <g data-layer="pins" className="fill-focus stroke-focus">
+        <MarkupStroke
+          data-layer="pins"
+          width={SINGLE_STROKE_WIDTH}
+          className="fill-markup-pin stroke-markup-pin"
+        >
           {pins.map(({ left, right }, order) => {
             const label = `Закреплённая линия ${order + 1}`;
 
             return (
               <g key={label} role="img" aria-label={label}>
-                <line
-                  x1={left.x}
-                  y1={left.y}
-                  x2={right.x}
-                  y2={right.y}
-                  strokeWidth={STROKE_WIDTH * 2}
-                  vectorEffect="non-scaling-stroke"
-                />
+                <line x1={left.x} y1={left.y} x2={right.x} y2={right.y} />
 
-                <circle
-                  cx={left.x}
-                  cy={left.y}
-                  r={PIN_END_RADIUS / scale}
-                  vectorEffect="non-scaling-stroke"
-                />
+                <circle cx={left.x} cy={left.y} r={PIN_END_RADIUS / scale} />
 
-                <circle
-                  cx={right.x}
-                  cy={right.y}
-                  r={PIN_END_RADIUS / scale}
-                  vectorEffect="non-scaling-stroke"
-                />
+                <circle cx={right.x} cy={right.y} r={PIN_END_RADIUS / scale} />
               </g>
             );
           })}
-        </g>
+        </MarkupStroke>
       ) : null}
 
       {/*
