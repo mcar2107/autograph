@@ -64,5 +64,6 @@ export {
 } from './rulingPerspective';
 export { sampleRulingBend, sampleRulingBendSlope } from './sampleRulingBend';
 export { buildSheetRuling, MARGIN_FALLBACK_STEPS, resolveFirstLine } from './sheetRuling';
+export { snapMarginLine } from './snapMarginLine';
 export { snapToMarginLine, snapToRulingLine } from './snapToRulingLine';
 export { synthesizeLighting } from './synthesizeLighting';

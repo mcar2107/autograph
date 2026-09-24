@@ -9,7 +9,7 @@ import {
   lineCoordinateAt,
   lineHeightAt,
   lineHeightScaleAt,
-  snapToMarginLine,
+  snapMarginLine,
 } from '../../../../../lib/paper';
 import { buildMarginGuides, toOutlineBox } from '../MarkupOverlay/markupGeometry';
 
@@ -271,7 +271,7 @@ export const snapMarginLineX = (
     return x;
   }
 
-  const snapped = snapToMarginLine(image, point, step);
+  const snapped = snapMarginLine(image, point, step);
 
   return snapped ? snapped.x : x;
 };
