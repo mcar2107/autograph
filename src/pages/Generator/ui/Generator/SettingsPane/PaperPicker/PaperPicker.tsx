@@ -121,7 +121,7 @@ export const PaperPicker: FC = () => {
       return;
     }
 
-    void sheetImport.add(file, { family: activeFamily, isBlank: false });
+    void sheetImport.add(file, { family: activeFamily });
   };
 
   return (

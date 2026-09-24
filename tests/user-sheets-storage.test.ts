@@ -323,6 +323,44 @@ describe('свои листы в IndexedDB', () => {
     ]);
   });
 
+  it('пять снимков с телефона по 4 МБ переживают перезагрузку все', async () => {
+    const photoSize = 4 * 1024 * 1024;
+    const photo = `data:image/jpeg;base64,${Buffer.alloc(photoSize, 0x5a).toString('base64')}`;
+    const ids = ['user-1', 'user-2', 'user-3', 'user-4', 'user-5'];
+    const storage = await reloadStorage();
+
+    for (const id of ids) {
+      const record = buildRecord(id);
+
+      expect(
+        await storage.writeUserSheet({
+          ...record,
+          sheet: { ...record.sheet, src: photo },
+        })
+      ).toBe(true);
+    }
+
+    const createUrl = vi.spyOn(URL, 'createObjectURL');
+    const sheets = await (await reloadStorage()).readUserSheets();
+    const urlFiles = createUrl.mock.calls.reduce<Map<string, Blob>>(
+      (acc, [file], index) => {
+        const url = createUrl.mock.results[index]?.value;
+
+        if (file instanceof Blob && typeof url === 'string') {
+          acc.set(url, file);
+        }
+
+        return acc;
+      },
+      new Map()
+    );
+
+    expect(sheets.map(toSheetId)).toEqual(ids);
+    sheets.forEach(({ sheet }) => {
+      expect(urlFiles.get(sheet.src)?.size).toBe(photoSize);
+    });
+  });
+
   it('без IndexedDB запись сообщает об отказе, а не бросает', async () => {
     const storage = await reloadStorage();
 

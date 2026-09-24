@@ -175,6 +175,60 @@ describe('сохранение разметки своего листа', () => 
     expect(stored?.measuredRuling).toStrictEqual(record.sheet.ruling);
   });
 
+  it('перемер контура — свет, текстура и найденная разлиновка — переживает перечтение хранилища', async () => {
+    const record = buildRecord('user-1');
+    const outline = {
+      topLeft: { x: 40, y: 30 },
+      topRight: { x: 1170, y: 52 },
+      bottomRight: { x: 1150, y: 1580 },
+      bottomLeft: { x: 28, y: 1560 },
+    };
+    const ruling: SheetRuling = { ...record.sheet.ruling, outline };
+    const measuredRuling: SheetRuling = {
+      ...record.sheet.ruling,
+      step: 62,
+      firstLinePhase: 81,
+      outline,
+    };
+    const remeasure = {
+      lighting: {
+        gridWidth: 2,
+        gridHeight: 2,
+        values: [1, 0.92, 0.87, 0.81],
+        contrast: 0.19,
+        isUsable: true,
+      },
+      texture: {
+        src: `data:image/png;base64,${btoa('png-texture-bytes')}`,
+        width: 8,
+        height: 8,
+        amplitude: 0.05,
+      },
+      measuredRuling,
+      measuredKind: 'lined' as const,
+    };
+
+    store().addUserSheet(record);
+    store().saveSheetMarkup('user-1', {
+      ruling,
+      pins: buildEdit(record).pins,
+      kind: 'grid',
+      remeasure,
+    });
+
+    const [stored] = await readUserSheets();
+
+    expect(stored?.isAnalyzed).toBe(true);
+    expect(stored?.sheet.ruling.outline).toStrictEqual(outline);
+    expect(stored?.sheet.lighting).toStrictEqual(remeasure.lighting);
+    expect(stored?.sheet.texture).toStrictEqual({
+      ...remeasure.texture,
+      src: expect.stringMatching(/^blob:/),
+    });
+    expect(stored?.measuredRuling).toStrictEqual(measuredRuling);
+    expect(stored?.measuredKind).toBe('lined');
+  });
+
   it('смена вида переносит лист в семью этого вида вместе с выбором', async () => {
     const record = buildRecord('user-1');
 

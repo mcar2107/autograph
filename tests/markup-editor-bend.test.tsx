@@ -708,6 +708,76 @@ describe('инструмент «Изгиб»: действия', () => {
     });
   });
 
+  it('«Выпрямить» при трёх закреплённых линиях: линии строго прямые, у каждой булавки — её невязка', async () => {
+    const user = userEvent.setup();
+    const frame = { width: BENT_PHOTO.width, height: BENT_PHOTO.height };
+    const pins = buildBentPins(
+      [4, 12, 19],
+      [
+        [2, -1.5],
+        [-2, 2.5],
+        [1.5, -2],
+      ]
+    );
+    const editor = await openBendTool(
+      user,
+      buildPhotoRuling(BENT_PHOTO),
+      createSyntheticSheet(BENT_PHOTO),
+      frame,
+      pins
+    );
+
+    await user.click(
+      within(editor).getByRole('button', { name: 'Подогнать изгиб по фото' })
+    );
+
+    expect(readDraftRuling().bend).not.toBeNull();
+
+    await user.click(within(editor).getByRole('button', { name: 'Выпрямить' }));
+
+    const straight = readDraftRuling();
+
+    expect(straight.bend).toBeNull();
+
+    /**
+     * Прямая: середина отрезка лежит на линии между его концами.
+     */
+    ALL_LINES.forEach((line) => {
+      const left = toLineY(straight, line, 110);
+      const middle = toLineY(straight, line, 240);
+      const right = toLineY(straight, line, 370);
+
+      expect(Math.abs(middle - (left + right) / 2)).toBeLessThanOrEqual(
+        STILL_TOLERANCE_PX
+      );
+    });
+
+    const expected = pins.map(({ index, left, right }) => {
+      return Math.max(
+        ...[left, right].map(({ x, y }) => {
+          return Math.abs(toLineY(straight, index, x) - y);
+        })
+      );
+    });
+
+    /**
+     * Волна уводит прямую гребёнку от концов на пиксели: невязка видна, а не
+     * нулевая.
+     */
+    expect(Math.max(...expected)).toBeGreaterThan(POINT_TOLERANCE_PX);
+
+    await user.click(within(editor).getByRole('radio', { name: 'Линии' }));
+
+    expected.forEach((residual, order) => {
+      const row = within(editor).getByRole('listitem', {
+        name: `Закреплённая линия ${order + 1}`,
+      });
+      const [, shown = ''] = /невязка\s+([\d,]+)/.exec(row.textContent || '') || [];
+
+      expect(Number(shown.replace(',', '.'))).toBeCloseTo(residual, 1);
+    });
+  });
+
   it('без каналов фотографии подгонять изгиб не по чему', async () => {
     const user = userEvent.setup();
     const editor = await openBendTool(user, RULING, null);
@@ -724,9 +794,17 @@ describe('инструмент «Изгиб»: действия', () => {
     expect(refit).toHaveProperty('disabled', false);
   });
 
-  it('ровный снимок: изгиб не прослежен — сообщение, линии прежние', async () => {
+  it('ровный снимок: изгиб не прослежен — сообщение, ручной изгиб прежний', async () => {
     const user = userEvent.setup();
     const editor = await openBendTool(user, RULING, createSyntheticSheet(PHOTO));
+    const x = 300;
+    const grabbed = toLineY(RULING, 9, x);
+
+    dragLine(editor, 9, { x, y: grabbed }, grabbed + 8);
+
+    const bent = readDraftRuling();
+
+    expect(bent.bend).not.toBeNull();
 
     await user.click(
       within(editor).getByRole('button', { name: 'Подогнать изгиб по фото' })
@@ -735,6 +813,6 @@ describe('инструмент «Изгиб»: действия', () => {
     expect(within(editor).getByRole('status').textContent).toMatch(
       /проследить не удалось/
     );
-    expect(readDraftRuling()).toBe(RULING);
+    expect(readDraftRuling()).toBe(bent);
   });
 });

@@ -70,7 +70,7 @@ export const useSheetImport = (): SheetImport => {
   const [error, setError] = useState<string | null>(null);
 
   const add = async (file: File, options: SheetImportOptions) => {
-    const { family, isBlank } = options;
+    const { family } = options;
 
     setBusy(true);
     setError(null);
@@ -84,7 +84,7 @@ export const useSheetImport = (): SheetImport => {
        */
       const analysis = await analyzeSheetPhoto(
         { src, blob: file },
-        { kind: isBlank ? 'blank' : family.kind }
+        { kind: family.kind }
       );
       const image = analysis?.image || null;
       const measurement = analysis?.measurement || null;
@@ -105,7 +105,7 @@ export const useSheetImport = (): SheetImport => {
        */
       const ruling = buildSheetRuling(measurement?.source || MISSING_RULING, frame);
       const sheetId = nextSheetId();
-      const kind = resolveMeasuredKind(measurement, family.kind, isBlank);
+      const kind = resolveMeasuredKind(measurement, family.kind, family.kind === 'blank');
       const sheet = {
         id: sheetId,
         label: toSheetLabel(file.name),

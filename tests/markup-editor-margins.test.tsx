@@ -626,6 +626,120 @@ describe('инструмент «Поля»: направляющие', () => {
 });
 
 /**
+ * Разлиновка листа, снятого на столе: изгиб, перспектива и контур сразу.
+ * Правка полей не должна задеть ни одно из трёх — все они отсчитаны от
+ * гребёнки, которую поля не меняют.
+ *
+ * @returns разлиновка
+ */
+const buildCurvedRuling = (): SheetRuling => {
+  const columnCount = 4;
+  const rowCount = 20;
+
+  return buildSheetRuling(
+    {
+      step: PHOTO.step,
+      firstLinePhase: PHOTO.phase,
+      skewAngle: 1,
+      bend: {
+        columnOrigin: 120,
+        columnSpacing: 120,
+        columnCount,
+        rowOrigin: PHOTO.phase,
+        rowSpacing: PHOTO.step,
+        rowCount,
+        offsets: Array.from({ length: columnCount * rowCount }, (_, index) => {
+          return Math.round(300 * Math.sin(index)) / 100;
+        }),
+      },
+      perspective: {
+        originX: 300,
+        originY: 400,
+        convergenceX: 4e-5,
+        convergenceY: 6e-5,
+      },
+      outline: {
+        topLeft: { x: 12, y: 8 },
+        topRight: { x: 590, y: 14 },
+        bottomRight: { x: 586, y: 792 },
+        bottomLeft: { x: 9, y: 786 },
+      },
+      margins: PHOTO.margins,
+      marginLineX: null,
+      marginLineSide: null,
+    },
+    FRAME
+  );
+};
+
+/**
+ * Открывает «Точные значения» и набирает число в поле.
+ *
+ * @param user — сессия `userEvent`
+ * @param editor — диалог редактора
+ * @param name — подпись поля
+ * @param value — набираемое значение
+ */
+const typeExactValue = async (
+  user: User,
+  editor: HTMLElement,
+  name: string,
+  value: string
+) => {
+  if (!within(editor).queryByRole('textbox', { name })) {
+    await user.click(within(editor).getByRole('button', { name: 'Точные значения' }));
+  }
+
+  const field = within(editor).getByRole('textbox', { name });
+
+  await user.clear(field);
+  await user.type(field, `${value}{Enter}`);
+};
+
+describe('инструмент «Поля»: изгиб, перспектива и контур', () => {
+  it('правка полей ручками и числом сохраняет изгиб, перспективу и контур листа', async () => {
+    const user = userEvent.setup();
+    const ruling = buildCurvedRuling();
+    const editor = await openMarginsTool(user, ruling);
+    const { bend, perspective, outline } = readDraftRuling();
+
+    expect(bend).not.toBeNull();
+    expect(perspective).not.toBeNull();
+    expect(outline).not.toBeNull();
+
+    dragHandle(within(editor).getByRole('button', { name: 'Верхнее поле' }), {
+      x: 300,
+      y: PHOTO.phase + 3.4 * PHOTO.step,
+    });
+    dragHandle(within(editor).getByRole('button', { name: 'Левое поле' }), {
+      x: 140,
+      y: 400,
+    });
+    await typeExactValue(user, editor, 'Правое поле, px', '75');
+
+    const edited = readDraftRuling();
+
+    expect(edited.margins.top).not.toBe(ruling.margins.top);
+    expect(edited.margins.left).toBeCloseTo(140, 6);
+    expect(edited.margins.right).toBe(75);
+    expect(edited.bend).toBe(bend);
+    expect(edited.perspective).toBe(perspective);
+    expect(edited.outline).toBe(outline);
+
+    await save(user, editor);
+
+    const saved = useGeneratorStore.getState().userSheets.find(({ sheet }) => {
+      return sheet.id === SHEET.id;
+    })?.sheet.ruling;
+
+    expect(saved?.margins).toStrictEqual(edited.margins);
+    expect(saved?.bend).toStrictEqual(bend);
+    expect(saved?.perspective).toStrictEqual(perspective);
+    expect(saved?.outline).toStrictEqual(outline);
+  });
+});
+
+/**
  * Точки ломаной SVG из атрибута `points`.
  *
  * @param element — ломаная
