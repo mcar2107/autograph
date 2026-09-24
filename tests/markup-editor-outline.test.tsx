@@ -3,6 +3,7 @@
  */
 import {
   buildSheetRuling,
+  MARGIN_FALLBACK_STEPS,
   type PaperSheet,
   type SheetImageData,
   type SheetOutline,
@@ -356,6 +357,111 @@ describe('инструмент «Контур»', () => {
     });
     expect(useMarkupEditorStore.getState().draft?.ruling.mirrorOverride).toStrictEqual(
       mirrorOverride
+    );
+  });
+});
+
+/**
+ * Шаг чистого листа, заданный руками: не совпадает с шагом линий на снимке,
+ * поэтому поиск разлиновки, ошибочно запущенный на чистом листе, виден по
+ * шагу.
+ */
+const BLANK_STEP = RULED_PHOTO.step * 1.5;
+
+/**
+ * Открывает редактор на чистом листе с инструментом «Контур».
+ *
+ * @param margins — поля листа, px фотографии
+ * @returns диалог редактора
+ */
+const openBlankOutlineTool = async (
+  margins: PaperSheet['ruling']['margins']
+): Promise<HTMLElement> => {
+  const ruling = buildSheetRuling(
+    {
+      step: BLANK_STEP,
+      firstLinePhase: 5,
+      skewAngle: 0,
+      margins,
+      marginLineX: null,
+      marginLineSide: null,
+    },
+    FRAME
+  );
+  const record = buildUserSheetRecord({
+    familyId: 'lined',
+    sheet: { ...SHEET, ruling },
+    kind: 'blank',
+  });
+
+  useGeneratorStore.getState().addUserSheet(record);
+  useMarkupEditorStore.getState().open(record);
+  render(<SheetMarkupEditor />);
+
+  const editor = await screen.findByRole('dialog');
+
+  await userEvent.setup().click(within(editor).getByRole('radio', { name: 'Контур' }));
+
+  return editor;
+};
+
+describe('перемер контура чистого листа', () => {
+  it('меняет контур и свет, а шаг, фазу и поля внутри листа оставляет заданными руками', async () => {
+    decodeSheetImage.mockResolvedValue(createSyntheticSheet(RULED_PHOTO));
+
+    const margins = { top: 150, right: 120, bottom: 150, left: 150 };
+    const editor = await openBlankOutlineTool(margins);
+
+    dragHandle(getCorner(editor, 'Левый верхний угол листа'), { x: 20, y: 30 });
+
+    await waitFor(() => {
+      expect(useMarkupEditorStore.getState().draft?.remeasure).not.toBeNull();
+    });
+
+    const draft = useMarkupEditorStore.getState().draft;
+
+    expect(draft?.ruling.outline?.topLeft).toStrictEqual({ x: 20, y: 30 });
+    expect(draft?.ruling).toMatchObject({
+      step: BLANK_STEP,
+      firstLinePhase: 5,
+      skewAngle: 0,
+      margins,
+    });
+    expect(draft?.remeasure?.measuredKind).toBe('blank');
+  });
+
+  it('поля, оставшиеся от прежнего контура, уходят внутрь нового', async () => {
+    decodeSheetImage.mockResolvedValue(createSyntheticSheet(RULED_PHOTO));
+
+    const editor = await openBlankOutlineTool({ top: 0, right: 0, bottom: 0, left: 0 });
+    const topLeft = { x: 80, y: 90 };
+    const bottomRight = { x: FRAME.width - 70, y: FRAME.height - 60 };
+
+    dragHandle(getCorner(editor, 'Левый верхний угол листа'), topLeft);
+
+    await waitFor(() => {
+      expect(useMarkupEditorStore.getState().draft?.remeasure).not.toBeNull();
+    });
+
+    dragHandle(getCorner(editor, 'Правый нижний угол листа'), bottomRight);
+
+    await waitFor(() => {
+      expect(
+        useMarkupEditorStore.getState().draft?.ruling.outline?.bottomRight
+      ).toStrictEqual(bottomRight);
+    });
+
+    const ruling = useMarkupEditorStore.getState().draft?.ruling;
+    const fallback = BLANK_STEP * MARGIN_FALLBACK_STEPS;
+
+    expect(ruling?.step).toBe(BLANK_STEP);
+    expect(ruling?.margins.top).toBeGreaterThanOrEqual(topLeft.y + fallback);
+    expect(ruling?.margins.left).toBeGreaterThanOrEqual(topLeft.x + fallback);
+    expect(ruling?.margins.bottom).toBeGreaterThanOrEqual(
+      FRAME.height - bottomRight.y + fallback
+    );
+    expect(ruling?.margins.right).toBeGreaterThanOrEqual(
+      FRAME.width - bottomRight.x + fallback
     );
   });
 });

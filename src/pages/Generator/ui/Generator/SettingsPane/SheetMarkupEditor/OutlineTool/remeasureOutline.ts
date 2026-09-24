@@ -3,9 +3,9 @@ import { buildSheetRuling, deriveRulingPins } from '../../../../../lib/paper';
 import { useMarkupEditorStore } from '../../../../../model/useMarkupEditorStore';
 import { resolveMeasuredKind } from '../../../../../model/userSheetsStorageRecord';
 import { analyzeSheetPhoto } from '../../useSheetImport';
-import { rebuildBlankRuling } from '../../useSheetRemeasure';
 
 import type { OutlineRemeasureStatus } from './OutlineTool.types';
+import { rebuildBlankRuling } from './rebuildBlankRuling';
 
 /**
  * Номер последнего запрошенного перемера. Живёт вне инструмента: перемер

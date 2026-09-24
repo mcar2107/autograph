@@ -198,3 +198,12 @@ question: остаток у края области после достройк�
 Живые 26: цвет — 76/84 на черте ±0,5 px, 8/84 в 0,51…0,63 px, на вертикаль 0; без черты не притягивает 456/456 (яркость — 328 уводов). Аудитор: ±0,5 px — критерий синтетики, спека требует «притягивать к черте»; не critical.
 Аудит: ok с первого круга. Детектор и profiles.json не тронуты.
 Долг/поправка: окно фона max(3, round(step)) повторяет закрытую toBackgroundWindow (detectRuling.ts:1083) — разойдётся молча, если #10 поменяет окно; утверждение журнала G8 «яркость уводит на вертикали на 10–45 px» на живых при отпуске в 0,2 шага не подтвердилось (0,5…2,1 px; увод на клетку — в полосах без черты), обоснование D7 — точность и отказ в полосах без черты.
+
+### G11 · Stories, документация, финальный гейт
+
+4.12: витрина SheetMarkupEditor.stories (grid[2], seed 7: Lines, Outline, Bend, Margins, MirrorPage); переснято 7 эталонов после F1, новых 10; MeasureSheetWorker.stories — в SKIPPED; test:visual 115/115 в docker (OrbStack).
+7.3: CLAUDE.md переписан (п.3 «Редактор разметки», «Ассеты» — IndexedDB/kind/measuredKind/перенос, sheetKinds, mirrorOverride, воркер разбора, D12); упоминаний SheetDialog/isBlank/localStorage для листов нет (кроме переноса). Хвосты: мёртвый хук useSheetRemeasure удалён, rebuildBlankRuling → OutlineTool/, sheet-dialog.test → sheet-import-editor.test.
+7.4: lint, npm test (штатный), test:pwa, test:stories, test:visual — зелёные; версия 0.4.0 → 0.5.0.
+7.5: 26 живых, Chromium, 3 прогона, медиана: сумма 87,1 → 92,4 с (+6,2 %), на снимок +3,1…+9,6 % (до +0,30 с), медиана снимка 3,51 → 3,73 с — критерий не нарушен. Отступление: «до» — декодер из 6bd473b + нынешние measureSheetPhoto/encodeTextureMap (не изменены с базы, git diff пуст) в том же процессе; обе стороны с readFileAsDataUrl; «после» — путь analyzeSheetPhoto → воркер. Скрипт замера не сохранён — числа не воспроизводимы.
+Аудит: ok с первого круга.
+Долг: ветка remeasure в saveSheetMarkup (запись lighting/texture/measuredKind в IndexedDB) проверяется только в памяти — теста перечтения хранилища после перемера контура нет; CLAUDE.md «Прочитанный лист считается разобранным» неточно для ветки без IndexedDB (userSheetsStorageLegacy.ts:174).

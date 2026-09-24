@@ -18,8 +18,9 @@ document.head.append(style);
 
 /**
  * Stories, снимать которые незачем: это функциональные пробы на настоящем
- * измерителе — разбивка по строкам и попадание базовых линий на разлиновку, —
- * а не витрина. Оформления в них нет, и эталон ничего не сторожит.
+ * измерителе и в настоящем воркере — разбивка по строкам, попадание базовых
+ * линий на разлиновку, разбор снимка в воркере, — а не витрина. Оформления в
+ * них нет, и эталон ничего не сторожит.
  */
 const SKIPPED_STORY_FILES = [
   'RealLayout.stories.tsx',
@@ -27,6 +28,7 @@ const SKIPPED_STORY_FILES = [
   'RasterRuling.stories.tsx',
   'MarkupOverlayFit.stories.tsx',
   'LinesTool.stories.tsx',
+  'MeasureSheetWorker.stories.tsx',
 ];
 
 /**
