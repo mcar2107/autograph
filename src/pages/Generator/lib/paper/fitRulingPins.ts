@@ -9,6 +9,7 @@ import type {
 import { resolveSheetBounds } from './resolveSheetBounds';
 import { lineCoordinateAt, lineHeightAt } from './rulingPerspective';
 import { sampleRulingBend } from './sampleRulingBend';
+import { reanchorSideEdges } from './sideEdges';
 
 const DEGREES_IN_RADIAN = 180 / Math.PI;
 
@@ -538,7 +539,9 @@ const measurePinResiduals = (ruling: SheetRuling, pins: RulingPin[]): number[] =
  *
  * Изгиб у подогнанной разлиновки снят: его сетка отсчитана от прежней гребёнки
  * и после смены шага или наклона легла бы мимо линий; заново он подгоняется по
- * фотографии. Поля, линия поля, контур и поля зеркала остаются как были.
+ * фотографии. Боковые поля, линия поля и поля зеркала при смене наклона
+ * переписываются так, что на фотографии остаются на месте; верхнее и нижнее
+ * поля и контур остаются как были.
  *
  * @param ruling — текущая разлиновка листа
  * @param pins — булавки в пикселях кадра
@@ -607,10 +610,13 @@ export const fitRulingPins = (
     return { status: 'beyondHorizon', residuals: measurePinResiduals(fitted, pins) };
   }
 
-  const result =
+  const result = reanchorSideEdges(
     measurePerspectiveDeviation(fitted, frame) < NEGLIGIBLE_PERSPECTIVE_PX
       ? { ...fitted, perspective: null }
-      : fitted;
+      : fitted,
+    ruling.skewAngle,
+    frame
+  );
 
   return {
     status: 'fitted',

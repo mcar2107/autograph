@@ -1,6 +1,7 @@
 import type {
   MarginLineSide,
   PaperMargins,
+  RulingMirrorOverride,
   RulingProjection,
   RulingSideSlant,
   SheetFrame,
@@ -28,6 +29,20 @@ const MIN_CROSSING_DENOMINATOR = 1e-9;
  * остаётся перпендикуляром к строкам через первую точку.
  */
 const MIN_ENDS_SPAN = 1e-6;
+
+/**
+ * Изменение наклона, меньше которого границы блока не пересчитываются,
+ * градусы. Подгонка через булавки, стоящие на линиях, возвращает прежний
+ * наклон с погрешностью арктангенса; пересчёт от неё сдвинул бы границы на
+ * стомиллионные доли пикселя, но превратил бы поля без наклона в наклонённые,
+ * и раскладка ушла бы с прежнего пути.
+ */
+const NEGLIGIBLE_SKEW_CHANGE = 1e-9;
+
+/**
+ * Боковые границы блока в порядке пересчёта.
+ */
+const SIDE_EDGES: SideEdge[] = ['left', 'right', 'marginLine'];
 
 /**
  * Синус и косинус наклона разлиновки.
@@ -385,4 +400,126 @@ export const toSideEdgeEnds = (
   const slope = (b.x - a.x) / (b.v - a.v);
 
   return { top: a.x - slope * a.v, bottom: a.x + slope * (height - a.v) };
+};
+
+/**
+ * Разлиновка, у которой боковые границы страницы, записанные при наклоне
+ * `fromAngle`, переписаны под её собственный наклон так, что на фотографии
+ * они остались на месте.
+ *
+ * @param ruling — разлиновка с новым наклоном и прежними концами
+ * @param fromAngle — наклон, при котором концы записаны, градусы
+ * @param frame — кадр фотографии
+ * @returns разлиновка с переписанными концами
+ */
+const reanchorPageEdges = (
+  ruling: SheetRuling,
+  fromAngle: number,
+  frame: SheetFrame
+): SheetRuling => {
+  const { height } = frame;
+
+  return SIDE_EDGES.reduce((current, edge) => {
+    const ends = readSideEdge(current, frame, edge);
+
+    if (!ends) {
+      return current;
+    }
+
+    const top = sideEdgePointAt(fromAngle, ends, height, 0);
+    const bottom = sideEdgePointAt(fromAngle, ends, height, height);
+
+    return writeSideEdge(
+      current,
+      frame,
+      edge,
+      toSideEdgeEnds(current.skewAngle, height, top, bottom)
+    );
+  }, ruling);
+};
+
+/**
+ * Поля и линия поля зеркальной страницы после смены наклона листа с
+ * `fromAngle` на `toAngle`, стоящие на отражённой фотографии там же, где
+ * стояли. Они записаны в системе блока отражённого кадра — с обратным
+ * наклоном.
+ *
+ * @param override — поля зеркала; `null` — зеркало отражает оригинал
+ * @param fromAngle — наклон листа, при котором они записаны, градусы
+ * @param toAngle — новый наклон листа, градусы
+ * @param frame — кадр фотографии
+ * @returns поля зеркала под новый наклон; наклон не изменился — те же
+ */
+export const reanchorMirrorOverride = (
+  override: RulingMirrorOverride | null,
+  fromAngle: number,
+  toAngle: number,
+  frame: SheetFrame
+): RulingMirrorOverride | null => {
+  if (!override || !(Math.abs(toAngle - fromAngle) >= NEGLIGIBLE_SKEW_CHANGE)) {
+    return override;
+  }
+
+  const { marginLeft, marginRight, marginLineX, marginLineSide, sideSlant } = override;
+  const page = reanchorPageEdges(
+    {
+      step: 0,
+      firstLinePhase: 0,
+      skewAngle: -toAngle,
+      margins: { top: 0, right: marginRight, bottom: 0, left: marginLeft },
+      marginLineX,
+      marginLineSide,
+      sideSlant,
+      bend: null,
+      perspective: null,
+      outline: null,
+      mirrorOverride: null,
+    },
+    -fromAngle,
+    frame
+  );
+
+  return {
+    marginLineX: page.marginLineX,
+    marginLineSide,
+    marginLeft: page.margins.left,
+    marginRight: page.margins.right,
+    sideSlant: page.sideSlant,
+  };
+};
+
+/**
+ * Разлиновка после смены наклона, у которой боковые поля, линия поля и поля
+ * зеркала стоят на фотографии там же, где стояли при наклоне `fromAngle`.
+ *
+ * Концы границ записаны в системе блока, повёрнутой на наклон вокруг левого
+ * верхнего угла кадра: при новом наклоне те же числа повернули бы границы
+ * вокруг него, и к низу кадра они уехали бы на высоту, умноженную на
+ * изменение угла. Граница, шедшая перпендикулярно прежним строкам, к новым
+ * строкам наклонена, и её концы у низа кадра записываются отдельно. Верхнее и
+ * нижнее поля — высоты у левого края кадра, их смена наклона не трогает.
+ *
+ * @param ruling — разлиновка с новым наклоном и прежними концами границ
+ * @param fromAngle — наклон, при котором концы записаны, градусы
+ * @param frame — кадр фотографии
+ * @returns разлиновка с концами под новый наклон; наклон не изменился — та же
+ */
+export const reanchorSideEdges = (
+  ruling: SheetRuling,
+  fromAngle: number,
+  frame: SheetFrame
+): SheetRuling => {
+  if (!(Math.abs(ruling.skewAngle - fromAngle) >= NEGLIGIBLE_SKEW_CHANGE)) {
+    return ruling;
+  }
+
+  return {
+    ...reanchorPageEdges(ruling, fromAngle, frame),
+    mirrorOverride: reanchorMirrorOverride(
+      ruling.mirrorOverride,
+      fromAngle,
+      ruling.skewAngle,
+      frame
+    ),
+  };
 };

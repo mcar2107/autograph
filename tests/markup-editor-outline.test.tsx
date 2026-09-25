@@ -4,10 +4,14 @@
 import {
   buildSheetRuling,
   MARGIN_FALLBACK_STEPS,
+  mirrorSheetRuling,
   type PaperSheet,
+  readSideEdge,
   type SheetImageData,
   type SheetOutline,
   type SheetPoint,
+  type SheetRuling,
+  sideEdgePointAtHeight,
 } from '@pages/Generator/lib/paper';
 import { clearLayoutCache } from '@pages/Generator/model/measureLayout';
 import {
@@ -329,7 +333,7 @@ describe('инструмент «Контур»', () => {
     expect(saved?.kind).toBe('lined');
   });
 
-  it('перемер оставляет заданные отдельно линию поля и поля зеркальной страницы', async () => {
+  it('перемер оставляет заданные отдельно линию поля и поля зеркальной страницы на месте на фото', async () => {
     decodeSheetImage.mockResolvedValue(createSyntheticSheet(RULED_PHOTO));
 
     const mirrorOverride = {
@@ -339,10 +343,37 @@ describe('инструмент «Контур»', () => {
       marginRight: 90,
       sideSlant: null,
     };
+
+    /**
+     * Наклон до перемера далёк от найденного на снимке: поля зеркала,
+     * оставленные теми же числами, повернулись бы вокруг угла кадра.
+     */
+    const before: SheetRuling = { ...MANUAL_RULING, skewAngle: 1.5, mirrorOverride };
     const record = buildUserSheetRecord({
       familyId: 'lined',
-      sheet: { ...SHEET, ruling: { ...MANUAL_RULING, mirrorOverride } },
+      sheet: { ...SHEET, ruling: before },
     });
+
+    /**
+     * Столбцы боковых границ зеркальной страницы у верха, в середине и у низа
+     * кадра.
+     *
+     * @param ruling — разлиновка листа
+     * @returns столбцы, px отражённой фотографии
+     */
+    const readMirrorColumns = (ruling: SheetRuling): number[] => {
+      const page = mirrorSheetRuling(ruling, FRAME);
+
+      return (['left', 'right', 'marginLine'] as const).flatMap((edge) => {
+        const ends = readSideEdge(page, FRAME, edge);
+
+        return [0, FRAME.height / 2, FRAME.height].map((y) => {
+          return ends
+            ? sideEdgePointAtHeight(page.skewAngle, ends, FRAME.height, y).x
+            : Number.NaN;
+        });
+      });
+    };
 
     useGeneratorStore.getState().addUserSheet(record);
     useMarkupEditorStore.getState().open(record);
@@ -356,8 +387,19 @@ describe('инструмент «Контур»', () => {
     await waitFor(() => {
       expect(useMarkupEditorStore.getState().draft?.remeasure).not.toBeNull();
     });
-    expect(useMarkupEditorStore.getState().draft?.ruling.mirrorOverride).toStrictEqual(
-      mirrorOverride
+
+    const after = useMarkupEditorStore.getState().draft?.ruling;
+
+    if (!after) {
+      throw new Error('Черновик пропал');
+    }
+
+    expect(Math.abs(after.skewAngle - before.skewAngle)).toBeGreaterThan(1);
+    expect(after.mirrorOverride?.marginLineSide).toBe('right');
+    expect(readMirrorColumns(after)).toStrictEqual(
+      readMirrorColumns(before).map((x) => {
+        return expect.closeTo(x, 6);
+      })
     );
   });
 });

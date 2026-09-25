@@ -1,5 +1,9 @@
 import type { SheetOutline } from '../../../../../lib/paper';
-import { buildSheetRuling, deriveRulingPins } from '../../../../../lib/paper';
+import {
+  buildSheetRuling,
+  deriveRulingPins,
+  reanchorMirrorOverride,
+} from '../../../../../lib/paper';
 import { useMarkupEditorStore } from '../../../../../model/useMarkupEditorStore';
 import { resolveMeasuredKind } from '../../../../../model/userSheetsStorageRecord';
 import { analyzeSheetPhoto } from '../../useSheetImport';
@@ -63,7 +67,20 @@ export const remeasureOutline = async (
     const measured = isBlank
       ? rebuildBlankRuling(latest.ruling, measurement.outline, frame)
       : buildSheetRuling(measurement.source, frame);
-    const ruling = { ...measured, mirrorOverride: latest.ruling.mirrorOverride };
+
+    /**
+     * Поля зеркала заданы руками, и автомат их не перемеряет: при новом
+     * наклоне листа они переписываются так, чтобы на фото остаться на месте.
+     */
+    const ruling = {
+      ...measured,
+      mirrorOverride: reanchorMirrorOverride(
+        latest.ruling.mirrorOverride,
+        latest.ruling.skewAngle,
+        measured.skewAngle,
+        frame
+      ),
+    };
 
     commit({
       ruling,

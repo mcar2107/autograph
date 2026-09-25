@@ -71,6 +71,8 @@ export {
   readMarginEnds,
   readMarginLineEnds,
   readSideEdge,
+  reanchorMirrorOverride,
+  reanchorSideEdges,
   resolveSideEdgeAt,
   sideEdgePointAt,
   sideEdgePointAtHeight,

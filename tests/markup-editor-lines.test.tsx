@@ -5,12 +5,14 @@ import {
   buildSheetRuling,
   lineHeightAt,
   type PaperSheet,
+  readSideEdge,
   type RulingBend,
   type RulingPin,
   sampleRulingBend,
   type SheetImageData,
   type SheetPoint,
   type SheetRuling,
+  sideEdgePointAtHeight,
 } from '@pages/Generator/lib/paper';
 import { selectCalibrationRuling } from '@pages/Generator/model/geometrySelectors';
 import { clearLayoutCache } from '@pages/Generator/model/measureLayout';
@@ -425,6 +427,45 @@ describe('инструмент «Линии»: булавки', () => {
     expect(
       within(editor).getByRole('listitem', { name: 'Закреплённая линия 2' }).textContent
     ).toMatch(/невязка 0\s?px/);
+  });
+
+  it('перетащенный конец и число шагов меняют наклон, а поля и линия поля на фото на месте', async () => {
+    const user = userEvent.setup();
+
+    /**
+     * Столбцы боковых полей и линии поля у верха, в середине и у низа кадра.
+     *
+     * @param ruling — разлиновка листа
+     * @returns столбцы, px фотографии
+     */
+    const readEdgeColumns = (ruling: SheetRuling): number[] => {
+      return (['left', 'right', 'marginLine'] as const).flatMap((edge) => {
+        const ends = readSideEdge(ruling, FRAME, edge);
+
+        return [0, FRAME.height / 2, FRAME.height].map((y) => {
+          return ends
+            ? sideEdgePointAtHeight(ruling.skewAngle, ends, FRAME.height, y).x
+            : Number.NaN;
+        });
+      });
+    };
+
+    const editor = await openEditor(RULING, PINS, null);
+    const before = readEdgeColumns(readDraftRuling());
+
+    dragHandle(getPinEnd(editor, 2, 'правый'), { x: PIN_RIGHT, y: lineY(13) - 20 });
+
+    expect(Math.abs(readDraftRuling().skewAngle - RULING.skewAngle)).toBeGreaterThan(1);
+
+    await user.click(
+      within(editor).getByRole('button', { name: 'Больше шагов между линиями 1 и 2' })
+    );
+
+    expect(readEdgeColumns(readDraftRuling())).toStrictEqual(
+      before.map((x) => {
+        return expect.closeTo(x, 6);
+      })
+    );
   });
 
   it('магнит ставит отпущенный конец на линию фотографии', async () => {

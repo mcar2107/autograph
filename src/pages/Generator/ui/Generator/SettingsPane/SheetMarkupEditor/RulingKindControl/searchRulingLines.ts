@@ -1,5 +1,9 @@
 import type { RulingKind } from '../../../../../lib/paper';
-import { buildSheetRuling, deriveRulingPins } from '../../../../../lib/paper';
+import {
+  buildSheetRuling,
+  deriveRulingPins,
+  reanchorMirrorOverride,
+} from '../../../../../lib/paper';
 import { useMarkupEditorStore } from '../../../../../model/useMarkupEditorStore';
 import { analyzeSheetPhoto } from '../../useSheetImport';
 
@@ -79,9 +83,20 @@ export const searchRulingLines = async (
       return 'notFound';
     }
 
+    const measured = buildSheetRuling(measurement.source, frame);
+
+    /**
+     * Поля зеркала заданы руками, и автомат их не перемеряет: при новом
+     * наклоне листа они переписываются так, чтобы на фото остаться на месте.
+     */
     const ruling = {
-      ...buildSheetRuling(measurement.source, frame),
-      mirrorOverride: latest.ruling.mirrorOverride,
+      ...measured,
+      mirrorOverride: reanchorMirrorOverride(
+        latest.ruling.mirrorOverride,
+        latest.ruling.skewAngle,
+        measured.skewAngle,
+        frame
+      ),
     };
 
     commit({ kind, ruling, pins: deriveRulingPins(ruling, frame) });

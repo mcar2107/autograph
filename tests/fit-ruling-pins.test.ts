@@ -9,6 +9,9 @@ import {
   fitRulingPins,
   lineCoordinateAt,
   lineHeightAt,
+  mirrorSheetRuling,
+  readSideEdge,
+  sideEdgePointAtHeight,
 } from '@pages/Generator/lib/paper';
 import { describe, expect, it } from 'vitest';
 
@@ -23,8 +26,8 @@ const DEGREES_IN_RADIAN = 180 / Math.PI;
 const PIN_TOLERANCE_PX = 1;
 
 /**
- * Разлиновка, от которой стартует правка: поля, линия поля и контур должны
- * пережить подгонку без изменений.
+ * Разлиновка, от которой стартует правка: верхнее и нижнее поля и контур
+ * должны пережить подгонку без изменений.
  */
 const BASE_RULING: SheetRuling = {
   step: 52,
@@ -111,9 +114,9 @@ describe('две булавки ровного листа', () => {
     ]);
   });
 
-  it('поля, линия поля и контур не меняются, изгиб снят', () => {
-    expect(ruling.margins).toStrictEqual(BASE_RULING.margins);
-    expect(ruling.marginLineX).toBe(BASE_RULING.marginLineX);
+  it('верхнее и нижнее поля, сторона линии поля и контур не меняются, изгиб снят', () => {
+    expect(ruling.margins.top).toBe(BASE_RULING.margins.top);
+    expect(ruling.margins.bottom).toBe(BASE_RULING.margins.bottom);
     expect(ruling.marginLineSide).toBe(BASE_RULING.marginLineSide);
     expect(ruling.outline).toBe(BASE_RULING.outline);
     expect(ruling.bend).toBeNull();
@@ -409,5 +412,155 @@ describe('начальные булавки', () => {
       [0, 1500, 1500],
     ]);
     expect(fitRulingPins(BASE_RULING, pins, FRAME).status).toBe('degenerate');
+  });
+});
+
+describe('боковые границы блока при смене наклона', () => {
+  /**
+   * Допуск «граница на фото на месте», px.
+   */
+  const EDGE_TOLERANCE_PX = 0.5;
+
+  /**
+   * Строки фотографии, в которых сверяется положение границ: концы у верха и
+   * низа кадра и середина.
+   */
+  const ROWS = [0, FRAME.height / 2, FRAME.height];
+
+  /**
+   * Лист с наклонёнными полями и линией поля и со своими полями у зеркала:
+   * пересчёт обязан сохранить на фото оба конца каждой границы.
+   */
+  const SLANTED_RULING: SheetRuling = {
+    ...BASE_RULING,
+    sideSlant: { left: 210, right: 95, marginLineX: 196 },
+    mirrorOverride: {
+      marginLineX: 1450,
+      marginLineSide: 'right',
+      marginLeft: 130,
+      marginRight: 170,
+      sideSlant: { left: 150, right: 160, marginLineX: 1436 },
+    },
+  };
+
+  /**
+   * Столбцы боковых границ страницы в строках `ROWS`: левое и правое поля,
+   * затем линия поля.
+   *
+   * @param ruling — разлиновка страницы
+   * @returns столбцы, px фотографии
+   */
+  const readEdgeColumns = (ruling: SheetRuling): number[] => {
+    return (['left', 'right', 'marginLine'] as const).flatMap((edge) => {
+      const ends = readSideEdge(ruling, FRAME, edge);
+
+      return ends
+        ? ROWS.map((y) => {
+            return sideEdgePointAtHeight(ruling.skewAngle, ends, FRAME.height, y).x;
+          })
+        : [];
+    });
+  };
+
+  /**
+   * Наибольший сдвиг боковых границ на фото и на зеркальной странице.
+   *
+   * @param before — разлиновка до правки
+   * @param after — разлиновка после правки
+   * @returns сдвиг страницы и зеркала, px
+   */
+  const measureEdgeShift = (before: SheetRuling, after: SheetRuling): number[] => {
+    return [
+      [before, after],
+      [mirrorSheetRuling(before, FRAME), mirrorSheetRuling(after, FRAME)],
+    ].map(([from, to]) => {
+      const start = readEdgeColumns(from || before);
+      const end = readEdgeColumns(to || after);
+
+      expect(end).toHaveLength(start.length);
+
+      return start.reduce((largest, x, index) => {
+        return Math.max(largest, Math.abs((end[index] || 0) - x));
+      }, 0);
+    });
+  };
+
+  it('ровный лист: наклон меняется на 1,2°, поля, линия поля и поля зеркала на фото на месте', () => {
+    const tangent = Math.tan(0.8 / DEGREES_IN_RADIAN);
+    const pins: RulingPin[] = [3, 45].map((index) => {
+      return {
+        index,
+        left: { x: 150, y: 25 + index * 40 + 150 * tangent },
+        right: { x: 1450, y: 25 + index * 40 + 1450 * tangent },
+      };
+    });
+    const ruling = expectFitted(fitRulingPins(SLANTED_RULING, pins, FRAME));
+
+    expect(ruling.skewAngle).toBeCloseTo(0.8, 9);
+    expect(measureEdgeShift(SLANTED_RULING, ruling)).toStrictEqual([
+      expect.closeTo(0, 6),
+      expect.closeTo(0, 6),
+    ]);
+    expect(Math.max(...measureEdgeShift(SLANTED_RULING, ruling))).toBeLessThan(
+      EDGE_TOLERANCE_PX
+    );
+  });
+
+  it('ровный лист с полями без наклона: границы остаются на месте и наклоняются к строкам', () => {
+    const tangent = Math.tan(0.8 / DEGREES_IN_RADIAN);
+    const pins: RulingPin[] = [3, 45].map((index) => {
+      return {
+        index,
+        left: { x: 150, y: 25 + index * 40 + 150 * tangent },
+        right: { x: 1450, y: 25 + index * 40 + 1450 * tangent },
+      };
+    });
+    const ruling = expectFitted(fitRulingPins(BASE_RULING, pins, FRAME));
+    const [pageShift = Number.NaN, mirrorShift = Number.NaN] = measureEdgeShift(
+      BASE_RULING,
+      ruling
+    );
+
+    expect(pageShift).toBeLessThan(1e-6);
+    expect(mirrorShift).toBeLessThan(EDGE_TOLERANCE_PX);
+    expect(ruling.sideSlant).not.toBeNull();
+  });
+
+  it('лист с перспективой: сдвиг конца булавки на 30 px не двигает границы на фото и на зеркале', () => {
+    const start: SheetRuling = {
+      ...SLANTED_RULING,
+      skewAngle: 0.3,
+      perspective: {
+        originX: 800,
+        originY: 1000,
+        convergenceX: 1e-5,
+        convergenceY: 3e-5,
+      },
+    };
+    const pins = deriveRulingPins(start, FRAME);
+    const [head, ...rest] = pins;
+
+    expect(pins).toHaveLength(3);
+
+    if (!head) {
+      throw new Error('Нет начальных булавок');
+    }
+
+    const moved = [{ ...head, left: { ...head.left, y: head.left.y - 30 } }, ...rest];
+    const ruling = expectFitted(fitRulingPins(start, moved, FRAME));
+
+    expect(ruling.perspective).not.toBeNull();
+    expect(Math.abs(ruling.skewAngle - start.skewAngle)).toBeGreaterThan(0.1);
+    expect(Math.max(...measureEdgeShift(start, ruling))).toBeLessThan(1e-6);
+  });
+
+  it('наклон не меняется — поля, линия поля и поля зеркала те же до бита', () => {
+    const pins = deriveRulingPins(SLANTED_RULING, FRAME);
+    const ruling = expectFitted(fitRulingPins(SLANTED_RULING, pins, FRAME));
+
+    expect(ruling.margins).toBe(SLANTED_RULING.margins);
+    expect(ruling.marginLineX).toBe(SLANTED_RULING.marginLineX);
+    expect(ruling.sideSlant).toBe(SLANTED_RULING.sideSlant);
+    expect(ruling.mirrorOverride).toBe(SLANTED_RULING.mirrorOverride);
   });
 });

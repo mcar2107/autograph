@@ -5,12 +5,15 @@ import { FALLBACK_FONT_METRICS } from '@pages/Generator/lib/measure/measureFontM
 import {
   buildSheetRuling,
   deriveRulingPins,
+  mirrorSheetRuling,
   type PaperSheet,
+  readSideEdge,
   type RulingKind,
   type RulingPin,
   type SheetImageData,
   type SheetPoint,
   type SheetRuling,
+  sideEdgePointAtHeight,
 } from '@pages/Generator/lib/paper';
 import { selectBlockGeometry } from '@pages/Generator/model/geometrySelectors';
 import { clearLayoutCache } from '@pages/Generator/model/measureLayout';
@@ -454,6 +457,71 @@ describe('вид разлиновки в редакторе', () => {
     expect(saved?.kind).toBe('lined');
     expect(saved?.sheet.ruling.step).toBeCloseTo(RULED_PHOTO.step, 1);
     expect(readRowStep()).toBeCloseTo(saved?.sheet.ruling.step || 0, 6);
+  });
+
+  it('найденные линии с другим наклоном не сдвигают на фото поля зеркальной страницы', async () => {
+    const user = userEvent.setup();
+    const frame = { width: RULED_PHOTO.width, height: RULED_PHOTO.height };
+
+    /**
+     * Наклон ручной разметки далёк от найденного на снимке: поля зеркала,
+     * оставленные теми же числами, повернулись бы вокруг угла кадра.
+     */
+    const manual: SheetRuling = {
+      ...buildRuling(RULED_PHOTO, 30),
+      skewAngle: 1.5,
+      mirrorOverride: {
+        marginLineX: 300,
+        marginLineSide: 'right',
+        marginLeft: 40,
+        marginRight: 90,
+        sideSlant: { left: 52, right: 80, marginLineX: 310 },
+      },
+    };
+
+    /**
+     * Столбцы боковых границ зеркальной страницы у верха, в середине и у низа
+     * кадра.
+     *
+     * @param ruling — разлиновка листа
+     * @returns столбцы, px отражённой фотографии
+     */
+    const readMirrorColumns = (ruling: SheetRuling): number[] => {
+      const page = mirrorSheetRuling(ruling, frame);
+
+      return (['left', 'right', 'marginLine'] as const).flatMap((edge) => {
+        const ends = readSideEdge(page, frame, edge);
+
+        return [0, frame.height / 2, frame.height].map((y) => {
+          return ends
+            ? sideEdgePointAtHeight(page.skewAngle, ends, frame.height, y).x
+            : Number.NaN;
+        });
+      });
+    };
+
+    const editor = await openEditor({
+      kind: 'blank',
+      familyId: 'lined',
+      photo: RULED_PHOTO,
+      ruling: manual,
+    });
+
+    decodeSheetImage.mockResolvedValue(createSyntheticSheet(RULED_PHOTO));
+    await chooseKind(user, editor, 'Линейка');
+
+    await waitFor(() => {
+      expect(readDraft().ruling.step).toBeCloseTo(RULED_PHOTO.step, 1);
+    });
+
+    const found = readDraft().ruling;
+
+    expect(Math.abs(found.skewAngle - manual.skewAngle)).toBeGreaterThan(1);
+    expect(readMirrorColumns(found)).toStrictEqual(
+      readMirrorColumns(manual).map((x) => {
+        return expect.closeTo(x, 6);
+      })
+    );
   });
 
   it('поиск линий и перемер контура, идущие вместе, не снимают друг другу ожидание сохранения', async () => {
