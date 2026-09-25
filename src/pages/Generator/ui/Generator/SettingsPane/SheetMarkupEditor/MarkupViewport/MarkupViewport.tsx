@@ -8,6 +8,7 @@ import { MarkupScaleContext } from './markupScaleContext';
 import type { MarkupViewportProps, PanPointer } from './MarkupViewport.types';
 import { MarkupViewportHint } from './MarkupViewportHint';
 import { useMarkupView } from './useMarkupView';
+import { useRevealFocus } from './useRevealFocus';
 import { useSpacePan } from './useSpacePan';
 
 const PERCENT = 100;
@@ -24,6 +25,12 @@ const PERCENT = 100;
  *
  * На зеркальной странице фотография отражена — так она ляжет на правую
  * страницу разворота.
+ *
+ * Окно обрезает сцену `overflow: clip`, а не `hidden`: по `hidden` контейнер
+ * остаётся прокручиваемым, и табуляция к ручке за краем прокручивала бы его
+ * в обход матрицы — приближение колесом, считающее точку от края окна,
+ * уезжало бы от курсора на величину прокрутки. Ручку за краем показывает
+ * `useRevealFocus` сдвигом той же матрицы.
  */
 export const MarkupViewport: FC<MarkupViewportProps> = (props) => {
   const { frame, photoSrc, photoLabel, children, onScaleChange } = props;
@@ -31,6 +38,9 @@ export const MarkupViewport: FC<MarkupViewportProps> = (props) => {
   const pointerRef = useRef<PanPointer | null>(null);
   const { view, zoomIn, zoomOut, fit, panBy } = useMarkupView(viewportRef, frame);
   const isSpacePan = useSpacePan(viewportRef);
+
+  useRevealFocus(viewportRef, panBy);
+
   const isMirrored = useMarkupMirrorWidth() !== null;
   const { scale, x, y } = view;
 
@@ -101,7 +111,7 @@ export const MarkupViewport: FC<MarkupViewportProps> = (props) => {
         ref={viewportRef}
         data-testid="markup-viewport"
         data-pan-mode={isSpacePan || undefined}
-        className="relative min-h-0 flex-1 cursor-grab touch-none overflow-hidden rounded-md bg-canvas active:cursor-grabbing data-pan-mode:**:cursor-grab"
+        className="relative min-h-0 flex-1 cursor-grab touch-none overflow-clip rounded-md bg-canvas active:cursor-grabbing data-pan-mode:**:cursor-grab"
         onPointerDownCapture={handleViewportPointerDownCapture}
         onPointerDown={handleViewportPointerDown}
         onPointerMove={handleViewportPointerMove}

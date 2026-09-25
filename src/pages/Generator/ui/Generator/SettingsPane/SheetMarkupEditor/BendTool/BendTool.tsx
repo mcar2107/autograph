@@ -35,6 +35,13 @@ import { useBendDrag } from './useBendDrag';
 const HIT_WIDTH = 14;
 
 /**
+ * Толщина подсветки линии под курсором в экранных пикселях — вдвое толще
+ * линий гребёнки: на мелком масштабе линии стоят через десяток экранных
+ * пикселей, и без подсветки не видно, какую из них возьмёт нажатие.
+ */
+const HOVER_WIDTH = 3;
+
+/**
  * Толщина рамки радиуса правки в экранных пикселях — как у линий гребёнки.
  */
 const RING_WIDTH = 1.5;
@@ -115,7 +122,8 @@ const scaleBendRadius = (
 /**
  * Инструмент «Изгиб»: любую линию можно взять в любой точке и потянуть поперёк
  * линий — она пройдёт через точку отпускания, соседние сдвинутся меньше, а за
- * рамкой у курсора ничего не сдвинется. Shift — сдвиг всего столбца, как у
+ * рамкой у курсора ничего не сдвинется. Линия, которую возьмёт нажатие,
+ * подсвечена заранее, а за одно перетаскивание уходит не дальше шага. Shift — сдвиг всего столбца, как у
  * прогиба у пружины. «Подогнать изгиб по фото» прослеживает изгиб заново
  * относительно текущих линий и доводит его до закреплённых линий, «Выпрямить»
  * его снимает.
@@ -153,7 +161,11 @@ export const BendTool: FC<MarkupToolProps> = (props) => {
       ? scaleBendRadius(ruling, frame, radiusSteps)
       : { radius: 0, radiusX: 0 };
   }, [ruling, frame, radiusSteps]);
-  const { ringCenter, grab, drag, release } = useBendDrag(handleLayer, frame, radius);
+  const { ringCenter, activeIndex, grab, hover, drag, release } = useBendDrag(
+    handleLayer,
+    frame,
+    radius
+  );
 
   /**
    * Линии для захвата — те же ломаные, что рисует оверлей: взять можно ровно
@@ -173,6 +185,9 @@ export const BendTool: FC<MarkupToolProps> = (props) => {
   }
 
   const hasLines = ruling.step > 0;
+  const activeLine = lines.find(({ index }) => {
+    return index === activeIndex;
+  });
   const canRefit = hasLines && hasImage && draft.kind !== 'blank';
   const ring =
     ringCenter && hasLines
@@ -234,9 +249,15 @@ export const BendTool: FC<MarkupToolProps> = (props) => {
     const { pointerId, shiftKey } = event;
     const point = readSheetPoint(event);
 
+    hover(point);
+
     if (point) {
       drag(pointerId, point.y, shiftKey);
     }
+  };
+
+  const handleLinesPointerLeave = () => {
+    hover(null);
   };
 
   const handleLinesPointerUp = (event: PointerEvent<SVGGElement>) => {
@@ -270,7 +291,8 @@ export const BendTool: FC<MarkupToolProps> = (props) => {
       <p className="text-fg-muted">
         Потяните любую линию вверх или вниз — она пройдёт через точку, где вы её
         отпустите, а соседние сдвинутся меньше. За рамкой у курсора линии не меняются. С
-        Shift сдвигается весь столбец.
+        Shift сдвигается весь столбец. Линия, которую возьмёт нажатие, подсвечена; за одно
+        движение она уходит не дальше шага.
       </p>
 
       <ValueSlider
@@ -306,6 +328,7 @@ export const BendTool: FC<MarkupToolProps> = (props) => {
               onPointerMove={handleLinesPointerMove}
               onPointerUp={handleLinesPointerUp}
               onPointerCancel={handleLinesPointerCancel}
+              onPointerLeave={handleLinesPointerLeave}
             >
               {lines.map(({ index, points }) => {
                 return (
@@ -319,6 +342,20 @@ export const BendTool: FC<MarkupToolProps> = (props) => {
                   />
                 );
               })}
+
+              {activeLine ? (
+                <MarkupStroke
+                  pointerEvents="none"
+                  fill="none"
+                  width={HOVER_WIDTH}
+                  className="stroke-markup-pin"
+                >
+                  <polyline
+                    data-bend-hover={activeLine.index}
+                    points={activeLine.points}
+                  />
+                </MarkupStroke>
+              ) : null}
 
               {ring ? (
                 <MarkupStroke

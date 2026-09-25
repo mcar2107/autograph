@@ -5,10 +5,12 @@ import { MarkupHandle } from '@pages/Generator/ui/Generator/SettingsPane/SheetMa
 import { MarkupViewport } from '@pages/Generator/ui/Generator/SettingsPane/SheetMarkupEditor/MarkupViewport';
 import {
   clampScale,
+  computeRevealOffset,
   MARKUP_ZOOM_MAX,
   MARKUP_ZOOM_STEP,
 } from '@pages/Generator/ui/Generator/SettingsPane/SheetMarkupEditor/MarkupViewport/markupView';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import type { MarkupViewPoint } from '@pages/Generator/ui/Generator/SettingsPane/SheetMarkupEditor/MarkupViewport/markupView.types';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -141,5 +143,106 @@ describe('предел приближения', () => {
 
     expect(stage.style.transform).toContain(`scale(${MARKUP_ZOOM_MAX})`);
     expect(screen.getByText(`${MARKUP_ZOOM_MAX * 100} %`)).toBeDefined();
+  });
+});
+
+/**
+ * Подменяет прямоугольник элемента в окне браузера: jsdom layout не считает.
+ *
+ * @param element — элемент
+ * @param left — левый край
+ * @param top — верхний край
+ * @param width — ширина
+ * @param height — высота
+ */
+const mockRect = (
+  element: Element,
+  left: number,
+  top: number,
+  width: number,
+  height: number
+) => {
+  Object.defineProperty(element, 'getBoundingClientRect', {
+    configurable: true,
+    value: () => {
+      return DOMRect.fromRect({ x: left, y: top, width, height });
+    },
+  });
+};
+
+/**
+ * Сдвиг сцены из её CSS-матрицы.
+ *
+ * @param stage — сцена окна просмотра
+ * @returns сдвиг левого верхнего угла фотографии, экранные пиксели
+ */
+const readTranslate = (stage: HTMLElement): MarkupViewPoint => {
+  const match = /translate\((-?[\d.]+)px, (-?[\d.]+)px\)/.exec(stage.style.transform);
+
+  if (!match) {
+    throw new Error(`Нет сдвига в ${stage.style.transform}`);
+  }
+
+  return { x: Number(match[1]), y: Number(match[2]) };
+};
+
+describe('ручка в фокусе вне видимой части окна', () => {
+  it('сдвиг приводит в середину окна только ось, по которой ручка вне окна', () => {
+    const size = { width: 400, height: 300 };
+
+    expect(
+      computeRevealOffset({ left: 100, top: 100, right: 114, bottom: 114 }, size)
+    ).toBeNull();
+    expect(
+      computeRevealOffset({ left: 900, top: 100, right: 914, bottom: 114 }, size)
+    ).toStrictEqual({ x: 200 - 907, y: 0 });
+    expect(
+      computeRevealOffset({ left: 100, top: -500, right: 114, bottom: -486 }, size)
+    ).toStrictEqual({ x: 0, y: 150 + 493 });
+    expect(
+      computeRevealOffset({ left: 4, top: 100, right: 18, bottom: 114 }, size)
+    ).toStrictEqual({ x: 200 - 11, y: 0 });
+  });
+
+  it('фокус на ручке за краем окна сдвигает фотографию моделью окна, и ручка встаёт в середину', () => {
+    const { viewport, stage, handle } = renderViewport();
+    const before = readTranslate(stage);
+
+    mockRect(viewport, 50, 60, 400, 300);
+    mockRect(handle, 950, 1060, 14, 14);
+
+    act(() => {
+      handle.focus();
+    });
+
+    expect(document.activeElement).toBe(handle);
+
+    const after = readTranslate(stage);
+
+    expect(after.x - before.x).toBeCloseTo(50 + 200 - 957, 6);
+    expect(after.y - before.y).toBeCloseTo(60 + 150 - 1067, 6);
+  });
+
+  it('ручка, взятая указателем у края окна, фотографию не сдвигает', () => {
+    const { viewport, stage, handle } = renderViewport();
+    const before = stage.style.transform;
+
+    mockRect(viewport, 0, 0, 400, 300);
+    mockRect(handle, 393, 100, 14, 14);
+
+    fireEvent.pointerDown(handle, { pointerId: 1, clientX: 395, clientY: 107 });
+    act(() => {
+      handle.focus();
+    });
+
+    expect(stage.style.transform).toBe(before);
+
+    fireEvent.pointerUp(handle, { pointerId: 1 });
+    act(() => {
+      handle.blur();
+      handle.focus();
+    });
+
+    expect(stage.style.transform).not.toBe(before);
   });
 });

@@ -5,6 +5,8 @@ import {
   sampleRulingBend,
 } from '../../../../../lib/paper';
 
+import type { BendLineGrab } from './bendGeometry.types';
+
 /**
  * Точка фотографии под указателем. Разметка лежит в SVG с `viewBox` в
  * пикселях фотографии, и обратная экранная матрица SVG уже учитывает
@@ -49,18 +51,18 @@ const toDrawnLineY = (ruling: SheetRuling, x: number, u: number): number => {
 };
 
 /**
- * Точка нарисованной линии, ближайшей к указателю в его столбце: за неё
- * линия берётся при перетаскивании. Взятая точка лежит на самой линии, и
- * нажатие без сдвига линию не двигает.
+ * Линия, ближайшая к указателю в его столбце: за неё линия берётся при
+ * перетаскивании, её же подсвечивает наведение. Взятая точка лежит на самой
+ * линии, и нажатие без сдвига линию не двигает.
  *
  * @param ruling — разлиновка листа
  * @param point — точка под указателем, px фотографии
- * @returns точка на линии; `null` — шага нет
+ * @returns точка на линии, номер линии и шаг у неё; `null` — шага нет
  */
 export const findLinePoint = (
   ruling: SheetRuling,
   point: SheetPoint
-): SheetPoint | null => {
+): BendLineGrab | null => {
   const { step, firstLinePhase } = ruling;
 
   if (!(step > 0)) {
@@ -69,14 +71,26 @@ export const findLinePoint = (
 
   const { x, y } = point;
   const guess = Math.round((lineCoordinateAt(ruling, x, y) - firstLinePhase) / step);
-  const heights = [guess - 1, guess, guess + 1].map((index) => {
-    return toDrawnLineY(ruling, x, firstLinePhase + index * step);
-  });
-  const nearest = heights.reduce((best, height) => {
-    return Math.abs(height - y) < Math.abs(best - y) ? height : best;
-  });
+  const nearest = [guess - 1, guess, guess + 1].reduce<BendLineGrab | null>(
+    (best, index) => {
+      const height = toDrawnLineY(ruling, x, firstLinePhase + index * step);
 
-  return { x, y: nearest };
+      return best && Math.abs(best.point.y - y) <= Math.abs(height - y)
+        ? best
+        : { point: { x, y: height }, index, localStep: 0 };
+    },
+    null
+  );
+
+  if (!nearest) {
+    return null;
+  }
+
+  const u = firstLinePhase + nearest.index * step;
+  const localStep =
+    Math.abs(lineHeightAt(ruling, x, u + step) - lineHeightAt(ruling, x, u - step)) / 2;
+
+  return { ...nearest, localStep };
 };
 
 /**

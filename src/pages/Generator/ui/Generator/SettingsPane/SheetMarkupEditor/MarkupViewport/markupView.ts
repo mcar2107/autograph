@@ -1,6 +1,11 @@
 import type { SheetFrame } from '../../../../../lib/paper';
 
-import type { MarkupView, MarkupViewPoint, MarkupViewportSize } from './markupView.types';
+import type {
+  MarkupView,
+  MarkupViewBox,
+  MarkupViewPoint,
+  MarkupViewportSize,
+} from './markupView.types';
 
 /**
  * Самое крупное приближение — восемь экранных пикселей на пиксель
@@ -19,6 +24,13 @@ const FIT_ZOOM_OUT = 4;
  * Отступ вписанной фотографии от краёв окна, экранные пиксели.
  */
 const FIT_PADDING = 16;
+
+/**
+ * Сколько экранных пикселей от края окна должно оставаться вокруг ручки в
+ * фокусе: вплотную к краю ручку не видно из-за скруглённых углов окна, а
+ * кольцо фокуса обрезалось бы.
+ */
+const REVEAL_MARGIN = 24;
 
 /**
  * Шаг кнопок приближения: два нажатия удваивают масштаб.
@@ -104,4 +116,41 @@ export const zoomView = (
     x: anchor.x - (anchor.x - view.x) * ratio,
     y: anchor.y - (anchor.y - view.y) * ratio,
   };
+};
+
+/**
+ * Сдвиг фотографии, который показывает элемент разметки, ушедший за край
+ * окна: по той оси, где элемент не помещается в окно с отступом, его центр
+ * встаёт в середину окна, другая ось не двигается. Середина, а не ближайший
+ * край: при переходе табуляцией к следующей ручке вокруг видно, куда она
+ * ведёт.
+ *
+ * @param box — элемент в окне
+ * @param size — размер окна
+ * @returns сдвиг фотографии, экранные пиксели; `null` — элемент уже виден
+ */
+export const computeRevealOffset = (
+  box: MarkupViewBox,
+  size: MarkupViewportSize
+): MarkupViewPoint | null => {
+  const { left, top, right, bottom } = box;
+
+  /**
+   * Сдвиг по одной оси.
+   *
+   * @param start — начало элемента на оси
+   * @param end — конец элемента на оси
+   * @param length — длина окна на оси
+   * @returns сдвиг; ноль — элемент на оси виден
+   */
+  const revealAxis = (start: number, end: number, length: number): number => {
+    const isVisible = start >= REVEAL_MARGIN && end <= length - REVEAL_MARGIN;
+
+    return isVisible ? 0 : length / 2 - (start + end) / 2;
+  };
+
+  const x = revealAxis(left, right, size.width);
+  const y = revealAxis(top, bottom, size.height);
+
+  return x === 0 && y === 0 ? null : { x, y };
 };

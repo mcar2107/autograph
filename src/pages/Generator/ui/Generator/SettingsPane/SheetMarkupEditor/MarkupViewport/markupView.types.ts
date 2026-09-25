@@ -48,3 +48,29 @@ export type MarkupViewPoint = {
    */
   y: number;
 };
+
+/**
+ * Прямоугольник элемента в экранных пикселях от левого верхнего угла окна
+ * просмотра.
+ */
+export type MarkupViewBox = {
+  /**
+   * Левый край.
+   */
+  left: number;
+
+  /**
+   * Верхний край.
+   */
+  top: number;
+
+  /**
+   * Правый край.
+   */
+  right: number;
+
+  /**
+   * Нижний край.
+   */
+  bottom: number;
+};

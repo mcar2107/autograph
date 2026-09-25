@@ -597,6 +597,147 @@ describe('инструмент «Изгиб»: перетаскивание ли
   });
 });
 
+/**
+ * Номер линии под подсветкой инструмента.
+ *
+ * @param editor — диалог редактора
+ * @returns номер линии; `null` — подсветки нет
+ */
+const readHoveredLine = (editor: HTMLElement): number | null => {
+  const hovered = editor.querySelector('[data-bend-hover]');
+
+  return hovered ? Number(hovered.getAttribute('data-bend-hover')) : null;
+};
+
+/**
+ * Полоса захвата линии.
+ *
+ * @param editor — диалог редактора
+ * @param index — номер линии
+ * @returns ломаная захвата
+ */
+const getHitLine = (editor: HTMLElement, index: number): Element => {
+  const line = editor.querySelector(`[data-bend-line-index="${index}"]`);
+
+  if (!line) {
+    throw new Error(`Нет полосы линии ${index}`);
+  }
+
+  return line;
+};
+
+describe('инструмент «Изгиб»: подсветка линии под курсором', () => {
+  it('подсвечена та линия, которую возьмёт нажатие, — ближайшая в столбце, а не верхняя полоса', async () => {
+    const user = userEvent.setup();
+    const editor = await openBendTool(user, RULING, null);
+    const x = 200;
+
+    mockScreenMatrix(editor);
+
+    expect(readHoveredLine(editor)).toBeNull();
+
+    fireEvent.pointerMove(getHitLine(editor, 10), {
+      clientX: x,
+      clientY: toLineY(RULING, 10, x) + 3,
+    });
+
+    expect(readHoveredLine(editor)).toBe(10);
+    expect(editor.querySelector('[data-bend-hover]')?.getAttribute('points')).toBe(
+      getHitLine(editor, 10).getAttribute('points')
+    );
+
+    /**
+     * На мелком масштабе полосы соседних линий перекрываются: указатель над
+     * полосой десятой линии, но ближе к одиннадцатой — нажатие возьмёт её, и
+     * подсвечена она.
+     */
+    fireEvent.pointerMove(getHitLine(editor, 10), {
+      clientX: x,
+      clientY: toLineY(RULING, 11, x) - 4,
+    });
+
+    expect(readHoveredLine(editor)).toBe(11);
+
+    fireEvent.pointerLeave(getHitLine(editor, 10));
+
+    expect(readHoveredLine(editor)).toBeNull();
+  });
+
+  it('во время перетаскивания подсвечена взятая линия', async () => {
+    const user = userEvent.setup();
+    const editor = await openBendTool(user, RULING, null);
+    const x = 200;
+    const grabbed = toLineY(RULING, 10, x);
+    const line = getHitLine(editor, 10);
+    const pointer = { pointerId: 1 };
+
+    mockScreenMatrix(editor);
+    fireEvent.pointerMove(line, { clientX: x, clientY: grabbed });
+    fireEvent.pointerDown(line, { ...pointer, clientX: x, clientY: grabbed });
+    fireEvent.pointerMove(line, { ...pointer, clientX: x, clientY: grabbed + 30 });
+    fireEvent.pointerLeave(line);
+
+    expect(readHoveredLine(editor)).toBe(10);
+
+    fireEvent.pointerUp(line, { ...pointer, clientX: x, clientY: grabbed + 30 });
+  });
+});
+
+describe('инструмент «Изгиб»: сдвиг не дальше шага', () => {
+  it.each([
+    ['вниз', 1],
+    ['вверх', -1],
+  ])(
+    'рывок %s на два с половиной шага останавливает линию на шаге',
+    async (_direction, sign) => {
+      const user = userEvent.setup();
+      const editor = await openBendTool(user, RULING, null);
+      const line = 10;
+      const x = 150;
+      const grabbed = toLineY(RULING, line, x);
+
+      dragLine(editor, line, { x, y: grabbed }, grabbed + sign * 2.5 * PHOTO.step);
+
+      const edited = readDraftRuling();
+
+      expect(
+        Math.abs(toLineY(edited, line, x) - (grabbed + sign * PHOTO.step))
+      ).toBeLessThanOrEqual(POINT_TOLERANCE_PX);
+      expect(readRingCorners(editor).length).toBe(4);
+    }
+  );
+
+  it('сдвиг в пределах шага не ограничен: линия проходит через точку отпускания', async () => {
+    const user = userEvent.setup();
+    const editor = await openBendTool(user, RULING, null);
+    const line = 10;
+    const x = 150;
+    const grabbed = toLineY(RULING, line, x);
+    const released = grabbed + 0.9 * PHOTO.step;
+
+    dragLine(editor, line, { x, y: grabbed }, released);
+
+    expect(Math.abs(toLineY(readDraftRuling(), line, x) - released)).toBeLessThanOrEqual(
+      POINT_TOLERANCE_PX
+    );
+  });
+
+  it('Shift: весь столбец тоже не дальше шага', async () => {
+    const user = userEvent.setup();
+    const editor = await openBendTool(user, RULING, null);
+    const x = 330;
+    const grabbed = toLineY(RULING, 8, x);
+
+    dragLine(editor, 8, { x, y: grabbed }, grabbed - 3 * PHOTO.step, true);
+
+    const edited = readDraftRuling();
+
+    expect(Math.abs(toLineY(edited, 8, x) - (grabbed - PHOTO.step))).toBeLessThanOrEqual(
+      POINT_TOLERANCE_PX
+    );
+  });
+});
+
 describe('инструмент «Изгиб»: действия', () => {
   it('«Выпрямить» снимает изгиб: линии прямые и проходят через закреплённые', async () => {
     const user = userEvent.setup();

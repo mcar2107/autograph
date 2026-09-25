@@ -20,10 +20,30 @@ import type { BendDrag, BendDragState } from './useBendDrag.types';
 const MIN_DRAG_PX = 0.01;
 
 /**
+ * Сдвиг указателя от нажатия, урезанный до шага разлиновки у взятой точки.
+ *
+ * @param drag — идущее перетаскивание
+ * @param y — высота указателя, px фотографии
+ * @returns сдвиг линии, px фотографии
+ */
+const clampShift = (drag: BendDragState, y: number): number => {
+  const { pointerY, maxShift } = drag;
+
+  return Math.min(maxShift, Math.max(-maxShift, y - pointerY));
+};
+
+/**
  * Перетаскивание линии поперёк линий в инструменте «Изгиб»: взятая точка
  * линии уходит вместе с указателем по высоте, в своём столбце, и линия
- * проходит через точку, где её отпустили; сдвиг затухает в пределах радиуса. Shift — сдвиг всего столбца. Промежуточные положения —
- * показ без шага истории, отпускание — один шаг.
+ * проходит через точку, где её отпустили; сдвиг затухает в пределах радиуса.
+ * Shift — сдвиг всего столбца. Промежуточные положения — показ без шага
+ * истории, отпускание — один шаг.
+ *
+ * За одно перетаскивание линия уходит не дальше шага разлиновки: дальше она
+ * встала бы на соседнюю линию снимка или за неё, а такой изгиб не бывает
+ * правкой — детектор изгиба отвергает уже полшага как перескок трассы. На
+ * мелком масштабе, где шаг — десяток экранных пикселей, рывок мыши иначе гнул
+ * бы линию на несколько шагов.
  *
  * Рамка радиуса следует за курсором над фотографией, пока инструмент
  * смонтирован, а во время перетаскивания стоит на взятой линии. На
@@ -43,6 +63,7 @@ export const useBendDrag = (
 ): BendDrag => {
   const dragRef = useRef<BendDragState | null>(null);
   const [ringCenter, setRingCenter] = useState<SheetPoint | null>(null);
+  const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const mirrorWidth = useMarkupMirrorWidth();
 
   /**
@@ -92,9 +113,9 @@ export const useBendDrag = (
     y: number,
     isWholeColumn: boolean
   ): SheetRuling => {
-    const { base, grab, pointerY } = drag;
+    const { base, grab } = drag;
 
-    return editRulingBend(base, grab, y - pointerY, {
+    return editRulingBend(base, grab, clampShift(drag, y), {
       ...radius,
       isWholeColumn,
       frame,
@@ -103,22 +124,35 @@ export const useBendDrag = (
 
   const grab = (pointerId: number, point: SheetPoint): boolean => {
     const { draft } = useMarkupEditorStore.getState();
-    const linePoint = draft && findLinePoint(draft.ruling, point);
+    const line = draft && findLinePoint(draft.ruling, point);
 
-    if (!draft || !linePoint) {
+    if (!draft || !line) {
       return false;
     }
 
     dragRef.current = {
       pointerId,
       base: draft.ruling,
-      grab: linePoint,
+      grab: line.point,
+      maxShift: line.localStep,
       pointerY: point.y,
       lastY: null,
     };
-    setRingCenter(linePoint);
+    setRingCenter(line.point);
+    setActiveIndex(line.index);
 
     return true;
+  };
+
+  const hover = (point: SheetPoint | null) => {
+    if (dragRef.current) {
+      return;
+    }
+
+    const { draft } = useMarkupEditorStore.getState();
+    const line = point && draft && findLinePoint(draft.ruling, point);
+
+    setActiveIndex(line ? line.index : null);
   };
 
   const drag = (pointerId: number, y: number, isWholeColumn: boolean) => {
@@ -133,7 +167,7 @@ export const useBendDrag = (
     }
 
     current.lastY = y;
-    setRingCenter({ x: current.grab.x, y: current.grab.y + y - current.pointerY });
+    setRingCenter({ x: current.grab.x, y: current.grab.y + clampShift(current, y) });
     useMarkupEditorStore
       .getState()
       .preview({ ruling: editFrom(current, y, isWholeColumn) });
@@ -166,5 +200,5 @@ export const useBendDrag = (
       .commit({ ruling: editFrom(current, released, isWholeColumn) });
   };
 
-  return { ringCenter, grab, drag, release };
+  return { ringCenter, activeIndex, grab, hover, drag, release };
 };

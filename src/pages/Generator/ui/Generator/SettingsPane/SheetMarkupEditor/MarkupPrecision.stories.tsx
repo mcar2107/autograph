@@ -113,6 +113,77 @@ const readCenter = (element: Element): SheetPoint => {
   return { x: left + width / 2, y: top + height / 2 };
 };
 
+/**
+ * Сколько раз нажать «Приблизить», чтобы концы булавок ушли за край окна:
+ * шаг кнопки — корень из двух, шесть нажатий — восьмикратное приближение.
+ */
+const ZOOM_CLICKS = 6;
+
+/**
+ * Прокрутка колеса с Ctrl в пикселях: приближение примерно на пятую часть.
+ */
+const WHEEL_DELTA = -100;
+
+/**
+ * Допуск точки под курсором после приближения колесом, экранные пиксели.
+ */
+const ANCHOR_TOLERANCE = 1;
+
+/**
+ * Прокрутка окна и всех его предков: табуляция к ручке не должна двигать ни
+ * одного из них.
+ *
+ * @param element — окно просмотра
+ * @returns пары «сверху, слева» от окна до корня документа
+ */
+const readScrollChain = (element: Element): number[][] => {
+  const chain: number[][] = [];
+
+  for (let node: Element | null = element; node; node = node.parentElement) {
+    chain.push([node.scrollTop, node.scrollLeft]);
+  }
+
+  return chain;
+};
+
+/**
+ * Точка окна браузера в пикселях фотографии — по матрице оверлея.
+ *
+ * @param svg — SVG оверлея
+ * @param point — точка окна браузера
+ * @returns точка фотографии
+ */
+const toPhotoPoint = (svg: SVGSVGElement, point: SheetPoint): SheetPoint => {
+  const matrix = svg.getScreenCTM()?.inverse();
+
+  if (!matrix) {
+    throw new Error('У оверлея нет экранной матрицы');
+  }
+
+  const { a, b, c, d, e, f } = matrix;
+
+  return { x: a * point.x + c * point.y + e, y: b * point.x + d * point.y + f };
+};
+
+/**
+ * Точка фотографии в окне браузера — по матрице оверлея.
+ *
+ * @param svg — SVG оверлея
+ * @param point — точка фотографии
+ * @returns точка окна браузера
+ */
+const toClientPoint = (svg: SVGSVGElement, point: SheetPoint): SheetPoint => {
+  const matrix = svg.getScreenCTM();
+
+  if (!matrix) {
+    throw new Error('У оверлея нет экранной матрицы');
+  }
+
+  const { a, b, c, d, e, f } = matrix;
+
+  return { x: a * point.x + c * point.y + e, y: b * point.x + d * point.y + f };
+};
+
 const meta = {
   component: SheetMarkupEditor,
   parameters: { layout: 'fullscreen' },
@@ -266,5 +337,102 @@ export const TrialTextOverPhoto: Story = {
 
     await expect(Number(getComputedStyle(muted).opacity)).toBeLessThanOrEqual(0.25);
     await expect(document.querySelectorAll('[data-layer="pins"] line')).toHaveLength(0);
+  },
+};
+
+/**
+ * Фокус на ручке за краем приближенного окна показывает её сдвигом фотографии
+ * моделью окна: ни окно, ни его предки не прокручиваются, а приближение
+ * колесом с Ctrl после этого остаётся у курсора. `focus()` без
+ * `preventScroll` прокручивает к элементу так же, как табуляция.
+ */
+export const FocusHandleOutsideView: Story = {
+  play: async () => {
+    await openPresetSheet();
+
+    const viewport = await findElement<HTMLElement>('[data-testid="markup-viewport"]');
+    const stage = await findElement<HTMLElement>('[data-testid="markup-stage"]');
+    const svg = await findElement<SVGSVGElement>('svg[aria-label="Разметка листа"]');
+    const zoomIn = [...document.querySelectorAll('button')].find((button) => {
+      return button.getAttribute('aria-label') === 'Приблизить';
+    });
+
+    for (let click = 0; click < ZOOM_CLICKS; click += 1) {
+      zoomIn?.click();
+    }
+
+    /**
+     * Ручка, целиком ушедшая за правый или нижний край окна: туда прокрутка
+     * контейнера дотягивается, и нативная прокрутка к ней была бы видна.
+     *
+     * @returns ручка
+     */
+    const findHiddenHandle = (): SVGCircleElement => {
+      const frame = viewport.getBoundingClientRect();
+      const hidden = [
+        ...viewport.querySelectorAll<SVGCircleElement>('circle[role="button"]'),
+      ].find((circle) => {
+        const { left, top } = circle.getBoundingClientRect();
+
+        return left > frame.right || top > frame.bottom;
+      });
+
+      if (!hidden) {
+        throw new Error('Все ручки в окне: приближение не увело их за край');
+      }
+
+      return hidden;
+    };
+
+    const handle = await waitFor(findHiddenHandle);
+    const scrollsBefore = readScrollChain(viewport);
+    const { transform } = stage.style;
+
+    handle.focus();
+
+    await expect(document.activeElement).toBe(handle);
+    await expect(readScrollChain(viewport)).toStrictEqual(scrollsBefore);
+    await expect(viewport.scrollTop).toBe(0);
+    await expect(viewport.scrollLeft).toBe(0);
+    await expect(stage.style.transform).not.toBe(transform);
+
+    const frame = viewport.getBoundingClientRect();
+    const box = handle.getBoundingClientRect();
+
+    await expect(box.left).toBeGreaterThanOrEqual(frame.left);
+    await expect(box.right).toBeLessThanOrEqual(frame.right);
+    await expect(box.top).toBeGreaterThanOrEqual(frame.top);
+    await expect(box.bottom).toBeLessThanOrEqual(frame.bottom);
+
+    /**
+     * Курсор — в трети окна, а не в середине: у середины ошибка якоря от
+     * прокрутки не отличалась бы от приближения к центру.
+     */
+    const cursor = {
+      x: frame.left + frame.width / 3,
+      y: frame.top + frame.height / 3,
+    };
+    const photoPoint = toPhotoPoint(svg, cursor);
+    const zoomed = stage.style.transform;
+
+    viewport.dispatchEvent(
+      new WheelEvent('wheel', {
+        bubbles: true,
+        cancelable: true,
+        ctrlKey: true,
+        deltaY: WHEEL_DELTA,
+        clientX: cursor.x,
+        clientY: cursor.y,
+      })
+    );
+
+    await waitFor(async () => {
+      await expect(stage.style.transform).not.toBe(zoomed);
+    });
+
+    const after = toClientPoint(svg, photoPoint);
+
+    await expect(Math.abs(after.x - cursor.x)).toBeLessThanOrEqual(ANCHOR_TOLERANCE);
+    await expect(Math.abs(after.y - cursor.y)).toBeLessThanOrEqual(ANCHOR_TOLERANCE);
   },
 };
