@@ -158,6 +158,7 @@ export const MarginsTool: FC<MarkupToolProps> = (props) => {
     return (
       <MarkupHandle
         key={side}
+        kind="edgeMiddle"
         x={x}
         y={y}
         label={GUIDE_MARGIN_LABELS[side]}
@@ -193,6 +194,7 @@ export const MarginsTool: FC<MarkupToolProps> = (props) => {
     return (
       <MarkupHandle
         key={corner}
+        kind="corner"
         x={x}
         y={y}
         label={CORNER_LABELS[corner]}
@@ -235,10 +237,11 @@ export const MarginsTool: FC<MarkupToolProps> = (props) => {
           return (
             <MarkupHandle
               key={`marginLine-${end}`}
+              kind="lineEnd"
               x={x}
               y={y}
               label={MARGIN_LINE_LABELS[end]}
-              className="stroke-danger in-data-pan-mode:pointer-events-none"
+              className="in-data-pan-mode:pointer-events-none"
               onMove={handleMarginLineMove}
               onMoveEnd={handleMarginLineMoveEnd}
             />

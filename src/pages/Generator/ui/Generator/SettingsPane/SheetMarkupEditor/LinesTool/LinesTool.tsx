@@ -159,13 +159,12 @@ export const LinesTool: FC<MarkupToolProps> = (props) => {
       return (
         <MarkupHandle
           key={`${order}-${end}`}
+          kind="lineEnd"
           x={x}
           y={y}
           label={`Закреплённая линия ${order + 1}, ${endLabels[end]}`}
-          className={cx(
-            'in-data-pan-mode:pointer-events-none',
-            isPinFlagged(order) && 'stroke-danger'
-          )}
+          isFlagged={isPinFlagged(order)}
+          className="in-data-pan-mode:pointer-events-none"
           onMove={handleEndMove}
           onMoveEnd={handleEndMoveEnd}
         />

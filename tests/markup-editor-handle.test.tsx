@@ -36,6 +36,7 @@ const renderHandle = (
       <svg>
         <MarkupScaleContext value={2}>
           <MarkupHandle
+            kind="corner"
             x={100}
             y={200}
             label="Левый верхний угол листа"
@@ -56,7 +57,7 @@ describe('ручка разметки', () => {
 
     expect(handle.getAttribute('cx')).toBe('100');
     expect(handle.getAttribute('cy')).toBe('200');
-    expect(handle.getAttribute('r')).toBe('3.5');
+    expect(handle.getAttribute('r')).toBe('5');
     expect(handle.getAttribute('tabindex')).toBe('0');
   });
 

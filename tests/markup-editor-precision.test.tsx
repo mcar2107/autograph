@@ -66,7 +66,7 @@ const PHOTO_SRC = 'data:image/jpeg;base64,0123456789';
 /**
  * Радиус ручки в экранных пикселях — по нему читается масштаб окна.
  */
-const HANDLE_RADIUS = 7;
+const HANDLE_RADIUS = 10;
 
 const RULING = buildSheetRuling(
   {

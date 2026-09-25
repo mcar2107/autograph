@@ -220,6 +220,7 @@ export const MarkupEditorContent: FC<MarkupEditorContentProps> = (props) => {
               ruling={pageRuling}
               pins={isMirrorPage ? mirrorPins(draft.pins, sheet.width) : draft.pins}
               layers={layers}
+              tool={tool}
               isMuted={isTrialEnabled}
               isHidden={isMarkupHidden}
               onHandleLayerChange={handleHandleLayerChange}
@@ -276,7 +277,11 @@ export const MarkupEditorContent: FC<MarkupEditorContentProps> = (props) => {
              * лежат здесь, вне окна просмотра, — масштаб им передаётся отсюда.
              */}
             <MarkupScaleContext value={scale}>
-              <ActiveTool handleLayer={handleLayer} pageIndex={pageIndex} />
+              <ActiveTool
+                handleLayer={handleLayer}
+                pageIndex={pageIndex}
+                isMuted={isTrialEnabled}
+              />
 
               <MarkupLayers layers={layers} onLayersChange={handleLayersChange} />
 

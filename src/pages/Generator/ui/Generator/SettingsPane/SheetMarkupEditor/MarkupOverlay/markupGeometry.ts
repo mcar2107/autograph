@@ -1,3 +1,4 @@
+import { resolveTextEdgesAt } from '../../../../../lib/calibrate';
 import type {
   SheetFrame,
   SheetOutline,
@@ -46,6 +47,14 @@ const MAX_SAMPLE_SPACING = 16;
  * полушага, и линия у края контура иначе обрывалась бы раньше него.
  */
 const LINE_RESERVE = 1;
+
+/**
+ * Сколько точек на край зоны письма у листа без шага: линий нет, и края
+ * меряются по ровной сетке высот.
+ */
+const BLANK_ZONE_SAMPLES = 32;
+
+const DEGREES_IN_RADIAN = 180 / Math.PI;
 
 /**
  * Точность записи координат в атрибут ломаной: сотая пикселя фотографии
@@ -295,4 +304,101 @@ export const toLineAttributes = (points: SheetPoint[]): LineAttributes => {
   const end = points.at(-1) || start;
 
   return { x1: start.x, y1: start.y, x2: end.x, y2: end.y };
+};
+
+/**
+ * Высоты, на которых меряются края зоны письма: верхняя и нижняя границы и
+ * каждая линия разлиновки между ними. Строки встают только на линии, поэтому
+ * край зоны на линии — ровно край строки на ней, а излом края там, где линия
+ * поля выходит из поля, ломаная между линиями повторяет с точностью до
+ * высоты строки. Без шага линий нет — сетка высот ровная.
+ *
+ * @param ruling — разлиновка страницы
+ * @param top — координата верхней границы вдоль линий
+ * @param bottom — координата нижней границы вдоль линий
+ * @returns координаты вдоль линий сверху вниз
+ */
+const buildZoneCoordinates = (
+  ruling: SheetRuling,
+  top: number,
+  bottom: number
+): number[] => {
+  const { step, firstLinePhase } = ruling;
+
+  if (!(step > 0) || (bottom - top) / step > MAX_LINE_COUNT) {
+    return Array.from({ length: BLANK_ZONE_SAMPLES + 1 }, (_value, index) => {
+      return top + ((bottom - top) * index) / BLANK_ZONE_SAMPLES;
+    });
+  }
+
+  const first = Math.floor((top - firstLinePhase) / step) + 1;
+  const last = Math.ceil((bottom - firstLinePhase) / step) - 1;
+  const lines = Array.from(
+    { length: Math.max(0, last - first + 1) },
+    (_value, offset) => {
+      return firstLinePhase + (first + offset) * step;
+    }
+  );
+
+  return [top, ...lines, bottom];
+};
+
+/**
+ * Зона письма — где на странице встанут строки: между верхней и нижней
+ * направляющими полей, а вдоль строки — между краями, которые берёт
+ * раскладка (`resolveTextEdgesAt` из `lib/calibrate`): поля листа, сужённые
+ * линией поля с зазором. Прямоугольник полей шире её, когда линия поля
+ * лежит внутри области полей, и текст туда не пойдёт.
+ *
+ * Край строки ставится на фотографию так же, как отрисовка ставит начало
+ * строки: точка блока на базовой линии поворачивается на наклон листа, а
+ * перспектива сдвигает её только по высоте — на линию в этом столбце. Изгиб
+ * не учитывается: раскладка его не читает.
+ *
+ * @param ruling — разлиновка страницы
+ * @param frame — кадр фотографии
+ * @returns многоугольник: левый край сверху вниз, затем правый снизу вверх
+ */
+export const buildWritingZone = (
+  ruling: SheetRuling,
+  frame: SheetFrame
+): SheetPoint[] => {
+  const { margins, skewAngle } = ruling;
+  const { height } = frame;
+  const radians = skewAngle / DEGREES_IN_RADIAN;
+  const sin = Math.sin(radians);
+  const cos = Math.cos(radians);
+  const sheet = { ruling, width: frame.width, height };
+  const coordinates = buildZoneCoordinates(
+    ruling,
+    lineCoordinateAt(ruling, 0, margins.top),
+    lineCoordinateAt(ruling, 0, height - margins.bottom)
+  );
+
+  /**
+   * Точка края строки на фотографии.
+   *
+   * @param blockX — положение вдоль строки в системе блока
+   * @param u — координата линии вдоль линий
+   * @returns точка, px фотографии
+   */
+  const toPhotoPoint = (blockX: number, u: number): SheetPoint => {
+    const x = blockX * cos - u * cos * sin;
+
+    return { x, y: lineHeightAt(ruling, x, u) };
+  };
+
+  const { lefts, rights } = coordinates.reduce<Record<'lefts' | 'rights', SheetPoint[]>>(
+    (edges, u) => {
+      const { left, right } = resolveTextEdgesAt(sheet, u);
+
+      edges.lefts.push(toPhotoPoint(left, u));
+      edges.rights.push(toPhotoPoint(Math.max(left, right), u));
+
+      return edges;
+    },
+    { lefts: [], rights: [] }
+  );
+
+  return [...lefts, ...rights.toReversed()];
 };

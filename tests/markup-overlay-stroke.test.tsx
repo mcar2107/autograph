@@ -49,6 +49,31 @@ const LAYER_TOKENS: Record<MarkupLayerId, string> = {
 const HALO_TOKEN = 'markup-halo';
 
 /**
+ * Краски редактора, которые ложатся на фотографию: слои и подсветка линии
+ * в «Изгибе».
+ */
+const PAINT_TOKENS = [...Object.values(LAYER_TOKENS), 'markup-highlight'];
+
+/**
+ * Тон красной черты поля на снимке, градусы oklch.
+ */
+const RED_HUE = 25;
+
+/**
+ * Насколько тон линии поля разметки должен отстоять от красного, градусы, —
+ * или она должна быть почти без цвета.
+ */
+const MIN_HUE_DISTANCE = 60;
+
+const MAX_NEUTRAL_CHROMA = 0.03;
+
+/**
+ * Наименьшее расстояние двух красок в oklab: у самой близкой пары слоёв —
+ * линий и булавок — 0,16, а заметная разница оттенков начинается с 0,02.
+ */
+const MIN_PAINT_DISTANCE = 0.15;
+
+/**
  * Подложка шире основного штриха не больше чем на пиксель с каждой стороны:
  * при зуме, где пиксель фото — четыре экранных, линия фото толщиной в два
  * пикселя остаётся видна по краям.
@@ -114,6 +139,7 @@ const renderOverlay = (scale = 1, mode = { isMuted: false, isHidden: false }) =>
           outline: true,
           pins: true,
         }}
+        tool="lines"
         isMuted={mode.isMuted}
         isHidden={mode.isHidden}
         onHandleLayerChange={handleLayerChange}
@@ -168,6 +194,33 @@ const parseOklch = (value: string): [number, number, number] => {
   const [, lightness, chroma, hue] = match;
 
   return [Number(lightness) / 100, Number(chroma), Number(hue)];
+};
+
+/**
+ * Расстояние двух цветов oklch в oklab.
+ *
+ * @param first — значение первого токена
+ * @param second — значение второго токена
+ * @returns ΔE_ok
+ */
+const toOklabDistance = (first: string, second: string): number => {
+  const [firstL, firstA, firstB] = toOklab(first);
+  const [secondL, secondA, secondB] = toOklab(second);
+
+  return Math.hypot(firstL - secondL, firstA - secondA, firstB - secondB);
+};
+
+/**
+ * Координаты oklab цвета oklch.
+ *
+ * @param value — значение токена
+ * @returns `[L, a, b]`
+ */
+const toOklab = (value: string): [number, number, number] => {
+  const [lightness, chroma, hue] = parseOklch(value);
+  const radians = (hue * Math.PI) / 180;
+
+  return [lightness, chroma * Math.cos(radians), chroma * Math.sin(radians)];
 };
 
 /**
@@ -338,16 +391,37 @@ describe('штрих разметки', () => {
     expect(new Set(colors).size).toBe(LAYERS.length);
   });
 
-  it.each(Object.values(LAYER_TOKENS))(
-    'цвет %s и подложка контрастны не меньше 9:1',
-    (token) => {
-      const halo = readLuminance(HALO_TOKEN);
-      const core = readLuminance(token);
-      const contrast = (Math.max(halo, core) + 0.05) / (Math.min(halo, core) + 0.05);
+  it.each(PAINT_TOKENS)('цвет %s и подложка контрастны не меньше 9:1', (token) => {
+    const halo = readLuminance(HALO_TOKEN);
+    const core = readLuminance(token);
+    const contrast = (Math.max(halo, core) + 0.05) / (Math.min(halo, core) + 0.05);
 
-      expect(contrast).toBeGreaterThanOrEqual(MIN_PAIR_CONTRAST);
+    expect(contrast).toBeGreaterThanOrEqual(MIN_PAIR_CONTRAST);
+  });
+});
+
+describe('роли красок', () => {
+  it('линия поля разметки не того цвета, что красная черта на снимке', () => {
+    const [, chroma, hue] = parseOklch(readColorToken(LAYER_TOKENS.marginLine));
+    const distance = Math.abs(((hue - RED_HUE + 540) % 360) - 180);
+
+    expect(chroma <= MAX_NEUTRAL_CHROMA || distance >= MIN_HUE_DISTANCE).toBe(true);
+  });
+
+  it.each(Object.values(LAYER_TOKENS))(
+    'подсветка линии в «Изгибе» отличима от краски %s',
+    (token) => {
+      expect(
+        toOklabDistance(readColorToken('markup-highlight'), readColorToken(token))
+      ).toBeGreaterThanOrEqual(MIN_PAINT_DISTANCE);
     }
   );
+
+  it('подсветка линии в «Изгибе» — своя краска, не краска закреплённых линий', () => {
+    expect(readColorToken('markup-highlight')).not.toBe(
+      readColorToken(LAYER_TOKENS.pins)
+    );
+  });
 });
 
 describe('подложка штриха', () => {
@@ -358,7 +432,7 @@ describe('подложка штриха', () => {
     expect(1 - opacity).toBeGreaterThanOrEqual(MIN_PHOTO_LINE_SHARE);
   });
 
-  it.each(Object.values(LAYER_TOKENS))(
+  it.each(PAINT_TOKENS)(
     'на самой тёмной бумаге снимков краска %s контрастна подложке над бумагой не меньше 3:1',
     (token) => {
       const opacity = readHaloOpacity();

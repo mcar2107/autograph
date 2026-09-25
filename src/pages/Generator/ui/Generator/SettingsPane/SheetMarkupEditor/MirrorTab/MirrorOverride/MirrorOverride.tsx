@@ -152,10 +152,11 @@ export const MirrorOverride: FC<MirrorOverrideProps> = (props) => {
         return (
           <MarkupHandle
             key={`marginLine-${end}`}
+            kind="lineEnd"
             x={x}
             y={y}
             label={HANDLE_LABELS.marginLine[end]}
-            className="stroke-danger in-data-pan-mode:pointer-events-none"
+            className="in-data-pan-mode:pointer-events-none"
             onMove={handleMarginLineMove}
             onMoveEnd={handleMarginLineMoveEnd}
           />

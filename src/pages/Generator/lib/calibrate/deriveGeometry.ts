@@ -11,7 +11,9 @@ import type {
   GeometryBasis,
   GeometryCorrection,
   LineEdges,
+  SheetBounds,
   SheetCalibration,
+  TextEdges,
 } from './calibrate.types';
 
 /**
@@ -114,10 +116,7 @@ const resolveStep = (step: number): number => {
  * @param step — шаг разлиновки больше нуля
  * @returns края блока в пикселях кадра
  */
-const resolveBlockBounds = (
-  sheet: SheetCalibration,
-  step: number
-): Pick<GeometryBasis, 'left' | 'right'> => {
+const resolveBlockBounds = (sheet: SheetBounds, step: number): TextEdges => {
   const { ruling, width } = sheet;
   const { margins, marginLineX, marginLineSide } = ruling;
 
@@ -148,7 +147,7 @@ const narrowByMarginLine = (
   marginLineX: number | null,
   marginLineSide: MarginLineSide | null,
   step: number
-): Pick<GeometryBasis, 'left' | 'right'> => {
+): TextEdges => {
   const gap = step * MARGIN_LINE_GAP_SHARE;
 
   if (marginLineX === null) {
@@ -270,6 +269,62 @@ export const deriveGeometry = (
 };
 
 /**
+ * Граница блока на линии с координатой `u` вдоль линий.
+ *
+ * @param sheet — лист страницы
+ * @param edge — какая граница
+ * @param u — координата вдоль линий
+ * @returns положение вдоль строки в системе блока; `null` — линии поля нет
+ */
+const resolveEdgeAt = (sheet: SheetBounds, edge: SideEdge, u: number): number | null => {
+  const { ruling, height } = sheet;
+  const ends = readSideEdge(ruling, sheet, edge);
+
+  return ends && resolveSideEdgeAt(ruling, ends, height, u);
+};
+
+/**
+ * Края строки на линии `u` листа, где поле или линия поля идут наклонно к
+ * строкам: пересечения границ с этой линией, сужённые линией поля.
+ *
+ * @param sheet — лист страницы
+ * @param step — шаг разлиновки больше нуля
+ * @param u — координата вдоль линий
+ * @returns края строки в системе блока
+ */
+const resolveSlantedEdges = (sheet: SheetBounds, step: number, u: number): TextEdges => {
+  return narrowByMarginLine(
+    resolveEdgeAt(sheet, 'left', u) || 0,
+    resolveEdgeAt(sheet, 'right', u) || 0,
+    resolveEdgeAt(sheet, 'marginLine', u),
+    sheet.ruling.marginLineSide,
+    step
+  );
+};
+
+/**
+ * Где начинается и кончается строка, базовая линия которой лежит на линии с
+ * координатой `u` вдоль линий, — те же края, что берёт раскладка
+ * (`deriveGeometry`), без пользовательской поправки. Нужны тем, кто
+ * показывает область письма, не раскладывая текст: поля листа, сужённые
+ * линией поля с зазором; у полей без наклона к строкам края одни на весь
+ * лист.
+ *
+ * @param sheet — разлиновка и кадр листа страницы
+ * @param u — координата вдоль линий
+ * @returns края строки в системе блока, px
+ */
+export const resolveTextEdgesAt = (sheet: SheetBounds, u: number): TextEdges => {
+  const step = resolveStep(sheet.ruling.step);
+
+  if (!sheet.ruling.sideSlant) {
+    return resolveBlockBounds(sheet, step);
+  }
+
+  return resolveSlantedEdges(sheet, step, u);
+};
+
+/**
  * Края каждой строки на листе, где поле или линия поля идут наклонно к
  * строкам: строка начинается и кончается там, где её базовая линия
  * пересекает границы, — так текст стоит на одном расстоянии от края листа по
@@ -315,28 +370,12 @@ const buildLineEdges = (
       : 1;
   const widthCorrection = (correction.blockWidth || 0) * step;
 
-  /**
-   * Граница блока на базовой линии строки.
-   *
-   * @param edge — какая граница
-   * @param u — координата вдоль линий базовой линии
-   * @returns положение вдоль строки; `null` — линии поля нет
-   */
-  const edgeAt = (edge: SideEdge, u: number): number | null => {
-    const ends = readSideEdge(ruling, sheet, edge);
-
-    return ends && resolveSideEdgeAt(ruling, ends, height, u);
-  };
-
   return Array.from({ length: lineCount }).reduce<LineEdges>(
     (edges, _value, index) => {
-      const u = firstBaseline + index * lineStep;
-      const { left, right } = narrowByMarginLine(
-        edgeAt('left', u) || 0,
-        edgeAt('right', u) || 0,
-        edgeAt('marginLine', u),
-        ruling.marginLineSide,
-        step
+      const { left, right } = resolveSlantedEdges(
+        sheet,
+        step,
+        firstBaseline + index * lineStep
       );
 
       edges.lefts.push(left);

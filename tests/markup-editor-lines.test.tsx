@@ -292,6 +292,27 @@ const getPinEnd = (
 };
 
 /**
+ * Классы видимой фигуры конца булавки: подсветку ошибкой несёт она, а не
+ * круг захвата.
+ *
+ * @param editor — диалог редактора
+ * @param number — номер булавки с единицы
+ * @param end — какой конец
+ * @returns классы фигуры
+ */
+const readPinEndClass = (
+  editor: HTMLElement,
+  number: number,
+  end: 'левый' | 'правый'
+): string => {
+  const shape = getPinEnd(editor, number, end).parentElement?.querySelector(
+    '[data-handle-kind]'
+  );
+
+  return shape?.getAttribute('class') || '';
+};
+
+/**
  * Нажимает кнопку несколько раз.
  *
  * @param user — сессия `userEvent`
@@ -609,10 +630,8 @@ describe('инструмент «Линии»: булавки', () => {
       /не задают разлиновку|сходятся внутри кадра/
     );
     expect(readDraftRuling()).toBe(RULING);
-    expect(getPinEnd(editor, 1, 'правый').getAttribute('class')).toMatch(/stroke-danger/);
-    expect(getPinEnd(editor, 2, 'правый').getAttribute('class')).not.toMatch(
-      /stroke-danger/
-    );
+    expect(readPinEndClass(editor, 1, 'правый')).toMatch(/stroke-danger/);
+    expect(readPinEndClass(editor, 2, 'правый')).not.toMatch(/stroke-danger/);
   });
 
   it('невязка — расстояние от булавки до нарисованной линии; больше пикселя подсвечено', async () => {
@@ -631,7 +650,7 @@ describe('инструмент «Линии»: булавки', () => {
 
     expect(item.textContent).toMatch(/невязка 5\s?px/);
     expect(item.getAttribute('class')).toMatch(/border-danger/);
-    expect(getPinEnd(editor, 2, 'правый').getAttribute('class')).toMatch(/stroke-danger/);
+    expect(readPinEndClass(editor, 2, 'правый')).toMatch(/stroke-danger/);
     expect(
       within(editor).getByRole('listitem', { name: 'Закреплённая линия 1' }).textContent
     ).toMatch(/невязка 0\s?px/);

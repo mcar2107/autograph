@@ -12,12 +12,16 @@ import {
 } from '../MarkupViewport';
 
 import type { HandleDrag, MarkupHandleProps } from './MarkupHandle.types';
+import { MarkupHandleShape } from './MarkupHandleShape';
 
 /**
- * Радиус ручки в экранных пикселях: попадать пальцем и мышью одинаково
- * удобно при любом приближении фотографии.
+ * Радиус круга захвата в экранных пикселях: попадать пальцем и мышью
+ * одинаково удобно при любом приближении фотографии и при любой форме
+ * ручки. Круг не меньше описанной окружности самой крупной фигуры с
+ * обводкой — квадрата угла, 6·√2 + 1 ≈ 9,5, — иначе указатель на уголке
+ * видимой фигуры ручку не брал бы.
  */
-const HANDLE_RADIUS = 7;
+const HANDLE_RADIUS = 10;
 
 /**
  * Обводка ручки в экранных пикселях. Делится на масштаб, как и радиус: зум —
@@ -103,9 +107,13 @@ const toPhotoPoint = (
  * На зеркальной странице ручка стоит в пикселях самого листа внутри
  * отражённого слоя: указатель переводится через `x → W − x`, а стрелка влево
  * двигает её влево на экране — вправо по листу.
+ *
+ * Видно не круг захвата, а фигура роли (`MarkupHandleShape`): указатель и
+ * фокус берёт прозрачный круг под ней, одинаковый у всех ролей, а фигура
+ * указатель не ловит и подсвечивает фокус круга как соседа.
  */
 export const MarkupHandle: FC<MarkupHandleProps> = (props) => {
-  const { x, y, label, onMove, onMoveEnd, className } = props;
+  const { kind, x, y, label, onMove, onMoveEnd, isFlagged, className } = props;
   const scale = useMarkupScale();
   const mirrorWidth = useMarkupMirrorWidth();
   const sheet = useMarkupEditorStore((state) => {
@@ -187,7 +195,7 @@ export const MarkupHandle: FC<MarkupHandleProps> = (props) => {
   };
 
   return (
-    <>
+    <g className={className}>
       <circle
         role="button"
         tabIndex={0}
@@ -195,16 +203,24 @@ export const MarkupHandle: FC<MarkupHandleProps> = (props) => {
         cx={x}
         cy={y}
         r={HANDLE_RADIUS / scale}
-        strokeWidth={HANDLE_STROKE_WIDTH / scale}
-        className={cx(
-          'cursor-move fill-surface-raised stroke-focus outline-none focus-visible:stroke-fg',
-          className
-        )}
+        className="peer cursor-move fill-transparent outline-none"
         onPointerDown={handleHandlePointerDown}
         onPointerMove={handleHandlePointerMove}
         onPointerUp={handleHandlePointerUp}
         onPointerCancel={handleHandlePointerUp}
         onKeyDown={handleHandleKeyDown}
+      />
+
+      <MarkupHandleShape
+        kind={kind}
+        x={x}
+        y={y}
+        scale={scale}
+        className={cx(
+          'pointer-events-none fill-surface-raised peer-focus-visible:stroke-fg',
+          isFlagged ? 'stroke-danger' : 'stroke-focus'
+        )}
+        strokeWidth={HANDLE_STROKE_WIDTH / scale}
       />
 
       {drag && sheet ? (
@@ -218,6 +234,6 @@ export const MarkupHandle: FC<MarkupHandleProps> = (props) => {
           container={drag.container}
         />
       ) : null}
-    </>
+    </g>
   );
 };

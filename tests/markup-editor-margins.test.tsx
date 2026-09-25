@@ -1061,3 +1061,74 @@ describe('пунктир полей в оверлее', () => {
     expect(Math.abs((right?.y || 0) - (left?.y || 0))).toBeGreaterThan(PHOTO.step / 2);
   });
 });
+
+/**
+ * Роль видимой фигуры ручки с подписью `name`.
+ *
+ * @param editor — диалог редактора
+ * @param name — подпись ручки
+ * @returns тег фигуры и её роль
+ */
+const readHandleShape = (editor: HTMLElement, name: string): string => {
+  const shape = within(editor)
+    .getByRole('button', { name })
+    .parentElement?.querySelector('[data-handle-kind]');
+
+  return `${shape?.tagName}:${shape?.getAttribute('data-handle-kind')}`;
+};
+
+describe('инструмент «Поля»: роли на виду', () => {
+  it('углы — квадраты, середины краёв — ромбы, концы линии поля — круги', async () => {
+    const user = userEvent.setup();
+    const editor = await openMarginsTool(user, buildRuling(120, 'left'));
+
+    expect(readHandleShape(editor, 'Левый верхний угол полей')).toBe('rect:corner');
+    expect(readHandleShape(editor, 'Правый нижний угол полей')).toBe('rect:corner');
+    expect(readHandleShape(editor, 'Верхнее поле')).toBe('polygon:edgeMiddle');
+    expect(readHandleShape(editor, 'Нижнее поле')).toBe('polygon:edgeMiddle');
+    expect(readHandleShape(editor, 'Линия поля сверху')).toBe('circle:lineEnd');
+    expect(readHandleShape(editor, 'Линия поля снизу')).toBe('circle:lineEnd');
+  });
+
+  it('линии и булавки тусклее полей, а на «Линиях» — наоборот', async () => {
+    const user = userEvent.setup();
+    const editor = await openMarginsTool(user, buildRuling(120, 'left'));
+
+    /**
+     * Помечен ли слой как чужой для выбранного инструмента.
+     *
+     * @param layer — слой
+     * @returns помечен ли
+     */
+    const isForeign = (layer: string): boolean => {
+      return Boolean(
+        editor.querySelector(`[data-layer="${layer}"]`)?.closest('[data-foreign]')
+      );
+    };
+
+    expect(isForeign('margins')).toBe(false);
+    expect(isForeign('marginLine')).toBe(false);
+    expect(isForeign('lines')).toBe(true);
+    expect(isForeign('outline')).toBe(true);
+
+    await user.click(within(editor).getByRole('radio', { name: 'Линии' }));
+
+    expect(isForeign('lines')).toBe(false);
+    expect(isForeign('pins')).toBe(false);
+    expect(isForeign('margins')).toBe(true);
+    expect(isForeign('marginLine')).toBe(true);
+  });
+
+  it('зона письма в «Полях» начинается от линии поля с зазором, а не от левого поля', async () => {
+    const user = userEvent.setup();
+    const editor = await openMarginsTool(user, buildRuling(120, 'left'));
+    const [first] = readPoints(editor.querySelector('[data-writing-zone]'));
+
+    expect(first?.x).toBeCloseTo(120 + MARGIN_LINE_GAP, 1);
+    expect(
+      readHandlePoint(
+        within(editor).getByRole('button', { name: 'Левый верхний угол полей' })
+      ).x
+    ).toBeCloseTo(PHOTO.margins.left, 1);
+  });
+});

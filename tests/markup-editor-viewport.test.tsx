@@ -36,7 +36,7 @@ const renderViewport = (onHandleMove: () => void = vi.fn()) => {
   render(
     <MarkupViewport frame={FRAME} photoSrc="data:image/jpeg;base64," photoLabel="Лист">
       <svg viewBox={`0 0 ${FRAME.width} ${FRAME.height}`}>
-        <MarkupHandle x={100} y={200} label="Ручка" onMove={onHandleMove} />
+        <MarkupHandle kind="corner" x={100} y={200} label="Ручка" onMove={onHandleMove} />
       </svg>
     </MarkupViewport>
   );

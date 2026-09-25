@@ -1,4 +1,5 @@
 import type { RulingPin, SheetFrame, SheetRuling } from '../../../../../lib/paper';
+import type { MarkupToolId } from '../SheetMarkupEditor.types';
 
 /**
  * Слой разметки, который показывается и скрывается отдельно.
@@ -32,6 +33,11 @@ export type MarkupOverlayProps = {
   layers: MarkupLayerVisibility;
 
   /**
+   * Выбранный инструмент: слои, которые он не правит, тусклее.
+   */
+  tool: MarkupToolId;
+
+  /**
    * Включён пробный текст: линии приглушены, у закреплённых линий — только
    * концы.
    */
@@ -47,4 +53,25 @@ export type MarkupOverlayProps = {
    * `null` — оверлей размонтирован.
    */
   onHandleLayerChange: (layer: SVGGElement | null) => void;
+};
+
+/**
+ * Атрибуты группы слоя: у слоя чужого инструмента — пониженная
+ * непрозрачность.
+ */
+export type MarkupLayerGroupAttributes = {
+  /**
+   * Слой в группе.
+   */
+  'data-layer-group': MarkupLayerId;
+
+  /**
+   * Метка слоя чужого инструмента.
+   */
+  'data-foreign'?: true;
+
+  /**
+   * Непрозрачность группы; не задана — полная.
+   */
+  opacity?: number;
 };

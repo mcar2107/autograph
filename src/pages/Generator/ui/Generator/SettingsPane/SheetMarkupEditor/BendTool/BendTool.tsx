@@ -14,6 +14,7 @@ import type {
 import { resolveBendRadius, resolveBendReach } from '../../../../../lib/paper';
 import { useMarkupEditorStore } from '../../../../../model/useMarkupEditorStore';
 import { normalizePins, refitBendToPins } from '../LinesTool/linesPins';
+import { MARKUP_MUTED_OPACITY } from '../MarkupOverlay';
 import { buildRulingLines, toPointsAttribute } from '../MarkupOverlay/markupGeometry';
 import { MarkupStroke } from '../MarkupStroke';
 import {
@@ -132,7 +133,7 @@ const scaleBendRadius = (
  * самого листа, и зеркало его отражает.
  */
 export const BendTool: FC<MarkupToolProps> = (props) => {
-  const { handleLayer } = props;
+  const { handleLayer, isMuted } = props;
   const mirrorWidth = useMarkupMirrorWidth();
   const scale = useMarkupScale();
   const record = useMarkupEditorStore((state) => {
@@ -343,31 +344,41 @@ export const BendTool: FC<MarkupToolProps> = (props) => {
                 );
               })}
 
-              {activeLine ? (
-                <MarkupStroke
-                  pointerEvents="none"
-                  fill="none"
-                  width={HOVER_WIDTH}
-                  className="stroke-markup-pin"
-                >
-                  <polyline
-                    data-bend-hover={activeLine.index}
-                    points={activeLine.points}
-                  />
-                </MarkupStroke>
-              ) : null}
+              {/*
+               * Подсветка и рамка лежат в слое ручек, мимо приглушения
+               * оверлея, поэтому под пробным текстом гаснут здесь — той же
+               * непрозрачностью, что и линии разметки.
+               */}
+              <g
+                data-muted={isMuted || undefined}
+                opacity={isMuted ? MARKUP_MUTED_OPACITY : undefined}
+              >
+                {activeLine ? (
+                  <MarkupStroke
+                    pointerEvents="none"
+                    fill="none"
+                    width={HOVER_WIDTH}
+                    className="stroke-markup-highlight"
+                  >
+                    <polyline
+                      data-bend-hover={activeLine.index}
+                      points={activeLine.points}
+                    />
+                  </MarkupStroke>
+                ) : null}
 
-              {ring ? (
-                <MarkupStroke
-                  dash={RING_DASH}
-                  pointerEvents="none"
-                  fill="none"
-                  width={RING_WIDTH}
-                  className="stroke-markup-pin"
-                >
-                  <polygon data-bend-ring="" points={toPointsAttribute(ring)} />
-                </MarkupStroke>
-              ) : null}
+                {ring ? (
+                  <MarkupStroke
+                    dash={RING_DASH}
+                    pointerEvents="none"
+                    fill="none"
+                    width={RING_WIDTH}
+                    className="stroke-markup-highlight"
+                  >
+                    <polygon data-bend-ring="" points={toPointsAttribute(ring)} />
+                  </MarkupStroke>
+                ) : null}
+              </g>
             </g>,
             handleLayer
           )

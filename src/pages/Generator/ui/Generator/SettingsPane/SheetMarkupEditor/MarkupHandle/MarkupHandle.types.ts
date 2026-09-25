@@ -6,7 +6,19 @@ import type { SheetPoint } from '../../../../../lib/paper';
  */
 export type MarkupMoveSource = 'pointer' | 'keyboard';
 
+/**
+ * Роль ручки — от неё зависит форма: `corner` — угол контура или области
+ * текста, квадрат; `edgeMiddle` — середина края области текста, ромб;
+ * `lineEnd` — конец закреплённой линии или линии поля, круг.
+ */
+export type MarkupHandleKind = 'corner' | 'edgeMiddle' | 'lineEnd';
+
 export type MarkupHandleProps = {
+  /**
+   * Роль ручки: задаёт её форму.
+   */
+  kind: MarkupHandleKind;
+
   /**
    * Горизонталь ручки в пикселях фотографии.
    */
@@ -35,7 +47,12 @@ export type MarkupHandleProps = {
   onMoveEnd?: (point: SheetPoint, source: MarkupMoveSource) => void;
 
   /**
-   * Дополнительные классы.
+   * Ручка подсвечена ошибкой: то, что она ставит, не годится.
+   */
+  isFlagged?: boolean;
+
+  /**
+   * Дополнительные классы группы ручки.
    */
   className?: string;
 };

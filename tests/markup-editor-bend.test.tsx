@@ -645,6 +645,12 @@ describe('инструмент «Изгиб»: подсветка линии п�
     expect(editor.querySelector('[data-bend-hover]')?.getAttribute('points')).toBe(
       getHitLine(editor, 10).getAttribute('points')
     );
+    expect(
+      editor
+        .querySelector('[data-bend-hover]')
+        ?.closest('[class*="stroke-markup"]')
+        ?.getAttribute('class')
+    ).toContain('stroke-markup-highlight');
 
     /**
      * На мелком масштабе полосы соседних линий перекрываются: указатель над
@@ -680,6 +686,55 @@ describe('инструмент «Изгиб»: подсветка линии п�
     expect(readHoveredLine(editor)).toBe(10);
 
     fireEvent.pointerUp(line, { ...pointer, clientX: x, clientY: grabbed + 30 });
+  });
+});
+
+describe('инструмент «Изгиб» под пробным текстом', () => {
+  /**
+   * Непрозрачность приглушённой разметки: сквозь неё читаются буквы.
+   */
+  const MAX_MUTED_OPACITY = 0.25;
+
+  /**
+   * Непрозрачность группы, приглушающей элемент; `null` — не приглушён.
+   *
+   * @param element — подсветка или рамка инструмента
+   * @returns непрозрачность приглушения
+   */
+  const readMutedOpacity = (element: Element | null): number | null => {
+    const muted = element?.closest('[data-muted]');
+
+    return muted ? Number(muted.getAttribute('opacity')) : null;
+  };
+
+  it('подсветка линии и рамка у курсора приглушены, как слои разметки, и возвращаются с выключением', async () => {
+    const user = userEvent.setup();
+    const editor = await openBendTool(user, RULING, null);
+    const svg = mockScreenMatrix(editor);
+    const x = 200;
+    const trial = within(editor).getByRole('checkbox', { name: 'Пробный текст' });
+
+    await user.click(trial);
+    fireEvent.pointerMove(svg, { clientX: x, clientY: 400 });
+    fireEvent.pointerMove(getHitLine(editor, 10), {
+      clientX: x,
+      clientY: toLineY(RULING, 10, x),
+    });
+
+    const hover = editor.querySelector('[data-bend-hover]');
+    const ring = editor.querySelector('[data-bend-ring]');
+
+    expect(hover).not.toBeNull();
+    expect(ring).not.toBeNull();
+    expect(readMutedOpacity(hover)).not.toBeNull();
+    expect(readMutedOpacity(hover)).toBeLessThanOrEqual(MAX_MUTED_OPACITY);
+    expect(readMutedOpacity(ring)).not.toBeNull();
+    expect(readMutedOpacity(ring)).toBeLessThanOrEqual(MAX_MUTED_OPACITY);
+
+    await user.click(trial);
+
+    expect(readMutedOpacity(editor.querySelector('[data-bend-hover]'))).toBeNull();
+    expect(readMutedOpacity(editor.querySelector('[data-bend-ring]'))).toBeNull();
   });
 });
 
@@ -973,7 +1028,7 @@ describe('инструмент «Изгиб»: полоса попадания',
     useMarkupEditorStore.getState().open(record, null);
     render(
       <MarkupScaleContext value={scale}>
-        <BendTool handleLayer={handleLayer} pageIndex={0} />
+        <BendTool handleLayer={handleLayer} pageIndex={0} isMuted={false} />
       </MarkupScaleContext>
     );
 

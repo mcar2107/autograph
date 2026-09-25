@@ -193,6 +193,7 @@ export const OutlineTool: FC<MarkupToolProps> = (props) => {
     return (
       <MarkupHandle
         key={corner}
+        kind="corner"
         x={x}
         y={y}
         label={cornerLabels[corner]}
