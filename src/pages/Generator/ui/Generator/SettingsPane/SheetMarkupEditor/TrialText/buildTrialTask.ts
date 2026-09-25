@@ -15,12 +15,42 @@ import type { TrialTaskInput } from './buildTrialTask.types';
 const TRIAL_TEXT_LIMIT = 4000;
 
 /**
- * Пробный текст, пока поле ввода пустое: проверять разметку надо и до того,
- * как набран свой текст.
+ * Образец, пока поле ввода пустое: проверять разметку надо и до того, как
+ * набран свой текст. Панграмма — все буквы алфавита, и хвосты, и выносные
+ * элементы.
  */
-const FALLBACK_TEXT = Array.from({ length: 40 }, () => {
-  return 'Съешь же ещё этих мягких французских булок, да выпей чаю.';
-}).join(' ');
+const SAMPLE_TEXT = 'Съешь же ещё этих мягких французских булок, да выпей чаю.';
+
+/**
+ * Текст пробной страницы: сам текст из поля ввода, а за ним, пока не набран
+ * предел, — он же, повторённый одним абзацем.
+ *
+ * Страница заполняется целиком, потому что проверяется разметка всего листа:
+ * у короткого текста строки кончались бы вверху, а сползание строк с линий у
+ * нижнего края — перспектива, изгиб, нижнее поле — и осталось бы
+ * непроверенным. Повтор — своего текста, а не образца: на странице те же
+ * буквы, что уйдут в JPEG. Начало — как набрано, с абзацами, а повтор — одним
+ * абзацем: короткие абзацы давали бы короткие строки, и правое поле осталось
+ * бы непроверенным.
+ *
+ * @param text — текст из поля ввода
+ * @returns текст пробной страницы не короче предела
+ */
+const toTrialText = (text: string): string => {
+  const source = text.trim() || SAMPLE_TEXT;
+  const paragraph = source.replaceAll(/\s+/g, ' ');
+  let trial = source;
+
+  if (trial.length < TRIAL_TEXT_LIMIT) {
+    trial += '\n';
+  }
+
+  while (trial.length < TRIAL_TEXT_LIMIT) {
+    trial += `${paragraph} `;
+  }
+
+  return trial.slice(0, TRIAL_TEXT_LIMIT);
+};
 
 const EMPTY_PAGE: Page = { lines: [] };
 
@@ -43,8 +73,8 @@ const toDraftSheet = (input: TrialTaskInput): PaperSheet => {
 };
 
 /**
- * Задание воркеру отрисовки на пробную страницу: начало текста из поля ввода,
- * разложенное по черновой разметке листа, теми же шрифтом, чернилами и
+ * Задание воркеру отрисовки на пробную страницу: текст из поля ввода,
+ * повторённый до конца страницы и разложенный по черновой разметке листа, теми же шрифтом, чернилами и
  * реализмом, что у страниц прогона, — тем же путём, каким страница уходит в
  * JPEG. Лист стоит в семье из него одного, с видом из черновика: так число
  * шагов на строку — как у листа после сохранения.
@@ -69,21 +99,18 @@ export const buildTrialTask = (input: TrialTaskInput): PageRenderTask => {
   let page = EMPTY_PAGE;
 
   try {
-    const [first] = paginate(
-      (text.trim() ? text : FALLBACK_TEXT).slice(0, TRIAL_TEXT_LIMIT),
-      {
-        measure,
-        metrics,
-        correction,
-        bottomMargin: input.bottomMargin,
-        getPageSheet: (index) => {
-          return {
-            sheetId: sheet.id,
-            calibration: getPageCalibration(family, sheet, pageIndex + index),
-          };
-        },
-      }
-    );
+    const [first] = paginate(toTrialText(text), {
+      measure,
+      metrics,
+      correction,
+      bottomMargin: input.bottomMargin,
+      getPageSheet: (index) => {
+        return {
+          sheetId: sheet.id,
+          calibration: getPageCalibration(family, sheet, pageIndex + index),
+        };
+      },
+    });
 
     page = first || EMPTY_PAGE;
   } finally {

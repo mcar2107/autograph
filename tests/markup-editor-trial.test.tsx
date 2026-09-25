@@ -149,9 +149,12 @@ const settle = async (ms: number = SETTLE_MS) => {
 /**
  * Открывает редактор на листе и включает пробный текст.
  *
+ * @param text — текст в поле ввода генератора
  * @returns диалог редактора
  */
-const openWithTrial = async (): Promise<HTMLElement> => {
+const openWithTrial = async (
+  text = 'Первая пробная строка.\nВторая пробная строка.'
+): Promise<HTMLElement> => {
   const user = userEvent.setup();
   const record = {
     ...buildUserSheetRecord({ familyId: 'lined', sheet: SHEET }),
@@ -163,7 +166,7 @@ const openWithTrial = async (): Promise<HTMLElement> => {
     familyId: 'lined',
     sheetId: SHEET.id,
     isSheetPinned: true,
-    text: 'Первая пробная строка.\nВторая пробная строка.',
+    text,
   });
   useMarkupEditorStore.getState().open(record, null);
   render(<SheetMarkupEditor />);
@@ -395,5 +398,67 @@ describe('пробный текст', () => {
     await user.click(within(editor).getByRole('checkbox', { name: 'Пробный текст' }));
 
     expect(readTrialSrc()).toBeNull();
+  });
+
+  it('короткий текст заполняет страницу целиком: сначала он сам, дальше — его повтор одним абзацем', async () => {
+    await openWithTrial('слово '.repeat(2000));
+    await settle();
+
+    const capacity = pending[0]?.task.params.page.lines.length || 0;
+
+    cleanup();
+    pending.length = 0;
+    await openWithTrial();
+    await settle();
+
+    const lines = pending[0]?.task.params.page.lines || [];
+    const texts = lines.map(({ words }) => {
+      return words
+        .map(({ text }) => {
+          return text;
+        })
+        .join(' ');
+    });
+
+    expect(capacity).toBeGreaterThan(3);
+    expect(lines).toHaveLength(capacity);
+    const pageText = texts.join(' ');
+
+    expect(
+      pageText.startsWith(
+        'Первая пробная строка. Вторая пробная строка. Первая пробная строка. Вторая пробная строка.'
+      )
+    ).toBe(true);
+    expect(pageText.split('Первая пробная строка.').length - 1).toBeGreaterThan(2);
+  });
+
+  it('пустое поле ввода — страница целиком из образца', async () => {
+    await openWithTrial('слово '.repeat(2000));
+    await settle();
+
+    const capacity = pending[0]?.task.params.page.lines.length || 0;
+
+    cleanup();
+    pending.length = 0;
+    await openWithTrial('   ');
+    await settle();
+
+    expect(pending[0]?.task.params.page.lines).toHaveLength(capacity);
+  });
+
+  it('под пробным текстом линии разметки приглушены, у закреплённых линий — только концы', async () => {
+    const user = userEvent.setup();
+    const editor = await openWithTrial();
+    const overlay = within(editor).getByRole('group', { name: 'Разметка листа' });
+
+    expect(overlay.querySelector('[data-muted] [data-layer="lines"]')).not.toBeNull();
+    expect(overlay.querySelectorAll('[data-layer="pins"] line')).toHaveLength(0);
+
+    await user.click(within(editor).getByRole('checkbox', { name: 'Пробный текст' }));
+
+    expect(overlay.querySelector('[data-muted]')).toBeNull();
+    expect(overlay.querySelectorAll('[data-layer="pins"] line')).toHaveLength(
+      PINS.length
+    );
   });
 });

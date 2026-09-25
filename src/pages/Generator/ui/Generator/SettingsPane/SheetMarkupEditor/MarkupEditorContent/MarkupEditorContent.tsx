@@ -12,7 +12,7 @@ import { LinesTool } from '../LinesTool';
 import { MarginsTool } from '../MarginsTool';
 import { MarkupCloseConfirm } from '../MarkupCloseConfirm';
 import { MarkupFooter } from '../MarkupFooter';
-import { MarkupLayers } from '../MarkupLayers';
+import { MarkupLayers, useHideMarkupKey } from '../MarkupLayers';
 import { MarkupNotices } from '../MarkupNotices';
 import type { MarkupLayerVisibility } from '../MarkupOverlay';
 import { MarkupOverlay } from '../MarkupOverlay';
@@ -103,6 +103,8 @@ export const MarkupEditorContent: FC<MarkupEditorContentProps> = (props) => {
   const [layers, setLayers] = useState(ALL_LAYERS_SHOWN);
   const [pageIndex, setPageIndex] = useState(0);
   const [scale, setScale] = useState(1);
+  const [isTrialEnabled, setIsTrialEnabled] = useState(false);
+  const isMarkupHidden = useHideMarkupKey();
   const ActiveTool = TOOLS[tool];
   const isMirrorPage = pageIndex !== 0;
 
@@ -145,6 +147,10 @@ export const MarkupEditorContent: FC<MarkupEditorContentProps> = (props) => {
 
   const handleLayersChange = (next: MarkupLayerVisibility) => {
     setLayers(next);
+  };
+
+  const handleTrialEnabledChange = (isEnabled: boolean) => {
+    setIsTrialEnabled(isEnabled);
   };
 
   const handlePageIndexChange = (next: number) => {
@@ -193,7 +199,8 @@ export const MarkupEditorContent: FC<MarkupEditorContentProps> = (props) => {
         >
           {/*
            * Пробный текст — страница с фотографией целиком: лежит над снимком и
-           * под разметкой, чтобы линии и ручки оставались видны.
+           * под разметкой, чтобы ручки оставались видны; линии под ним
+           * приглушены.
            */}
           <div
             ref={handleTrialLayerChange}
@@ -205,6 +212,8 @@ export const MarkupEditorContent: FC<MarkupEditorContentProps> = (props) => {
             ruling={pageRuling}
             pins={isMirrorPage ? mirrorPins(draft.pins, sheet.width) : draft.pins}
             layers={layers}
+            isMuted={isTrialEnabled}
+            isHidden={isMarkupHidden}
             onHandleLayerChange={handleHandleLayerChange}
           />
         </MarkupViewport>
@@ -235,7 +244,12 @@ export const MarkupEditorContent: FC<MarkupEditorContentProps> = (props) => {
 
             <MarkupLayers layers={layers} onLayersChange={handleLayersChange} />
 
-            <TrialText layer={trialLayer} pageIndex={pageIndex} />
+            <TrialText
+              layer={trialLayer}
+              pageIndex={pageIndex}
+              isEnabled={isTrialEnabled}
+              onEnabledChange={handleTrialEnabledChange}
+            />
           </MarkupScaleContext>
 
           <MirrorTab

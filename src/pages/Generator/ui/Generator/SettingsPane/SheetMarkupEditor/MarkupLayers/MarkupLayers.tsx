@@ -19,7 +19,8 @@ const LAYER_LABELS: [MarkupLayerId, string][] = [
 /**
  * Показ и скрытие слоёв разметки по отдельности: линии разлиновки закрывают
  * снимок, и чтобы разглядеть под ними настоящие, их нужно убрать, не трогая
- * остальное.
+ * остальное. Подсказка про клавишу H стоит здесь же: быстрое скрытие всей
+ * разметки ищут рядом с флажками слоёв.
  */
 export const MarkupLayers: FC<MarkupLayersProps> = (props) => {
   const { layers, onLayersChange } = props;
@@ -44,6 +45,12 @@ export const MarkupLayers: FC<MarkupLayersProps> = (props) => {
           />
         );
       })}
+
+      <p className="text-xs text-fg-muted">
+        Удерживайте{' '}
+        <kbd className="rounded-sm border border-border-strong px-1 font-ui">H</kbd>
+        {'\u00A0— '}вся разметка скрыта, пока клавиша зажата.
+      </p>
     </fieldset>
   );
 };

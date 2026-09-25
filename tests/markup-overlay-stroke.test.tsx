@@ -61,6 +61,30 @@ const MAX_HALO_SIDE_PX = 1;
  */
 const MIN_PAIR_CONTRAST = 9;
 
+/**
+ * Самая тёмная бумага живых снимков — пятый процентиль яркости середины
+ * листа у `IMG_1705` (у `IMG_1813` 0,215, у `IMG_1808` 0,37).
+ */
+const DARKEST_PAPER_LUMINANCE = 0.17;
+
+/**
+ * Наименьший контраст краски слоя к подложке над бумагой: WCAG 1.4.11.
+ */
+const MIN_LINE_CONTRAST = 3;
+
+/**
+ * Какая доля перепада «линия фото — бумага» должна остаться под подложкой:
+ * меньше половины — и линия снимка под разметкой не видна, совпадение не
+ * проверить.
+ */
+const MIN_PHOTO_LINE_SHARE = 0.5;
+
+/**
+ * Прозрачность приглушённых слоёв под пробным текстом: сквозь линии должны
+ * читаться буквы.
+ */
+const MAX_MUTED_OPACITY = 0.25;
+
 const handleLayerChange = () => {};
 
 /**
@@ -69,7 +93,14 @@ const handleLayerChange = () => {};
  */
 const SCALES = [0.36, 4];
 
-const renderOverlay = (scale = 1) => {
+/**
+ * Оверлей со всеми слоями.
+ *
+ * @param scale — масштаб просмотра
+ * @param mode — приглушён ли он под пробным текстом и скрыт ли клавишей
+ * @returns контейнер с оверлеем
+ */
+const renderOverlay = (scale = 1, mode = { isMuted: false, isHidden: false }) => {
   const { container } = render(
     <MarkupScaleContext value={scale}>
       <MarkupOverlay
@@ -83,6 +114,8 @@ const renderOverlay = (scale = 1) => {
           outline: true,
           pins: true,
         }}
+        isMuted={mode.isMuted}
+        isHidden={mode.isHidden}
         onHandleLayerChange={handleLayerChange}
       />
     </MarkupScaleContext>
@@ -192,6 +225,48 @@ const readColorToken = (token: string): string => {
   return reference?.[1] ? readColorToken(reference[1]) : value;
 };
 
+/**
+ * Яркость WCAG серого цвета, заданного в sRGB.
+ *
+ * @param channel — канал sRGB 0…1
+ * @returns относительная яркость
+ */
+const toGrayLuminance = (channel: number): number => {
+  return channel <= 0.040_45 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+};
+
+/**
+ * Канал sRGB серого цвета заданной яркости.
+ *
+ * @param luminance — относительная яркость
+ * @returns канал 0…1
+ */
+const toGrayChannel = (luminance: number): number => {
+  return luminance <= 0.003_130_8
+    ? luminance * 12.92
+    : 1.055 * luminance ** (1 / 2.4) - 0.055;
+};
+
+const toContrast = (first: number, second: number): number => {
+  return (Math.max(first, second) + 0.05) / (Math.min(first, second) + 0.05);
+};
+
+/**
+ * Прозрачность подложки: у `<use>` слоя линий.
+ *
+ * @returns непрозрачность 0…1
+ */
+const readHaloOpacity = (): number => {
+  const container = renderOverlay();
+  const geometry = container.querySelector('[data-layer="lines"]');
+  const halo = container.querySelector(`use[href="#${geometry?.id}"]`);
+  const opacity = Number(halo?.getAttribute('opacity') || '1');
+
+  cleanup();
+
+  return opacity;
+};
+
 const readLuminance = (token: string): number => {
   const value = readColorToken(token);
 
@@ -273,4 +348,81 @@ describe('штрих разметки', () => {
       expect(contrast).toBeGreaterThanOrEqual(MIN_PAIR_CONTRAST);
     }
   );
+});
+
+describe('подложка штриха', () => {
+  it('полупрозрачна: линия фото под ней сохраняет не меньше половины перепада', () => {
+    const opacity = readHaloOpacity();
+
+    expect(opacity).toBeGreaterThan(0);
+    expect(1 - opacity).toBeGreaterThanOrEqual(MIN_PHOTO_LINE_SHARE);
+  });
+
+  it.each(Object.values(LAYER_TOKENS))(
+    'на самой тёмной бумаге снимков краска %s контрастна подложке над бумагой не меньше 3:1',
+    (token) => {
+      const opacity = readHaloOpacity();
+      const paper = toGrayChannel(DARKEST_PAPER_LUMINANCE);
+      const halo = toGrayLuminance((1 - opacity) * paper + opacity);
+
+      expect(toContrast(readLuminance(token), halo)).toBeGreaterThanOrEqual(
+        MIN_LINE_CONTRAST
+      );
+    }
+  );
+});
+
+describe('приглушение и скрытие', () => {
+  it.each(['lines', 'margins', 'marginLine', 'outline'] as const)(
+    'под пробным текстом слой %s приглушён вместе с подложкой',
+    (layer) => {
+      const container = renderOverlay(1, { isMuted: true, isHidden: false });
+      const geometry = container.querySelector(`[data-layer="${layer}"]`);
+      const muted = geometry?.closest('[data-muted]');
+      const halo = container.querySelector(`use[href="#${geometry?.id}"]`);
+
+      expect(Number(muted?.getAttribute('opacity'))).toBeLessThanOrEqual(
+        MAX_MUTED_OPACITY
+      );
+      expect(muted?.contains(halo || null)).toBe(true);
+    }
+  );
+
+  it('без пробного текста слои не приглушены', () => {
+    const container = renderOverlay();
+
+    expect(container.querySelector('[data-muted]')).toBeNull();
+  });
+
+  it('под пробным текстом у закреплённых линий остаются только концы, не приглушённые', () => {
+    const container = renderOverlay(1, { isMuted: true, isHidden: false });
+    const pins = container.querySelector('[data-layer="pins"]');
+
+    expect(pins?.querySelectorAll('line')).toHaveLength(0);
+    expect(pins?.querySelectorAll('circle')).toHaveLength(2 * PINS.length);
+    expect(pins?.closest('[data-muted]')).toBeNull();
+  });
+
+  it('без пробного текста закреплённая линия рисуется целиком', () => {
+    const container = renderOverlay();
+    const pins = container.querySelector('[data-layer="pins"]');
+
+    expect(pins?.querySelectorAll('line')).toHaveLength(PINS.length);
+  });
+
+  it('скрытая клавишей разметка не видна и не ловит указатель, но остаётся в документе', () => {
+    const shown = renderOverlay().querySelector('svg');
+
+    expect(shown?.classList.contains('opacity-0')).toBe(false);
+
+    cleanup();
+
+    const hidden = renderOverlay(1, { isMuted: false, isHidden: true }).querySelector(
+      'svg'
+    );
+
+    expect(hidden?.classList.contains('opacity-0')).toBe(true);
+    expect(hidden?.classList.contains('pointer-events-none')).toBe(true);
+    expect(hidden?.querySelector('[data-layer="handles"]')).not.toBeNull();
+  });
 });

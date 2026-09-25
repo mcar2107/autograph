@@ -196,6 +196,26 @@ export const LoupeWhileDragging: Story = {
       left <= start.x && start.x <= right && top <= start.y + 3 && start.y + 3 <= bottom;
 
     await expect(isUnderPointer).toBe(false);
+
+    /**
+     * Центр перекрестья — там, где в лупе лежит точка ручки: полпоперечника
+     * от угла поля со снимком.
+     */
+    const photo = await findElement<HTMLElement>('[data-loupe-photo]');
+    const [horizontalGap, verticalGap] = [
+      ...loupe.querySelectorAll<HTMLElement>('[data-crosshair-gap]'),
+    ].map((gap) => {
+      return gap.getBoundingClientRect();
+    });
+    const photoBox = photo.getBoundingClientRect();
+
+    await expect(
+      (horizontalGap?.left || 0) + (horizontalGap?.width || 0) / 2
+    ).toBeCloseTo(photoBox.left + (right - left) / 2, 0);
+    await expect((verticalGap?.top || 0) + (verticalGap?.height || 0) / 2).toBeCloseTo(
+      photoBox.top + (bottom - top) / 2,
+      0
+    );
     await expect(left).toBeGreaterThanOrEqual(0);
     await expect(right).toBeLessThanOrEqual(window.innerWidth);
     await expect(top).toBeGreaterThanOrEqual(0);
@@ -237,5 +257,14 @@ export const TrialTextOverPhoto: Story = {
       photo.getBoundingClientRect().width,
       0
     );
+
+    /**
+     * Под пробным текстом линии приглушены, у закреплённых линий — только
+     * концы.
+     */
+    const muted = await findElement<SVGGElement>('[data-muted]');
+
+    await expect(Number(getComputedStyle(muted).opacity)).toBeLessThanOrEqual(0.25);
+    await expect(document.querySelectorAll('[data-layer="pins"] line')).toHaveLength(0);
   },
 };

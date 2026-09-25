@@ -1,3 +1,4 @@
+import { cx } from '@shared/lib/styles';
 import type { FC } from 'react';
 import { useId, useMemo } from 'react';
 
@@ -37,6 +38,13 @@ const SINGLE_STROKE_WIDTH = 2;
 const PIN_END_RADIUS = 4;
 
 /**
+ * Непрозрачность линий разметки под пробным текстом. Синие чернила лежат
+ * ровно на линиях разлиновки, и в полную силу линии закрывали бы буквы;
+ * четверти хватает, чтобы видеть, где разметка, и читать сквозь неё текст.
+ */
+const MUTED_OPACITY = 0.25;
+
+/**
  * Разметка листа поверх фотографии: контур, линии разлиновки, поля, линия
  * поля и булавки — в пикселях фотографии. `viewBox` совпадает с кадром,
  * поэтому приближение и сдвиг, заданные общему с фотографией контейнеру,
@@ -44,9 +52,17 @@ const PIN_END_RADIUS = 4;
  *
  * Линии обрезаны контуром листа: за ним стол или соседний лист, и строки там
  * не лягут.
+ *
+ * Под пробным текстом линии приглушены, а у закреплённых линий остаются
+ * только концы: проверяют там, сели ли буквы на линии снимка, и линия
+ * разметки на базовой линии закрывала бы именно это место. Ручки не
+ * приглушаются — правка идёт и при пробном тексте.
+ *
+ * Скрытая разметка остаётся в документе прозрачной и не ловит указатель:
+ * ручка в фокусе фокус не теряет, и после возврата стрелки двигают её дальше.
  */
 export const MarkupOverlay: FC<MarkupOverlayProps> = (props) => {
-  const { frame, ruling, pins, layers, onHandleLayerChange } = props;
+  const { frame, ruling, pins, layers, isMuted, isHidden, onHandleLayerChange } = props;
   const clipId = toSvgId(useId());
   const scale = useMarkupScale();
   const mirrorWidth = useMarkupMirrorWidth();
@@ -69,7 +85,10 @@ export const MarkupOverlay: FC<MarkupOverlayProps> = (props) => {
       viewBox={`0 0 ${width} ${height}`}
       width={width}
       height={height}
-      className="absolute top-0 left-0 overflow-visible"
+      className={cx(
+        'absolute top-0 left-0 overflow-visible',
+        isHidden && 'pointer-events-none opacity-0'
+      )}
     >
       <defs>
         <clipPath id={clipId}>
@@ -77,70 +96,72 @@ export const MarkupOverlay: FC<MarkupOverlayProps> = (props) => {
         </clipPath>
       </defs>
 
-      {layers.lines ? (
-        <MarkupStroke
-          data-layer="lines"
-          clipPath={`url(#${clipId})`}
-          fill="none"
-          width={STROKE_WIDTH}
-          className="stroke-markup-line"
-        >
-          {lines.map(({ index, points }) => {
-            return (
-              <polyline
-                key={index}
-                data-line-index={index}
-                points={toPointsAttribute(points)}
-              />
-            );
-          })}
-        </MarkupStroke>
-      ) : null}
+      <g data-muted={isMuted || undefined} opacity={isMuted ? MUTED_OPACITY : undefined}>
+        {layers.lines ? (
+          <MarkupStroke
+            data-layer="lines"
+            clipPath={`url(#${clipId})`}
+            fill="none"
+            width={STROKE_WIDTH}
+            className="stroke-markup-line"
+          >
+            {lines.map(({ index, points }) => {
+              return (
+                <polyline
+                  key={index}
+                  data-line-index={index}
+                  points={toPointsAttribute(points)}
+                />
+              );
+            })}
+          </MarkupStroke>
+        ) : null}
 
-      {layers.margins ? (
-        <MarkupStroke
-          data-layer="margins"
-          clipPath={`url(#${clipId})`}
-          dash={MARGIN_DASH}
-          fill="none"
-          width={STROKE_WIDTH}
-          className="stroke-markup-margin"
-        >
-          <polyline data-margin="top" points={toPointsAttribute(marginGuides.top)} />
+        {layers.margins ? (
+          <MarkupStroke
+            data-layer="margins"
+            clipPath={`url(#${clipId})`}
+            dash={MARGIN_DASH}
+            fill="none"
+            width={STROKE_WIDTH}
+            className="stroke-markup-margin"
+          >
+            <polyline data-margin="top" points={toPointsAttribute(marginGuides.top)} />
 
-          <polyline
-            data-margin="bottom"
-            points={toPointsAttribute(marginGuides.bottom)}
-          />
+            <polyline
+              data-margin="bottom"
+              points={toPointsAttribute(marginGuides.bottom)}
+            />
 
-          <line data-margin="left" {...toLineAttributes(marginGuides.left)} />
+            <line data-margin="left" {...toLineAttributes(marginGuides.left)} />
 
-          <line data-margin="right" {...toLineAttributes(marginGuides.right)} />
-        </MarkupStroke>
-      ) : null}
+            <line data-margin="right" {...toLineAttributes(marginGuides.right)} />
+          </MarkupStroke>
+        ) : null}
 
-      {layers.marginLine && marginGuides.marginLine ? (
-        <MarkupStroke
-          data-layer="marginLine"
-          clipPath={`url(#${clipId})`}
-          fill="none"
-          width={SINGLE_STROKE_WIDTH}
-          className="stroke-markup-margin-line"
-        >
-          <line {...toLineAttributes(marginGuides.marginLine)} />
-        </MarkupStroke>
-      ) : null}
+        {layers.marginLine && marginGuides.marginLine ? (
+          <MarkupStroke
+            data-layer="marginLine"
+            clipPath={`url(#${clipId})`}
+            fill="none"
+            width={SINGLE_STROKE_WIDTH}
+            className="stroke-markup-margin-line"
+          >
+            <line {...toLineAttributes(marginGuides.marginLine)} />
+          </MarkupStroke>
+        ) : null}
 
-      {layers.outline ? (
-        <MarkupStroke
-          data-layer="outline"
-          fill="none"
-          width={SINGLE_STROKE_WIDTH}
-          className="stroke-markup-outline"
-        >
-          <polygon points={polygon} />
-        </MarkupStroke>
-      ) : null}
+        {layers.outline ? (
+          <MarkupStroke
+            data-layer="outline"
+            fill="none"
+            width={SINGLE_STROKE_WIDTH}
+            className="stroke-markup-outline"
+          >
+            <polygon points={polygon} />
+          </MarkupStroke>
+        ) : null}
+      </g>
 
       {layers.pins ? (
         <MarkupStroke
@@ -153,7 +174,9 @@ export const MarkupOverlay: FC<MarkupOverlayProps> = (props) => {
 
             return (
               <g key={label} role="img" aria-label={label}>
-                <line x1={left.x} y1={left.y} x2={right.x} y2={right.y} />
+                {isMuted ? null : (
+                  <line x1={left.x} y1={left.y} x2={right.x} y2={right.y} />
+                )}
 
                 <circle cx={left.x} cy={left.y} r={PIN_END_RADIUS / scale} />
 

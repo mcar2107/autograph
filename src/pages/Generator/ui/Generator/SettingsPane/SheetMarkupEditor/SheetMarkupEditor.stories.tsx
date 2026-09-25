@@ -204,3 +204,22 @@ export const MirrorPage: Story = {
     ).toBeVisible();
   },
 };
+
+/**
+ * Зажатая H прячет всю разметку — видна только фотография; подсказка про
+ * клавишу стоит под флажками слоёв.
+ */
+export const HoldToHideMarkup: Story = {
+  play: async ({ canvasElement }) => {
+    await openPresetSheet();
+
+    const body = within(canvasElement.ownerDocument.body);
+    const overlay = await body.findByRole('group', { name: 'Разметка листа' });
+
+    await expect(await body.findByText(/Удерживайте/)).toBeVisible();
+    await userEvent.keyboard('{h>}');
+    await waitFor(async () => {
+      await expect(getComputedStyle(overlay).opacity).toBe('0');
+    });
+  },
+};

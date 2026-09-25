@@ -1,3 +1,4 @@
+export { isTypingTarget } from './isTypingTarget';
 export {
   MarkupMirrorContext,
   mirrorMarkupPoint,

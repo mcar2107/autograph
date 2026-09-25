@@ -1,27 +1,9 @@
 import type { RefObject } from 'react';
 import { useEffect, useState } from 'react';
 
+import { isTypingTarget } from './isTypingTarget';
+
 const SPACE_CODE = 'Space';
-
-/**
- * Пробел в поле ввода — это пробел, а не сдвиг: набор числа в «Точных
- * значениях» не должен хватать фотографию.
- *
- * @param target — элемент, получивший нажатие
- * @returns идёт ли набор текста
- */
-const isTyping = (target: EventTarget | null): boolean => {
-  if (!(target instanceof HTMLElement)) {
-    return false;
-  }
-
-  return (
-    target.isContentEditable ||
-    target instanceof HTMLInputElement ||
-    target instanceof HTMLTextAreaElement ||
-    target instanceof HTMLSelectElement
-  );
-};
 
 /**
  * Режим сдвига по зажатому пробелу: пока он включён, перетаскивание двигает
@@ -67,7 +49,7 @@ export const useSpacePan = (viewportRef: RefObject<HTMLElement | null>): boolean
         return;
       }
 
-      if (!isHeld && (!isPointerInside || isTyping(event.target))) {
+      if (!isHeld && (!isPointerInside || isTypingTarget(event.target))) {
         return;
       }
 
