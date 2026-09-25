@@ -113,7 +113,8 @@ const toPhotoPoint = (
  * указатель не ловит и подсвечивает фокус круга как соседа.
  */
 export const MarkupHandle: FC<MarkupHandleProps> = (props) => {
-  const { kind, x, y, label, onMove, onMoveEnd, isFlagged, className } = props;
+  const { kind, x, y, label, onMoveStart, onMove, onMoveEnd, isFlagged, className } =
+    props;
   const scale = useMarkupScale();
   const mirrorWidth = useMarkupMirrorWidth();
   const sheet = useMarkupEditorStore((state) => {
@@ -135,6 +136,12 @@ export const MarkupHandle: FC<MarkupHandleProps> = (props) => {
       anchor: { x: clientX, y: clientY },
       container: currentTarget.closest('[role="dialog"]') || document.body,
     });
+
+    const pagePoint = toPhotoPoint(currentTarget, clientX, clientY);
+
+    if (pagePoint) {
+      onMoveStart?.(mirrorMarkupPoint(pagePoint, mirrorWidth));
+    }
   };
 
   const handleHandlePointerMove = (event: PointerEvent<SVGCircleElement>) => {

@@ -22,7 +22,10 @@ import {
   DEFAULT_GENERATOR_STATE,
   useGeneratorStore,
 } from '@pages/Generator/model/useGeneratorStore';
-import { useMarkupEditorStore } from '@pages/Generator/model/useMarkupEditorStore';
+import {
+  selectHasMarkupEdits,
+  useMarkupEditorStore,
+} from '@pages/Generator/model/useMarkupEditorStore';
 import { readUserSheets } from '@pages/Generator/model/userSheetsStorage';
 import { SheetMarkupEditor } from '@pages/Generator/ui/Generator/SettingsPane/SheetMarkupEditor';
 import {
@@ -550,6 +553,115 @@ describe('вкладка зеркальной страницы: углы обл�
      */
     expect(WIDTH - readCorner(editor, 'Левый верхний').x).toBeCloseTo(101, 6);
     expect(readDraftRuling().margins.top).toBe(100);
+  });
+});
+
+/**
+ * Нижнее поле не на линии: направляющая в строке 750, между линиями 740 и
+ * 780.
+ */
+const OFF_LINE_MARGINS = { ...PHOTO.margins, bottom: 50 };
+
+/**
+ * Строка нижней направляющей листа с полем не на линии.
+ */
+const OFF_LINE_BOTTOM = HEIGHT - OFF_LINE_MARGINS.bottom;
+
+/**
+ * Разлиновка с нижним полем не на линии.
+ *
+ * @returns разлиновка
+ */
+const buildOffLineRuling = (): SheetRuling => {
+  return buildSheetRuling(
+    {
+      step: PHOTO.step,
+      firstLinePhase: PHOTO.phase,
+      skewAngle: 0,
+      margins: OFF_LINE_MARGINS,
+      marginLineX: null,
+      marginLineSide: null,
+    },
+    FRAME
+  );
+};
+
+/**
+ * Перетаскивает ручку указателем вбок в строке `y`: нажатие в столбце
+ * `fromX`, движение и отпускание в столбце `toX`. Экранная матрица
+ * единичная — точки в пикселях экрана, до отражения.
+ *
+ * @param editor — диалог редактора
+ * @param handle — ручка
+ * @param y — строка указателя, px
+ * @param fromX — столбец нажатия, px экрана
+ * @param toX — столбец отпускания, px экрана
+ */
+const dragHandleSideways = (
+  editor: HTMLElement,
+  handle: HTMLElement,
+  y: number,
+  fromX: number,
+  toX: number
+) => {
+  mockScreenMatrix(editor);
+  fireEvent.pointerDown(handle, { pointerId: 1, clientX: fromX, clientY: y });
+  fireEvent.pointerMove(handle, { pointerId: 1, clientX: toX, clientY: y });
+  fireEvent.pointerUp(handle, { pointerId: 1, clientX: toX, clientY: y });
+};
+
+describe('вкладка зеркальной страницы: порог высоты у угла', () => {
+  it('угол зеркала вбок: поле по высоте то же до бита, меняется только поле зеркала', async () => {
+    const user = userEvent.setup();
+    const editor = await openMirror(user, buildOffLineRuling(), 'Поля');
+
+    await user.click(within(editor).getByRole('radio', { name: 'Задать отдельно' }));
+
+    const override = readDraftRuling().mirrorOverride;
+    const corner = readCorner(editor, 'Левый нижний');
+    const historyBefore = readHistoryLength();
+
+    expect(corner.y).toBe(OFF_LINE_BOTTOM);
+
+    /**
+     * Видимый левый нижний угол зеркала тянут вправо на 40 px экрана.
+     */
+    dragHandleSideways(
+      editor,
+      getCorner(editor, 'Левый нижний'),
+      OFF_LINE_BOTTOM,
+      WIDTH - corner.x,
+      WIDTH - corner.x + 40
+    );
+
+    const edited = readDraftRuling();
+
+    expect(readHistoryLength()).toBe(historyBefore + 1);
+    expect(edited.margins).toStrictEqual(OFF_LINE_MARGINS);
+    expect(edited.sideSlant).toBeNull();
+    expect(edited.mirrorOverride).not.toStrictEqual(override);
+    expect(readCorner(editor, 'Левый нижний')).toStrictEqual({
+      x: corner.x - 40,
+      y: OFF_LINE_BOTTOM,
+    });
+  });
+
+  it('угол зеркала с отражёнными полями вбок разметку не меняет и правкой не становится', async () => {
+    const user = userEvent.setup();
+    const editor = await openMirror(user, buildOffLineRuling(), 'Поля');
+    const before = readDraftRuling();
+    const corner = readCorner(editor, 'Левый нижний');
+
+    dragHandleSideways(
+      editor,
+      getCorner(editor, 'Левый нижний'),
+      OFF_LINE_BOTTOM,
+      WIDTH - corner.x,
+      WIDTH - corner.x + 40
+    );
+
+    expect(readDraftRuling()).toBe(before);
+    expect(selectHasMarkupEdits(useMarkupEditorStore.getState())).toBe(false);
   });
 });
 

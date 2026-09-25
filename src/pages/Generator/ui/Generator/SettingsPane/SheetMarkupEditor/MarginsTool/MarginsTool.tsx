@@ -16,7 +16,6 @@ import type { MarkupToolProps } from '../SheetMarkupEditor.types';
 import {
   MARGIN_CORNERS,
   readMarginCorner,
-  resolveCornerMove,
   resolveMarginHandles,
 } from './marginsGeometry';
 import type {
@@ -105,6 +104,7 @@ export const MarginsTool: FC<MarkupToolProps> = (props) => {
     isFollowing,
     moveMargin,
     releaseMargin,
+    startCorner,
     moveCorner,
     releaseCorner,
     moveSideEnd,
@@ -183,12 +183,16 @@ export const MarginsTool: FC<MarkupToolProps> = (props) => {
       isMirrorPage ? width : null
     );
 
+    const handleCornerMoveStart = (point: SheetPoint) => {
+      startCorner(point);
+    };
+
     const handleCornerMove = (point: SheetPoint) => {
       moveCorner(corner, point);
     };
 
     const handleCornerMoveEnd = (point: SheetPoint, source: MarkupMoveSource) => {
-      releaseCorner(corner, point, resolveCornerMove(source, { x, y }, point));
+      releaseCorner(corner, point, source, { x, y });
     };
 
     return (
@@ -199,6 +203,7 @@ export const MarginsTool: FC<MarkupToolProps> = (props) => {
         y={y}
         label={CORNER_LABELS[corner]}
         className="in-data-pan-mode:pointer-events-none"
+        onMoveStart={handleCornerMoveStart}
         onMove={handleCornerMove}
         onMoveEnd={handleCornerMoveEnd}
       />

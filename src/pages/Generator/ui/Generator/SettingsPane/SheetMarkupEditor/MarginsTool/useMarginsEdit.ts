@@ -9,15 +9,19 @@ import type {
 import { useMarkupEditorStore } from '../../../../../model/useMarkupEditorStore';
 import type { MarkupDraft } from '../../../../../model/useMarkupEditorStore.types';
 import { toPhotoPoint } from '../BendTool/bendGeometry';
+import type { MarkupMoveSource } from '../MarkupHandle';
+import { useMarkupScale } from '../MarkupViewport';
 import { placeMirrorCorner } from '../MirrorTab/MirrorOverride/mirrorOverrideMarkup';
 
 import {
+  isCornerDragVertical,
   placeMargin,
   placeMarginCorner,
   placeMarginLine,
   placeSideEnd,
   removeMarginLine as removeRulingMarginLine,
   resolveAddedMarginLinePoint,
+  resolveCornerMove,
   snapMarginLineX,
 } from './marginsGeometry';
 import type {
@@ -26,7 +30,7 @@ import type {
   MarginCornerMove,
   SideHandleEnd,
 } from './marginsGeometry.types';
-import type { MarginsEdit } from './useMarginsEdit.types';
+import type { CornerDrag, MarginsEdit } from './useMarginsEdit.types';
 
 /**
  * Показывает линию поля без наклона в столбце точки — без шага истории.
@@ -128,6 +132,13 @@ export const useMarginsEdit = (
   isMirrorPage: boolean
 ): MarginsEdit => {
   const [isFollowing, setIsFollowing] = useState(false);
+  const scale = useMarkupScale();
+
+  /**
+   * Идущее перетаскивание угла: строка нажатия и ушёл ли указатель по высоте
+   * дальше порога дрожи.
+   */
+  const cornerDragRef = useRef<CornerDrag | null>(null);
 
   /**
    * Черновик сразу после добавления линии: ведение идёт, пока правки поверх
@@ -266,6 +277,40 @@ export const useMarginsEdit = (
       : placeMarginCorner(ruling, frame, corner, point, move);
   };
 
+  const startCorner = (point: SheetPoint) => {
+    cornerDragRef.current = { startY: point.y, isVertical: false };
+  };
+
+  /**
+   * Ушёл ли указатель за перетаскивание угла по высоте дальше порога дрожи.
+   * Раз ушедший остаётся ушедшим до отпускания: вернувшийся к строке нажатия
+   * указатель — тоже сдвиг по высоте, и поле встанет на линию. Без
+   * начала перетаскивания сдвиг считается сдвигом по высоте.
+   *
+   * @param point — точка указателя, px фотографии
+   * @returns сдвинут ли угол по высоте
+   */
+  const trackCornerDrag = (point: SheetPoint): boolean => {
+    const drag = cornerDragRef.current;
+
+    if (!drag) {
+      return true;
+    }
+
+    drag.isVertical ||= isCornerDragVertical(drag.startY, point.y, scale);
+
+    return drag.isVertical;
+  };
+
+  /**
+   * Пока указатель по высоте в пределах порога дрожи, угол ведёт только конец
+   * бокового поля. Разметка, которую сдвиг не меняет, не показывается: у
+   * зеркала с отражёнными полями такой показ оставил бы черновик
+   * несохранённым без единой правки.
+   *
+   * @param corner — угол
+   * @param point — точка указателя, px листа
+   */
   const moveCorner = (corner: MarginCorner, point: SheetPoint) => {
     const { draft, preview } = useMarkupEditorStore.getState();
 
@@ -273,28 +318,45 @@ export const useMarginsEdit = (
       return;
     }
 
-    preview({ ruling: placeCorner(draft.ruling, corner, point, 'drag') });
+    const move = trackCornerDrag(point) ? 'drag' : 'slide';
+    const ruling = placeCorner(draft.ruling, corner, point, move);
+
+    if (ruling !== draft.ruling) {
+      preview({ ruling });
+    }
   };
 
   /**
-   * Стрелка вдоль строк на зеркале с отражёнными полями угол не двигает —
-   * такой сдвиг шагом истории не становится.
+   * Стрелка вдоль строк и перетаскивание вбок в пределах порога дрожи на
+   * зеркале с отражёнными полями угол не двигают — такой сдвиг шагом истории
+   * не становится.
+   *
+   * По высоте отпускание судится только по движениям: точку отпускания
+   * `moveCorner` уже учёл, а без движения ручка отдаёт свой центр, не
+   * указатель, — и нажатие ниже центра читалось бы сдвигом по высоте.
    *
    * @param corner — угол
    * @param point — точка угла, px листа
-   * @param move — как сдвинули
+   * @param source — чем сдвинули
+   * @param cornerPoint — где угол стоит, px листа
    */
   const releaseCorner = (
     corner: MarginCorner,
     point: SheetPoint,
-    move: MarginCornerMove
+    source: MarkupMoveSource,
+    cornerPoint: SheetPoint
   ) => {
     const { draft, commit } = useMarkupEditorStore.getState();
+    const drag = cornerDragRef.current;
+    const isVertical = source === 'pointer' && (!drag || drag.isVertical);
+
+    cornerDragRef.current = null;
 
     if (!draft) {
       return;
     }
 
+    const move = resolveCornerMove(source, cornerPoint, point, isVertical);
     const ruling = placeCorner(draft.ruling, corner, point, move);
 
     if (ruling !== draft.ruling) {
@@ -373,6 +435,7 @@ export const useMarginsEdit = (
     isFollowing,
     moveMargin,
     releaseMargin,
+    startCorner,
     moveCorner,
     releaseCorner,
     moveSideEnd,

@@ -43,9 +43,11 @@ export type MarginCornerParts = {
 
 /**
  * Как сдвинули угол области текста: `drag` — перетаскивание идёт, `drop` —
- * отпущен, `nudgeX` и `nudgeY` — стрелкой вдоль строк или поперёк.
+ * отпущен, `slide` — перетаскивание, в котором указатель по высоте не ушёл
+ * дальше порога дрожи, идёт или отпущено, `nudgeX` и `nudgeY` — стрелкой
+ * вдоль строк или поперёк.
  */
-export type MarginCornerMove = 'drag' | 'drop' | 'nudgeX' | 'nudgeY';
+export type MarginCornerMove = 'drag' | 'drop' | 'slide' | 'nudgeX' | 'nudgeY';
 
 /**
  * Две ручки боковой границы блока в пикселях фотографии.

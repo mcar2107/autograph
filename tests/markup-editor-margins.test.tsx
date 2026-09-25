@@ -23,6 +23,10 @@ import {
 } from '@pages/Generator/model/useGeneratorStore';
 import { useMarkupEditorStore } from '@pages/Generator/model/useMarkupEditorStore';
 import { SheetMarkupEditor } from '@pages/Generator/ui/Generator/SettingsPane/SheetMarkupEditor';
+import {
+  CORNER_HEIGHT_SLOP,
+  isCornerDragVertical,
+} from '@pages/Generator/ui/Generator/SettingsPane/SheetMarkupEditor/MarginsTool/marginsGeometry';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { IDBFactory } from 'fake-indexeddb';
@@ -796,6 +800,321 @@ describe('инструмент «Поля»: углы области текст�
 
     expect(readHistoryLength()).toBe(historyBefore);
     expect(readDraftRuling().sideSlant).toBeNull();
+  });
+});
+
+/**
+ * Нижнее поле не на линии: направляющая в строке 750, между линиями 740 и
+ * 780, — как у пресетов, где нижнее поле стоит в доле шага от линии.
+ */
+const OFF_LINE_MARGINS = { ...PHOTO.margins, bottom: 50 };
+
+/**
+ * Строка нижней направляющей листа с полем не на линии.
+ */
+const OFF_LINE_BOTTOM = PHOTO.height - OFF_LINE_MARGINS.bottom;
+
+/**
+ * Верхнее и нижнее поля листа с нижним полем не на линии.
+ */
+const OFF_LINE_HEIGHT_MARGINS = {
+  top: OFF_LINE_MARGINS.top,
+  bottom: OFF_LINE_MARGINS.bottom,
+};
+
+/**
+ * Верхнее и нижнее поля черновика — поле по высоте, которое двигает угол.
+ *
+ * @returns верхнее и нижнее поля, px
+ */
+const readHeightMargins = (): typeof OFF_LINE_HEIGHT_MARGINS => {
+  const { top, bottom } = readDraftRuling().margins;
+
+  return { top, bottom };
+};
+
+/**
+ * Наклон листа для проверки угла на наклонной разлиновке, градусы.
+ */
+const SKEW_ANGLE = 2;
+
+/**
+ * Разлиновка с нижним полем не на линии.
+ *
+ * @param skewAngle — наклон листа, градусы
+ * @returns разлиновка
+ */
+const buildOffLineRuling = (skewAngle = 0): SheetRuling => {
+  return buildSheetRuling(
+    {
+      step: PHOTO.step,
+      firstLinePhase: PHOTO.phase,
+      skewAngle,
+      margins: OFF_LINE_MARGINS,
+      marginLineX: null,
+      marginLineSide: null,
+    },
+    FRAME
+  );
+};
+
+/**
+ * Экранный радиус круга захвата ручки — `HANDLE_RADIUS` в `MarkupHandle`.
+ */
+const HANDLE_SCREEN_RADIUS = 10;
+
+/**
+ * Масштаб окна редактора — экранных пикселей на пиксель фотографии. Ручка
+ * держит постоянный экранный радиус, поэтому масштаб читается из него.
+ *
+ * @param handle — ручка
+ * @returns масштаб
+ */
+const readScale = (handle: HTMLElement): number => {
+  return HANDLE_SCREEN_RADIUS / Number(handle.getAttribute('r'));
+};
+
+/**
+ * Перетаскивание указателем по пути: нажатие в первой точке, движения по
+ * остальным, отпускание в последней. Путь из одной точки — нажатие и
+ * отпускание без движения. Экранная матрица единичная — точки в пикселях
+ * фотографии.
+ *
+ * @param handle — ручка
+ * @param path — точки указателя, px фотографии
+ * @param onMove — проверка после каждого движения
+ */
+const dragHandleAlong = (
+  handle: HTMLElement,
+  path: SheetPoint[],
+  onMove: () => void = () => {}
+) => {
+  const svg = handle.closest('svg');
+  const [start, ...moves] = path;
+
+  if (!svg || !start) {
+    throw new Error('Ручка вне SVG или путь пустой');
+  }
+
+  const end = moves.at(-1) || start;
+
+  Object.defineProperty(svg, 'getScreenCTM', {
+    configurable: true,
+    value: () => {
+      return {
+        inverse: () => {
+          return { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
+        },
+      };
+    },
+  });
+
+  fireEvent.pointerDown(handle, { pointerId: 1, clientX: start.x, clientY: start.y });
+
+  for (const { x, y } of moves) {
+    fireEvent.pointerMove(handle, { pointerId: 1, clientX: x, clientY: y });
+    onMove();
+  }
+
+  fireEvent.pointerUp(handle, { pointerId: 1, clientX: end.x, clientY: end.y });
+};
+
+describe('инструмент «Поля»: порог высоты у угла', () => {
+  it('угол вбок на листе, где нижнее поле не на линии: поле по высоте то же до бита, меняется только наклон', async () => {
+    const user = userEvent.setup();
+    const editor = await openMarginsTool(user, buildOffLineRuling());
+    const corner = getCorner(editor, 'Левый нижний');
+    const leftTop = readHandlePoint(getCorner(editor, 'Левый верхний'));
+    const historyBefore = readHistoryLength();
+
+    expect(readHandlePoint(corner)).toStrictEqual({
+      x: PHOTO.margins.left,
+      y: OFF_LINE_BOTTOM,
+    });
+
+    dragHandleAlong(
+      corner,
+      [
+        { x: PHOTO.margins.left, y: OFF_LINE_BOTTOM },
+        { x: 110, y: OFF_LINE_BOTTOM },
+        { x: 130, y: OFF_LINE_BOTTOM },
+      ],
+      () => {
+        expect(readHeightMargins()).toStrictEqual(OFF_LINE_HEIGHT_MARGINS);
+      }
+    );
+
+    const edited = readDraftRuling();
+
+    expect(readHistoryLength()).toBe(historyBefore + 1);
+    expect(readHeightMargins()).toStrictEqual(OFF_LINE_HEIGHT_MARGINS);
+    expect(edited.margins.right).toBe(OFF_LINE_MARGINS.right);
+    expect(edited.sideSlant?.left).toBeGreaterThan(130);
+    expect(readHandlePoint(getCorner(editor, 'Левый нижний'))).toStrictEqual({
+      x: 130,
+      y: OFF_LINE_BOTTOM,
+    });
+    expect(readHandlePoint(getCorner(editor, 'Левый верхний'))).toStrictEqual(leftTop);
+  });
+
+  it('дрожь указателя по высоте в пределах порога поле по высоте не трогает', async () => {
+    const user = userEvent.setup();
+    const editor = await openMarginsTool(user, buildOffLineRuling());
+    const corner = getCorner(editor, 'Левый нижний');
+    const jitter = CORNER_HEIGHT_SLOP / readScale(corner);
+
+    dragHandleAlong(
+      corner,
+      [
+        { x: PHOTO.margins.left, y: OFF_LINE_BOTTOM },
+        { x: 100, y: OFF_LINE_BOTTOM - jitter },
+        { x: 115, y: OFF_LINE_BOTTOM + jitter },
+        { x: 130, y: OFF_LINE_BOTTOM + jitter },
+      ],
+      () => {
+        expect(readHeightMargins()).toStrictEqual(OFF_LINE_HEIGHT_MARGINS);
+      }
+    );
+
+    expect(readHeightMargins()).toStrictEqual(OFF_LINE_HEIGHT_MARGINS);
+    expect(readHandlePoint(getCorner(editor, 'Левый нижний')).x).toBe(130);
+  });
+
+  it('порог мерится от точки нажатия, а не от центра ручки', async () => {
+    const user = userEvent.setup();
+    const editor = await openMarginsTool(user, buildOffLineRuling());
+    const corner = getCorner(editor, 'Левый нижний');
+
+    /**
+     * Нажали ниже центра ручки, но внутри круга захвата, и повели вбок.
+     */
+    const grab = OFF_LINE_BOTTOM + (CORNER_HEIGHT_SLOP + 2) / readScale(corner);
+
+    dragHandleAlong(corner, [
+      { x: PHOTO.margins.left, y: grab },
+      { x: 110, y: grab },
+      { x: 130, y: grab },
+    ]);
+
+    expect(readHeightMargins()).toStrictEqual(OFF_LINE_HEIGHT_MARGINS);
+  });
+
+  it('нажатие на угол ниже центра и отпускание без движения поле по высоте не трогают', async () => {
+    const user = userEvent.setup();
+    const editor = await openMarginsTool(user, buildOffLineRuling());
+    const corner = getCorner(editor, 'Левый нижний');
+
+    /**
+     * Нажатие внутри круга захвата, но дальше порога от центра ручки.
+     */
+    const grab = OFF_LINE_BOTTOM + (CORNER_HEIGHT_SLOP + 2) / readScale(corner);
+
+    dragHandleAlong(corner, [{ x: PHOTO.margins.left, y: grab }]);
+
+    expect(readHeightMargins()).toStrictEqual(OFF_LINE_HEIGHT_MARGINS);
+  });
+
+  it('сдвиг по высоте больше порога — поле встаёт на ближайшую линию, даже если указатель вернулся', async () => {
+    const user = userEvent.setup();
+    const editor = await openMarginsTool(user, buildOffLineRuling());
+    const corner = getCorner(editor, 'Левый нижний');
+    const beyond = (CORNER_HEIGHT_SLOP + 1) / readScale(corner);
+
+    dragHandleAlong(corner, [
+      { x: PHOTO.margins.left, y: OFF_LINE_BOTTOM },
+      { x: 130, y: OFF_LINE_BOTTOM + beyond },
+    ]);
+
+    /**
+     * Строка 750 ближе к линии 740, чем к 780.
+     */
+    expect(readHeightMargins()).toStrictEqual({ ...OFF_LINE_HEIGHT_MARGINS, bottom: 60 });
+
+    act(() => {
+      useMarkupEditorStore.getState().undo();
+    });
+
+    dragHandleAlong(getCorner(editor, 'Левый нижний'), [
+      { x: PHOTO.margins.left, y: OFF_LINE_BOTTOM },
+      { x: 110, y: OFF_LINE_BOTTOM - beyond },
+      { x: 130, y: OFF_LINE_BOTTOM },
+    ]);
+
+    expect(readDraftRuling().margins.bottom).toBeCloseTo(60, 9);
+  });
+
+  it('порог — в экранных пикселях окна: сдвиг фотографии, бывший дрожью, при приближении ставит поле на линию', async () => {
+    const user = userEvent.setup();
+    const editor = await openMarginsTool(user, buildOffLineRuling());
+
+    /**
+     * Три пикселя фотографии: при масштабе 1 это три экранных пикселя, в
+     * пределах порога, при масштабе 2 — шесть, за ним.
+     */
+    const shift = CORNER_HEIGHT_SLOP - 1;
+    const path = [
+      { x: PHOTO.margins.left, y: OFF_LINE_BOTTOM },
+      { x: 130, y: OFF_LINE_BOTTOM + shift },
+    ];
+
+    expect(readScale(getCorner(editor, 'Левый нижний'))).toBe(1);
+
+    dragHandleAlong(getCorner(editor, 'Левый нижний'), path);
+
+    expect(readHeightMargins()).toStrictEqual(OFF_LINE_HEIGHT_MARGINS);
+
+    act(() => {
+      useMarkupEditorStore.getState().undo();
+    });
+
+    await user.click(within(editor).getByRole('button', { name: 'Приблизить' }));
+    await user.click(within(editor).getByRole('button', { name: 'Приблизить' }));
+
+    expect(readScale(getCorner(editor, 'Левый нижний'))).toBeCloseTo(2, 9);
+
+    dragHandleAlong(getCorner(editor, 'Левый нижний'), path);
+
+    expect(readDraftRuling().margins.bottom).toBeCloseTo(60, 9);
+  });
+
+  it('угол вбок на листе с наклоном: поле по высоте то же до бита, сдвиг за порог ставит его на линию', async () => {
+    const user = userEvent.setup();
+    const editor = await openMarginsTool(user, buildOffLineRuling(SKEW_ANGLE));
+    const start = readHandlePoint(getCorner(editor, 'Левый нижний'));
+    const before = readHeightMargins();
+
+    dragHandleAlong(getCorner(editor, 'Левый нижний'), [
+      start,
+      { x: start.x + 20, y: start.y + CORNER_HEIGHT_SLOP / 2 },
+      { x: start.x + 40, y: start.y },
+    ]);
+
+    expect(readHeightMargins()).toStrictEqual(before);
+    expect(readDraftRuling().sideSlant?.left).toBeGreaterThan(start.x);
+
+    act(() => {
+      useMarkupEditorStore.getState().undo();
+    });
+
+    dragHandleAlong(getCorner(editor, 'Левый нижний'), [
+      start,
+      { x: start.x + 40, y: start.y + CORNER_HEIGHT_SLOP + 1 },
+    ]);
+
+    expect(readHeightMargins().top).toBe(before.top);
+    expect(readHeightMargins().bottom).not.toBe(before.bottom);
+  });
+
+  it('порог — в экранных пикселях: тот же сдвиг фотографии при приближении уже не дрожь', () => {
+    expect(isCornerDragVertical(OFF_LINE_BOTTOM, OFF_LINE_BOTTOM + 3, 1)).toBe(false);
+    expect(isCornerDragVertical(OFF_LINE_BOTTOM, OFF_LINE_BOTTOM - 3, 2)).toBe(true);
+    expect(
+      isCornerDragVertical(
+        OFF_LINE_BOTTOM,
+        OFF_LINE_BOTTOM + CORNER_HEIGHT_SLOP * 4,
+        0.25
+      )
+    ).toBe(false);
   });
 });
 
