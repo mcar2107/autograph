@@ -50,11 +50,11 @@ export const MarkupCloseConfirm: FC = () => {
       className="flex flex-col gap-2 rounded-md border border-danger p-3 focus:outline-none"
     >
       <p className="text-sm text-fg">
-        Правки разметки не сохранены. Закрыть редактор и оставить лист как был?
+        Правки разметки не&nbsp;сохранены. Закрыть редактор и&nbsp;оставить лист как был?
       </p>
 
       <div className="flex flex-wrap gap-2">
-        <Button variant="secondary" onClick={handleDiscardClick}>
+        <Button variant="danger" onClick={handleDiscardClick}>
           Закрыть без сохранения
         </Button>
 

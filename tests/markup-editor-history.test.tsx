@@ -201,6 +201,118 @@ describe('история редактора разметки', () => {
   });
 });
 
+describe('кнопки истории редактора', () => {
+  it('«Отменить» и «Повторить» в подвале отменяют и повторяют правку', async () => {
+    const user = userEvent.setup();
+    const editor = await openEditor(user);
+    const history = within(editor).getByRole('toolbar', { name: 'История правок' });
+    const undo = within(history).getByRole('button', { name: 'Отменить' });
+    const redo = within(history).getByRole('button', { name: 'Повторить' });
+
+    expect(undo).toHaveProperty('disabled', true);
+    expect(redo).toHaveProperty('disabled', true);
+
+    removeMarginLine();
+
+    expect(undo).toHaveProperty('disabled', false);
+
+    await user.click(undo);
+
+    expect(queryMarginLine(editor)).not.toBeNull();
+    expect(undo).toHaveProperty('disabled', true);
+    expect(redo).toHaveProperty('disabled', false);
+
+    await user.click(redo);
+
+    expect(queryMarginLine(editor)).toBeNull();
+    expect(redo).toHaveProperty('disabled', true);
+  });
+
+  it('кнопки редактора не трогают историю генератора', async () => {
+    const user = userEvent.setup();
+
+    useGeneratorStore.getState().commit({ text: 'правка генератора' });
+
+    const editor = await openEditor(user);
+
+    removeMarginLine();
+    await user.click(within(editor).getByRole('button', { name: 'Отменить' }));
+
+    expect(queryMarginLine(editor)).not.toBeNull();
+    expect(useGeneratorStore.getState().text).toBe('правка генератора');
+  });
+});
+
+/**
+ * Подзаголовок диалога редактора — его доступное описание.
+ *
+ * @param editor — диалог редактора
+ * @returns текст подзаголовка
+ */
+const readSubtitle = (editor: HTMLElement): string => {
+  const id = editor.getAttribute('aria-describedby') || '';
+
+  return document.getElementById(id)?.textContent || '';
+};
+
+describe('подзаголовок редактора', () => {
+  it('у листа с разметкой автомата — «найденная на фотографии»', async () => {
+    const user = userEvent.setup();
+    const editor = await openEditor(user);
+
+    expect(readSubtitle(editor)).toMatch(/^Разметка, найденная на\u00A0фотографии\./);
+  });
+
+  it('после сохранённой правки повторное открытие называет разметку сохранённой', async () => {
+    const user = userEvent.setup();
+    const editor = await openEditor(user);
+
+    removeMarginLine();
+    await user.click(within(editor).getByRole('button', { name: 'Сохранить' }));
+    await user.click(screen.getByRole('button', { name: `Настроить «${LABEL}»` }));
+
+    const reopened = await screen.findByRole('dialog', {
+      name: `Разметка листа «${LABEL}»`,
+    });
+
+    expect(readSubtitle(reopened)).toMatch(/^Сохранённая разметка/);
+  });
+
+  it('разлиновка, равная найденной, но прочитанная отдельно, — всё ещё найденная', async () => {
+    const user = userEvent.setup();
+
+    useGeneratorStore.getState().addUserSheet({
+      ...buildUserSheetRecord({ familyId: 'lined', sheet: SHEET }),
+      measuredRuling: structuredClone(MEASURED_RULING),
+    });
+    render(<EditorHarness />);
+    await user.click(screen.getByRole('button', { name: `Настроить «${LABEL}»` }));
+
+    const editor = await screen.findByRole('dialog', {
+      name: `Разметка листа «${LABEL}»`,
+    });
+
+    expect(readSubtitle(editor)).toMatch(/^Разметка, найденная/);
+  });
+
+  it('сменённый вид разлиновки — тоже сохранённая разметка', async () => {
+    const user = userEvent.setup();
+
+    useGeneratorStore.getState().addUserSheet({
+      ...buildUserSheetRecord({ familyId: 'lined', sheet: SHEET }),
+      measuredKind: 'grid',
+    });
+    render(<EditorHarness />);
+    await user.click(screen.getByRole('button', { name: `Настроить «${LABEL}»` }));
+
+    const editor = await screen.findByRole('dialog', {
+      name: `Разметка листа «${LABEL}»`,
+    });
+
+    expect(readSubtitle(editor)).toMatch(/^Сохранённая разметка/);
+  });
+});
+
 describe('закрытие редактора с правками', () => {
   it('«Отмена» с правками спрашивает подтверждение, и после него лист прежний', async () => {
     const user = userEvent.setup();

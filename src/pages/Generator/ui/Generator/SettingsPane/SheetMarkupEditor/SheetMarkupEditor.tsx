@@ -2,7 +2,10 @@ import { Dialog } from '@shared/ui/Dialog';
 import type { FC } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 
-import { useMarkupEditorStore } from '../../../../model/useMarkupEditorStore';
+import {
+  selectIsSavedMarkup,
+  useMarkupEditorStore,
+} from '../../../../model/useMarkupEditorStore';
 
 import { MarkupEditorContent } from './MarkupEditorContent';
 
@@ -10,6 +13,17 @@ import { MarkupEditorContent } from './MarkupEditorContent';
  * Диалог на весь экран: фотографию листа нужно разглядывать до пикселя, а в
  * окне обычного диалога она уменьшилась бы до превью.
  */
+/**
+ * Подзаголовок называет, откуда разметка: пользователь, открывший свой лист
+ * после правки, должен видеть, что перед ним его разметка, а не заново
+ * найденная.
+ */
+const FOUND_MARKUP_DESCRIPTION =
+  'Разметка, найденная на\u00A0фотографии. Правки применяются к\u00A0листу по\u00A0«Сохранить».';
+
+const SAVED_MARKUP_DESCRIPTION =
+  'Сохранённая разметка листа. Правки применяются к\u00A0листу по\u00A0«Сохранить», «Сбросить к\u00A0найденному» вернёт разметку, найденную на\u00A0фотографии.';
+
 const FULLSCREEN_CLASS_NAME =
   'top-0 left-0 h-dvh max-h-none w-screen max-w-none translate-0 overflow-hidden rounded-none p-4';
 
@@ -29,6 +43,7 @@ export const SheetMarkupEditor: FC = () => {
       return { record: state.record, draft: state.draft };
     })
   );
+  const isSavedMarkup = useMarkupEditorStore(selectIsSavedMarkup);
   const requestClose = useMarkupEditorStore((state) => {
     return state.requestClose;
   });
@@ -47,7 +62,7 @@ export const SheetMarkupEditor: FC = () => {
     <Dialog
       isOpen={Boolean(record && draft)}
       title={`Разметка листа «${record?.sheet.label || ''}»`}
-      description="Разметка, найденная на фотографии. Правки применяются к листу по «Сохранить»."
+      description={isSavedMarkup ? SAVED_MARKUP_DESCRIPTION : FOUND_MARKUP_DESCRIPTION}
       className={FULLSCREEN_CLASS_NAME}
       onOpenChange={handleDialogOpenChange}
     >

@@ -274,3 +274,76 @@ export const useMarkupEditorStore = create<MarkupEditorStore>()((set, get) => {
 export const selectHasMarkupEdits = (state: MarkupEditorState): boolean => {
   return state.history.past.length > 0 || state.history.previewBase !== null;
 };
+
+/**
+ * Есть ли правка, которую можно отменить.
+ *
+ * @param state — состояние редактора
+ * @returns доступна ли отмена
+ */
+export const selectIsMarkupUndoAvailable = (state: MarkupEditorState): boolean => {
+  return state.history.past.length > 0;
+};
+
+/**
+ * Есть ли отменённая правка, которую можно повторить.
+ *
+ * @param state — состояние редактора
+ * @returns доступен ли повтор
+ */
+export const selectIsMarkupRedoAvailable = (state: MarkupEditorState): boolean => {
+  return state.history.future.length > 0;
+};
+
+/**
+ * Совпадают ли два значения разметки поле в поле. Сравнение по значению, а
+ * не по ссылке: лист, перечитанный из хранилища, держит найденную и свою
+ * разлиновку разными объектами и без единой правки.
+ *
+ * @param left — одно значение
+ * @param right — другое значение
+ * @returns совпадают ли
+ */
+const isSameValue = (left: unknown, right: unknown): boolean => {
+  if (left === right) {
+    return true;
+  }
+
+  if (typeof left !== 'object' || typeof right !== 'object' || !left || !right) {
+    return false;
+  }
+
+  if (Array.isArray(left) !== Array.isArray(right)) {
+    return false;
+  }
+
+  const leftEntries = Object.entries(left);
+
+  return (
+    leftEntries.length === Object.keys(right).length &&
+    leftEntries.every(([key, value]) => {
+      return key in right && isSameValue(value, Reflect.get(right, key));
+    })
+  );
+};
+
+/**
+ * Открыт ли лист с разметкой, сохранённой в редакторе, а не найденной
+ * автоматом: разлиновка или вид листа отличаются от предложенных автоматом.
+ * Смотрит на лист, каким он был при открытии, а не на черновик.
+ *
+ * @param state — состояние редактора
+ * @returns сохранённая ли разметка
+ */
+export const selectIsSavedMarkup = (state: MarkupEditorState): boolean => {
+  const { record } = state;
+
+  if (!record) {
+    return false;
+  }
+
+  return (
+    record.kind !== record.measuredKind ||
+    !isSameValue(record.sheet.ruling, record.measuredRuling)
+  );
+};

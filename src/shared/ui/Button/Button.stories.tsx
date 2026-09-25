@@ -27,6 +27,10 @@ export const Ghost: Story = {
   args: { variant: 'ghost' },
 };
 
+export const Danger: Story = {
+  args: { variant: 'danger', children: 'Удалить лист' },
+};
+
 export const Focused: Story = {
   args: { variant: 'primary' },
   play: async () => {

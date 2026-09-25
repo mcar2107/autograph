@@ -16,6 +16,7 @@ import { MarkupLayers, useHideMarkupKey } from '../MarkupLayers';
 import { MarkupNotices } from '../MarkupNotices';
 import type { MarkupLayerVisibility } from '../MarkupOverlay';
 import { MarkupOverlay } from '../MarkupOverlay';
+import { MarkupSheetDelete } from '../MarkupSheetDelete';
 import {
   MarkupMirrorContext,
   MarkupScaleContext,
@@ -218,54 +219,70 @@ export const MarkupEditorContent: FC<MarkupEditorContentProps> = (props) => {
           />
         </MarkupViewport>
 
+        {/*
+         * Подвал с историей, сбросом и сохранением лежит вне прокрутки: высота
+         * панели зависит от инструмента, и в прокрутке «Сохранить» то было бы
+         * видно, то уходило бы под край окна.
+         */}
         <aside
           aria-label="Настройка разметки"
-          className="flex w-80 shrink-0 flex-col gap-4 overflow-y-auto"
+          className="flex w-80 shrink-0 flex-col gap-3"
         >
-          <RulingKindControl />
-
-          <SegmentedControl
-            label="Инструмент"
-            value={tool}
-            options={TOOL_OPTIONS}
-            onChange={handleToolChange}
-          />
-
-          <MarkupNotices tool={tool} draft={draft} />
-
-          {isMirrorPage ? null : <ExactValues />}
-
           {/*
-           * Ручки инструментов уходят порталом в оверлей, но в дереве React
-           * лежат здесь, вне окна просмотра, — масштаб им передаётся отсюда.
+           * Отступ справа держит место под полосой прокрутки: полоса поверх
+           * содержимого, как на macOS, иначе легла бы на поля ввода.
            */}
-          <MarkupScaleContext value={scale}>
-            <ActiveTool handleLayer={handleLayer} pageIndex={pageIndex} />
+          <div
+            data-testid="markup-panel-scroll"
+            className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-3"
+          >
+            <RulingKindControl />
 
-            <MarkupLayers layers={layers} onLayersChange={handleLayersChange} />
-
-            <TrialText
-              layer={trialLayer}
-              pageIndex={pageIndex}
-              isEnabled={isTrialEnabled}
-              onEnabledChange={handleTrialEnabledChange}
+            <SegmentedControl
+              label="Инструмент"
+              value={tool}
+              options={TOOL_OPTIONS}
+              onChange={handleToolChange}
             />
-          </MarkupScaleContext>
 
-          <MirrorTab
-            pageIndex={pageIndex}
-            tool={tool}
-            handleLayer={handleLayer}
-            onPageIndexChange={handlePageIndexChange}
-          />
+            <MarkupNotices tool={tool} draft={draft} />
 
-          <div className="mt-auto flex flex-col gap-3">
+            {isMirrorPage ? null : <ExactValues />}
+
+            {/*
+             * Ручки инструментов уходят порталом в оверлей, но в дереве React
+             * лежат здесь, вне окна просмотра, — масштаб им передаётся отсюда.
+             */}
+            <MarkupScaleContext value={scale}>
+              <ActiveTool handleLayer={handleLayer} pageIndex={pageIndex} />
+
+              <MarkupLayers layers={layers} onLayersChange={handleLayersChange} />
+
+              <TrialText
+                layer={trialLayer}
+                pageIndex={pageIndex}
+                isEnabled={isTrialEnabled}
+                onEnabledChange={handleTrialEnabledChange}
+              />
+            </MarkupScaleContext>
+
+            <MirrorTab
+              pageIndex={pageIndex}
+              tool={tool}
+              handleLayer={handleLayer}
+              onPageIndexChange={handlePageIndexChange}
+            />
+
+            <div className="border-t border-border pt-4">
+              <MarkupSheetDelete sheetLabel={sheet.label} onDelete={handleDelete} />
+            </div>
+          </div>
+
+          <div className="flex shrink-0 flex-col gap-3 border-t border-border pt-3">
             <MarkupCloseConfirm />
 
             <MarkupFooter
-              sheetLabel={sheet.label}
               onReset={handleReset}
-              onDelete={handleDelete}
               onCancel={handleCancel}
               isSaveDisabled={isRemeasuring}
               onSave={handleSave}

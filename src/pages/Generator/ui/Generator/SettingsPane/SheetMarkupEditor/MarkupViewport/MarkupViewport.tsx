@@ -6,6 +6,7 @@ import { useEffect, useRef } from 'react';
 import { useMarkupMirrorWidth } from './markupMirrorContext';
 import { MarkupScaleContext } from './markupScaleContext';
 import type { MarkupViewportProps, PanPointer } from './MarkupViewport.types';
+import { MarkupViewportHint } from './MarkupViewportHint';
 import { useMarkupView } from './useMarkupView';
 import { useSpacePan } from './useSpacePan';
 
@@ -132,26 +133,30 @@ export const MarkupViewport: FC<MarkupViewportProps> = (props) => {
         </div>
       </div>
 
-      <div
-        role="group"
-        aria-label="Масштаб фотографии"
-        className="flex items-center gap-1"
-      >
-        <IconButton label="Отдалить" onClick={handleZoomOutClick}>
-          <span aria-hidden="true">−</span>
-        </IconButton>
+      <div className="flex items-center justify-between gap-4">
+        <div
+          role="group"
+          aria-label="Масштаб фотографии"
+          className="flex shrink-0 items-center gap-1"
+        >
+          <IconButton label="Отдалить" onClick={handleZoomOutClick}>
+            <span aria-hidden="true">−</span>
+          </IconButton>
 
-        <IconButton label="Приблизить" onClick={handleZoomInClick}>
-          <span aria-hidden="true">+</span>
-        </IconButton>
+          <IconButton label="Приблизить" onClick={handleZoomInClick}>
+            <span aria-hidden="true">+</span>
+          </IconButton>
 
-        <IconButton label="Вписать фотографию" onClick={handleFitClick}>
-          <span aria-hidden="true">⤢</span>
-        </IconButton>
+          <IconButton label="Вписать фотографию" onClick={handleFitClick}>
+            <span aria-hidden="true">⤢</span>
+          </IconButton>
 
-        <span className="px-2 text-xs text-fg-muted tabular-nums">
-          {Math.round(scale * PERCENT)} %
-        </span>
+          <span className="px-2 text-xs whitespace-nowrap text-fg-muted tabular-nums">
+            {Math.round(scale * PERCENT)} %
+          </span>
+        </div>
+
+        <MarkupViewportHint />
       </div>
     </div>
   );

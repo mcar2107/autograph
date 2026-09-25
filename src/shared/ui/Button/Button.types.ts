@@ -13,9 +13,10 @@ export type ButtonProps = {
 
   /**
    * Оформление: `primary` — главное действие экрана, `secondary` — обычное,
-   * `ghost` — без заливки.
+   * `ghost` — без заливки, `danger` — разрушительное: то, что теряет данные
+   * без возможности отмены.
    */
-  variant?: 'primary' | 'secondary' | 'ghost';
+  variant?: 'primary' | 'secondary' | 'ghost' | 'danger';
 
   /**
    * Кнопка недоступна.

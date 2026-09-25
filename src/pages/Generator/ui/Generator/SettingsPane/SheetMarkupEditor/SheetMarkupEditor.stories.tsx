@@ -96,9 +96,105 @@ const openWithTool = async (canvasElement: HTMLElement, tool: string) => {
   await expect(radio).toBeChecked();
 };
 
+/**
+ * Окна проверки подвала: ноутбук с панелью браузера (высота, на которой UX-аудит
+ * нашёл «Сохранить» под краем), узкое окно и окно из требования к экрану
+ * генератора.
+ */
+const VIEWPORT_OPTIONS = {
+  laptop: {
+    name: 'Окно 1512×781',
+    styles: { width: '1512px', height: '781px' },
+    type: 'desktop',
+  },
+  narrow: {
+    name: 'Окно 1024×768',
+    styles: { width: '1024px', height: '768px' },
+    type: 'desktop',
+  },
+  wide: {
+    name: 'Окно 1440×900',
+    styles: { width: '1440px', height: '900px' },
+    type: 'desktop',
+  },
+};
+
+/**
+ * Действия подвала, которые обязаны быть в окне при любом инструменте.
+ */
+const FOOTER_ACTIONS = [
+  'Отменить',
+  'Повторить',
+  'Сбросить к найденному',
+  'Отмена',
+  'Сохранить',
+];
+
+/**
+ * Запас справа от полей ввода панели до её края, px: полоса прокрутки поверх
+ * содержимого (macOS) ложится в эти пиксели, а не на поля.
+ */
+const SCROLLBAR_ROOM = 8;
+
+/**
+ * Проверяет, что кнопки подвала целиком в окне.
+ *
+ * @param body — корень документа
+ */
+const expectFooterInWindow = async (body: ReturnType<typeof within>) => {
+  for (const name of FOOTER_ACTIONS) {
+    const rect = body.getByRole('button', { name }).getBoundingClientRect();
+
+    await expect(rect.top).toBeGreaterThanOrEqual(0);
+    await expect(rect.bottom).toBeLessThanOrEqual(window.innerHeight);
+  }
+};
+
+/**
+ * Проходит все инструменты, затем зеркальную страницу с полями, заданными
+ * отдельно, — самое длинное содержимое панели, — и на каждом шаге проверяет
+ * подвал. В конце проверяет, что панель действительно прокручивается, а поля
+ * ввода не лежат под полосой прокрутки.
+ *
+ * @param canvasElement — корень story
+ * @param width — ожидаемая ширина окна
+ */
+const checkPinnedFooter = async (canvasElement: HTMLElement, width: number) => {
+  await expect(window.innerWidth).toBe(width);
+  await openPresetSheet();
+
+  const body = within(canvasElement.ownerDocument.body);
+
+  for (const tool of ['Контур', 'Линии', 'Изгиб', 'Поля']) {
+    await userEvent.click(await body.findByRole('radio', { name: tool }));
+    await expectFooterInWindow(body);
+  }
+
+  await userEvent.click(await body.findByRole('radio', { name: 'Зеркальная страница' }));
+  await userEvent.click(await body.findByRole('radio', { name: 'Задать отдельно' }));
+  await expect(
+    await body.findByRole('textbox', { name: /^Левое поле зеркала сверху/ })
+  ).toBeInTheDocument();
+  await expectFooterInWindow(body);
+
+  const scroll = body.getByTestId('markup-panel-scroll');
+  const scrollRight = scroll.getBoundingClientRect().right;
+
+  await expect(scroll.scrollHeight).toBeGreaterThan(scroll.clientHeight);
+
+  for (const field of within(scroll).getAllByRole('textbox')) {
+    await expect(field.getBoundingClientRect().right).toBeLessThanOrEqual(
+      scrollRight - SCROLLBAR_ROOM
+    );
+  }
+};
+
 const meta = {
   component: SheetMarkupEditor,
-  parameters: { layout: 'fullscreen' },
+  parameters: {
+    layout: 'fullscreen',
+    viewport: { options: VIEWPORT_OPTIONS },
+  },
 } satisfies Meta<typeof SheetMarkupEditor>;
 
 export default meta;
@@ -221,5 +317,37 @@ export const HoldToHideMarkup: Story = {
     await waitFor(async () => {
       await expect(getComputedStyle(overlay).opacity).toBe('0');
     });
+  },
+};
+
+/**
+ * Окно ноутбука 1512×781: подвал с историей, сбросом и сохранением виден при
+ * любом инструменте и на зеркале с отдельными полями, хотя панель над ним
+ * прокручивается.
+ */
+export const LaptopWindow: Story = {
+  globals: { viewport: { value: 'laptop', isRotated: false } },
+  play: async ({ canvasElement }) => {
+    await checkPinnedFooter(canvasElement, 1512);
+  },
+};
+
+/**
+ * Узкое окно 1024×768 — то же, что и на ноутбуке.
+ */
+export const NarrowWindow: Story = {
+  globals: { viewport: { value: 'narrow', isRotated: false } },
+  play: async ({ canvasElement }) => {
+    await checkPinnedFooter(canvasElement, 1024);
+  },
+};
+
+/**
+ * Окно 1440×900 — то же, что и на ноутбуке.
+ */
+export const WideWindow: Story = {
+  globals: { viewport: { value: 'wide', isRotated: false } },
+  play: async ({ canvasElement }) => {
+    await checkPinnedFooter(canvasElement, 1440);
   },
 };

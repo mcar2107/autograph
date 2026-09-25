@@ -1,32 +1,21 @@
 import { Button } from '@shared/ui/Button';
 import type { FC } from 'react';
-import { useState } from 'react';
+
+import { MarkupHistoryControls } from '../MarkupHistoryControls';
 
 import type { MarkupFooterProps } from './MarkupFooter.types';
 
 /**
- * Действия редактора над листом целиком. Удаление — отдельное действие с
- * подтверждением и применяется сразу, в обход «Сохранить»: лист пропадает
- * из выбора бумаги и из хранилища.
+ * Подвал панели редактора: история, сброс и выход. Каркас держит его вне
+ * прокрутки панели — нужен он при любом инструменте и любой высоте окна.
+ * Удаления листа здесь нет: его не отменить, и рядом со «Сохранить» оно
+ * стояло бы под рукой.
  */
 export const MarkupFooter: FC<MarkupFooterProps> = (props) => {
-  const { sheetLabel, onReset, onDelete, onCancel, isSaveDisabled, onSave } = props;
-  const [isDeleteConfirming, setDeleteConfirming] = useState(false);
+  const { onReset, onCancel, isSaveDisabled, onSave } = props;
 
   const handleResetClick = () => {
     onReset();
-  };
-
-  const handleDeleteClick = () => {
-    setDeleteConfirming(true);
-  };
-
-  const handleDeleteConfirmClick = () => {
-    onDelete();
-  };
-
-  const handleDeleteCancelClick = () => {
-    setDeleteConfirming(false);
   };
 
   const handleCancelClick = () => {
@@ -39,39 +28,11 @@ export const MarkupFooter: FC<MarkupFooterProps> = (props) => {
 
   return (
     <div className="flex flex-col gap-3">
-      {isDeleteConfirming ? (
-        <div
-          role="group"
-          aria-label="Подтверждение удаления"
-          className="flex flex-col gap-2 rounded-md border border-danger p-3"
-        >
-          <p className="text-sm text-fg">
-            Удалить «{sheetLabel}» из бумаги и из хранилища браузера?
-          </p>
+      <div className="flex items-center justify-between gap-2">
+        <MarkupHistoryControls />
 
-          <div className="flex gap-2">
-            <Button variant="secondary" onClick={handleDeleteConfirmClick}>
-              Да, удалить
-            </Button>
-
-            <Button variant="ghost" onClick={handleDeleteCancelClick}>
-              Не удалять
-            </Button>
-          </div>
-        </div>
-      ) : null}
-
-      <div className="flex flex-wrap gap-2">
         <Button variant="ghost" onClick={handleResetClick}>
           Сбросить к найденному
-        </Button>
-
-        <Button
-          variant="ghost"
-          isDisabled={isDeleteConfirming}
-          onClick={handleDeleteClick}
-        >
-          Удалить лист
         </Button>
       </div>
 
