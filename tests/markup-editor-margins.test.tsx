@@ -423,7 +423,11 @@ describe('инструмент «Поля»: линия поля', () => {
 
     await user.click(within(editor).getByRole('button', { name: 'Добавить линию поля' }));
 
-    expect(within(editor).getByRole('status').textContent).toMatch(/Ведите линию поля/);
+    expect(
+      within(within(editor).getByRole('region', { name: 'Поля листа' })).getByRole(
+        'status'
+      ).textContent
+    ).toMatch(/Ведите линию поля/);
 
     fireEvent.pointerMove(svg, { pointerId: 1, clientX: 200, clientY: 300 });
 
@@ -438,7 +442,11 @@ describe('инструмент «Поля»: линия поля', () => {
 
     expect(readDraftRuling().marginLineX).toBe(420);
     expect(readDraftRuling().marginLineSide).toBe('right');
-    expect(within(editor).queryByRole('status')).toBeNull();
+    expect(
+      within(within(editor).getByRole('region', { name: 'Поля листа' })).queryByRole(
+        'status'
+      )
+    ).toBeNull();
 
     fireEvent.pointerMove(svg, { pointerId: 1, clientX: 300, clientY: 300 });
 
@@ -471,7 +479,11 @@ describe('инструмент «Поля»: линия поля', () => {
     fireEvent.pointerMove(svg, { pointerId: 1, clientX: 200, clientY: 300 });
 
     expect(readDraftRuling().marginLineX).toBeNull();
-    expect(within(editor).queryByRole('status')).toBeNull();
+    expect(
+      within(within(editor).getByRole('region', { name: 'Поля листа' })).queryByRole(
+        'status'
+      )
+    ).toBeNull();
   });
 
   it('сторона — по положению относительно середины листа', async () => {

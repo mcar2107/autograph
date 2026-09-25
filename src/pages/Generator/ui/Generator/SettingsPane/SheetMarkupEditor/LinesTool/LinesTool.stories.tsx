@@ -259,7 +259,10 @@ export const DragPinEndWithAltStaysPut: Story = {
       await expect(readSecondPin().right.y).toBeCloseTo(released, 6);
     });
 
-    await expect(document.querySelector('[role="alert"]')).toBeNull();
+    /**
+     * Область отказа стоит на месте и пустая, пока расстановка годна.
+     */
+    await expect(document.querySelector('[role="alert"]')?.textContent).toBe('');
     await expect(useMarkupEditorStore.getState().draft?.ruling).not.toBe(sheet.ruling);
   },
 };

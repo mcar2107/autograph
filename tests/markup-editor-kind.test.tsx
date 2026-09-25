@@ -434,7 +434,7 @@ describe('вид разлиновки в редакторе', () => {
         height: RULED_PHOTO.height,
       })
     );
-    expect(within(getKindSection(editor)).queryByRole('status')).toBeNull();
+    expect(within(getKindSection(editor)).getByRole('status').textContent).toBe('');
     expect(
       within(editor).getByRole('button', { name: 'Сохранить' }).hasAttribute('disabled')
     ).toBe(false);
@@ -555,7 +555,7 @@ describe('вид разлиновки в редакторе', () => {
       releaseLines(createSyntheticSheet(RULED_PHOTO));
     });
     await waitFor(() => {
-      expect(within(getKindSection(editor)).queryByRole('status')).toBeNull();
+      expect(within(getKindSection(editor)).getByRole('status').textContent).toBe('');
     });
 
     expect(saveButton.hasAttribute('disabled')).toBe(true);
@@ -605,6 +605,6 @@ describe('вид разлиновки в редакторе', () => {
 
     expect(readDraft().kind).toBe('lined');
     expect(decodeSheetImage).not.toHaveBeenCalled();
-    expect(within(getKindSection(editor)).queryByRole('status')).toBeNull();
+    expect(within(getKindSection(editor)).getByRole('status').textContent).toBe('');
   });
 });

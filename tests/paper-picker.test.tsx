@@ -158,6 +158,40 @@ describe('PaperPicker', () => {
     ).toBe('false');
   });
 
+  it('пока фото разбирается, рядом с плитками виден статус в живой области', async () => {
+    const user = userEvent.setup();
+    let finishDecode: (sheet: ReturnType<typeof createSyntheticSheet>) => void = () => {};
+
+    decodeSheetImage.mockImplementation(() => {
+      return new Promise((resolve) => {
+        finishDecode = resolve;
+      });
+    });
+
+    render(<PaperPicker />);
+
+    const status = screen.getByRole('status');
+
+    expect(status.textContent).toBe('');
+
+    await user.upload(screen.getByLabelText('Своя фотография листа'), buildPhotoFile());
+
+    await waitFor(() => {
+      expect(status.textContent).toMatch(/Разбираем фото «моя тетрадь»…/);
+    });
+    expect(status.textContent).toMatch(/до\u00A0полуминуты/);
+    expect(status.textContent).toMatch(/редактор разметки откроется сам/);
+
+    finishDecode(createSyntheticSheet(RULED_PHOTO));
+
+    await waitFor(() => {
+      expect(store().userSheets).toHaveLength(1);
+    });
+
+    expect(screen.getByRole('status')).toBe(status);
+    expect(status.textContent).toBe('');
+  });
+
   it('добавленный лист — плитка с выбором и кнопкой настройки', async () => {
     const user = userEvent.setup();
 
@@ -278,8 +312,39 @@ const buildLabeledRecord = (id: string, label: string) => {
   });
 };
 
+/**
+ * Высота строки подписи в заглушке раскладки, px.
+ */
+const LABEL_LINE_HEIGHT = 16;
+
+/**
+ * Знаков в строке подписи в заглушке раскладки.
+ */
+const LABEL_LINE_CHARS = 5;
+
+/**
+ * Раскладка подписи плитки. В jsdom её нет: ширина элемента — ноль, высота
+ * текста — тоже. Заглушка ставит в строку пять знаков и отдаёт высоту текста
+ * по числу строк.
+ */
+const stubLabelWidth = () => {
+  const layout = {
+    readHeight(this: HTMLElement): number {
+      const length = [...(this.textContent || '')].length;
+
+      return Math.ceil(length / LABEL_LINE_CHARS) * LABEL_LINE_HEIGHT;
+    },
+  };
+
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(56);
+  vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockImplementation(
+    layout.readHeight
+  );
+};
+
 describe('плитки своих листов: подпись и кнопка разметки', () => {
-  it('длинная подпись обрезана с середины, полное имя — в доступном имени', () => {
+  it('подпись в две строки: имя, которое помещается, видно целиком и совпадает с доступным', () => {
+    stubLabelWidth();
     store().selectFamily('lined');
     store().addUserSheet(buildLabeledRecord('user-1813', 'IMG_1813'));
     store().addUserSheet(buildLabeledRecord('user-1808', 'IMG_1808'));
@@ -290,11 +355,42 @@ describe('плитки своих листов: подпись и кнопка �
     const first = within(ownSheets).getByRole('button', { name: 'IMG_1813' });
     const second = within(ownSheets).getByRole('button', { name: 'IMG_1808' });
 
+    expect(first.textContent).toBe('IMG_1813');
+    expect(second.textContent).toBe('IMG_1808');
+    expect(first.querySelector('.line-clamp-2.break-all')?.textContent).toBe('IMG_1813');
+  });
+
+  it('сверх двух строк — обрезка с середины, видимый текст входит в доступное имя', () => {
+    stubLabelWidth();
+    store().selectFamily('lined');
+    store().addUserSheet(buildLabeledRecord('user-long', 'IMG_20250925_143012'));
+    store().addUserSheet(buildLabeledRecord('user-ru', 'Тетрадь в клетку, лист 2'));
+
+    render(<PaperPicker />);
+
+    const ownSheets = screen.getByRole('list', { name: 'Свои листы' });
+    const [long, cyrillic] = within(ownSheets)
+      .getAllByRole('button')
+      .filter((button) => {
+        return button.hasAttribute('aria-pressed');
+      });
+
     /**
-     * Видимые подписи двух снимков различаются: у них разные концы имени.
+     * Две строки по пять знаков заглушки: конец имени — то, чем различаются
+     * снимки с телефона, — остаётся на виду.
      */
-    expect(first.textContent).toBe('IM…813');
-    expect(second.textContent).toBe('IM…808');
+    expect(long?.textContent).toBe('IMG_…43012');
+    expect(cyrillic?.textContent).toBe('Тетр…ист 2');
+
+    for (const [button, full] of [
+      [long, 'IMG_20250925_143012'],
+      [cyrillic, 'Тетрадь в клетку, лист 2'],
+    ] as const) {
+      const name = button?.getAttribute('aria-label') || '';
+
+      expect(name).toContain(button?.textContent || '—');
+      expect(name).toContain(full);
+    }
   });
 
   it('кнопка разметки заметна, подсказка называет лист целиком, нажатие открывает редактор', async () => {
@@ -316,6 +412,11 @@ describe('плитки своих листов: подпись и кнопка �
      */
     expect(button.className).toMatch(/\bsize-8\b/);
     expect(button.className).not.toMatch(/\bsize-6\b/);
+    /**
+     * Под палец — 44 px: 32 px хватает мыши, а пальцем в угол плитки не
+     * попасть.
+     */
+    expect(button.className).toMatch(/\bpointer-coarse:size-11\b/);
     expect(button.className).toMatch(/\bbg-surface\//);
 
     await user.hover(button);

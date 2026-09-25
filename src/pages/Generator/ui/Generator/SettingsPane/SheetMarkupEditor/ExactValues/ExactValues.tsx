@@ -14,6 +14,11 @@ import type {
 } from '../MarginsTool/marginsGeometry.types';
 
 import { ExactValueField } from './ExactValueField';
+import {
+  EXACT_VALUES_LEGEND,
+  FROM_FRAME_TOP,
+  SIDE_REFERENCES,
+} from './exactValuesReferences';
 import { useExactValuesEdit } from './useExactValuesEdit';
 
 const GUIDE_MARGIN_SIDES: GuideMarginSide[] = ['top', 'bottom'];
@@ -21,6 +26,11 @@ const GUIDE_MARGIN_SIDES: GuideMarginSide[] = ['top', 'bottom'];
 const GUIDE_MARGIN_LABELS: Record<GuideMarginSide, string> = {
   top: 'Верхнее поле, px',
   bottom: 'Нижнее поле, px',
+};
+
+const GUIDE_MARGIN_REFERENCES: Record<GuideMarginSide, string> = {
+  top: FROM_FRAME_TOP,
+  bottom: 'от\u00A0низа кадра',
 };
 
 const SIDE_EDGES: SideEdge[] = ['left', 'right', 'marginLine'];
@@ -40,6 +50,10 @@ const SIDE_LABELS: Record<SideEdge, Record<SideHandleEnd, string>> = {
  * точнее, чем его видно. Конец бокового поля — столбец его угла области
  * текста, конец линии поля — столбец её ручки, у правого поля — отступ угла
  * от правого края кадра.
+ *
+ * Каждое число подписано, от чего отсчитано: поля листа на снимке идут от
+ * сторон листа, а числа — от краёв кадра. Число, которое разметка не
+ * принимает, остаётся в поле с причиной.
  *
  * Показывают и правят разметку самого листа: у зеркальной страницы свои
  * поля правятся на её вкладке.
@@ -67,34 +81,45 @@ export const ExactValues: FC = () => {
   const { step, firstLinePhase, margins } = ruling;
   const handles = resolveMarginHandles(ruling, frame);
 
-  const handleStepCommit = (value: number) => {
-    changeStep(value);
+  const handleStepCommit = (value: number): string | null => {
+    return changeStep(value);
   };
 
-  const handleFirstLineCommit = (value: number) => {
-    changeFirstLine(value);
+  const handleFirstLineCommit = (value: number): string | null => {
+    return changeFirstLine(value);
   };
 
   return (
     <Disclosure title="Точные значения">
+      <p className="mb-2 text-xs text-fg-muted">{EXACT_VALUES_LEGEND}</p>
+
       <div className="grid grid-cols-2 gap-2">
-        <ExactValueField label="Шаг, px" value={step} onValueCommit={handleStepCommit} />
+        <ExactValueField
+          label="Шаг, px"
+          reference="между соседними линиями"
+          value={step}
+          onValueCommit={handleStepCommit}
+        />
 
         <ExactValueField
           label="Первая линия, px"
+          reference={`${FROM_FRAME_TOP} у\u00A0левого края`}
           value={firstLinePhase}
           onValueCommit={handleFirstLineCommit}
         />
 
         {GUIDE_MARGIN_SIDES.map((side) => {
-          const handleMarginCommit = (value: number) => {
+          const handleMarginCommit = (value: number): null => {
             changeMargin(side, value);
+
+            return null;
           };
 
           return (
             <ExactValueField
               key={side}
               label={GUIDE_MARGIN_LABELS[side]}
+              reference={GUIDE_MARGIN_REFERENCES[side]}
               value={margins[side]}
               onValueCommit={handleMarginCommit}
             />
@@ -103,14 +128,17 @@ export const ExactValues: FC = () => {
 
         {SIDE_EDGES.flatMap((edge) => {
           return SIDE_HANDLE_ENDS.map((end) => {
-            const handleSideCommit = (value: number) => {
+            const handleSideCommit = (value: number): null => {
               changeSideEnd(edge, end, value);
+
+              return null;
             };
 
             return (
               <ExactValueField
                 key={`${edge}-${end}`}
                 label={SIDE_LABELS[edge][end]}
+                reference={SIDE_REFERENCES[edge]}
                 value={readSideHandleValue(handles, frame, edge, end)}
                 onValueCommit={handleSideCommit}
               />

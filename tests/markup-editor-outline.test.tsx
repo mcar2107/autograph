@@ -195,6 +195,16 @@ afterEach(() => {
   cleanup();
 });
 
+/**
+ * Раздел инструмента «Контур» в панели.
+ *
+ * @param editor — диалог редактора
+ * @returns раздел
+ */
+const getOutlineSection = (editor: HTMLElement): HTMLElement => {
+  return within(editor).getByRole('region', { name: 'Контур листа' });
+};
+
 describe('инструмент «Контур»', () => {
   it('показывает четыре угла листа во весь кадр', async () => {
     const { editor } = await openOutlineTool();
@@ -220,9 +230,9 @@ describe('инструмент «Контур»', () => {
 
     dragHandle(getCorner(editor, 'Левый верхний угол листа'), { x: 400, y: 540 });
 
-    expect((await within(editor).findByRole('alert')).textContent).toMatch(
-      /Контур не применён.*вывернут/
-    );
+    expect(
+      (await within(getOutlineSection(editor)).findByRole('alert')).textContent
+    ).toMatch(/Контур не применён.*вывернут/);
     expect(useMarkupEditorStore.getState().draft).toBe(before);
     expect(decodeSheetImage).not.toHaveBeenCalled();
     expect(getCorner(editor, 'Левый верхний угол листа').getAttribute('cx')).toBe('0');
@@ -234,9 +244,9 @@ describe('инструмент «Контур»', () => {
 
     dragHandle(getCorner(editor, 'Левый верхний угол листа'), { x: 0, y: 450 });
 
-    expect((await within(editor).findByRole('alert')).textContent).toMatch(
-      /Контур не применён.*слишком узкий/
-    );
+    expect(
+      (await within(getOutlineSection(editor)).findByRole('alert')).textContent
+    ).toMatch(/Контур не применён.*слишком узкий/);
     expect(useMarkupEditorStore.getState().draft).toBe(before);
     expect(decodeSheetImage).not.toHaveBeenCalled();
   });
@@ -260,7 +270,9 @@ describe('инструмент «Контур»', () => {
     await waitFor(() => {
       expect(save).toHaveProperty('disabled', true);
     });
-    expect(within(editor).getByRole('status').textContent).toMatch(/перемеряется/);
+    expect(within(getOutlineSection(editor)).getByRole('status').textContent).toMatch(
+      /перемеряется/
+    );
     expect(useMarkupEditorStore.getState().draft).toBe(before);
     /**
      * Угол стоит, куда его отпустили, пока идёт перемер.
@@ -293,7 +305,62 @@ describe('инструмент «Контур»', () => {
     expect(draft?.ruling.marginLineX).not.toBeNull();
     expect(draft?.remeasure?.measuredRuling).toBe(draft?.ruling);
     expect(draft?.pins.length).toBeGreaterThanOrEqual(2);
-    expect(within(editor).queryByRole('status')).toBeNull();
+    expect(within(getOutlineSection(editor)).getByRole('status').textContent).toMatch(
+      /Лист перемерен по\u00A0новому контуру/
+    );
+  });
+
+  it('подсказка предупреждает, что перемер заменит ручные правки линий и полей', async () => {
+    const { editor } = await openOutlineTool();
+    const section = getOutlineSection(editor);
+
+    expect(section.textContent).toMatch(
+      /правки линий и\u00A0полей .*заменяются найденными.*«Отменить»/
+    );
+  });
+
+  it('сообщения контура — в живых областях, которые есть до сообщения', async () => {
+    const release = deferDecode();
+    const { editor } = await openOutlineTool();
+    const section = getOutlineSection(editor);
+    const status = within(section).getByRole('status');
+    const alert = within(section).getByRole('alert');
+
+    expect(status.textContent).toBe('');
+    expect(alert.textContent).toBe('');
+
+    dragHandle(getCorner(editor, 'Левый верхний угол листа'), { x: 400, y: 540 });
+
+    await waitFor(() => {
+      expect(alert.textContent).toMatch(/Контур не применён/);
+    });
+
+    dragHandle(getCorner(editor, 'Левый верхний угол листа'), { x: 20, y: 30 });
+
+    await waitFor(() => {
+      expect(status.textContent).toMatch(/перемеряется/);
+    });
+    expect(alert.textContent).toBe('');
+
+    await act(async () => {
+      release(createSyntheticSheet(RULED_PHOTO));
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(status.textContent).toMatch(/Лист перемерен.*«Отменить»/);
+    });
+    expect(within(section).getByRole('status')).toBe(status);
+    expect(within(section).getByRole('alert')).toBe(alert);
+
+    act(() => {
+      useMarkupEditorStore.getState().undo();
+    });
+
+    /**
+     * После отмены «Лист перемерен» говорил бы уже не о том, что видно.
+     */
+    expect(status.textContent).toBe('');
   });
 
   it('отмена возвращает прежний контур вместе с разметкой; сохранение кладёт перемер на лист', async () => {
@@ -471,6 +538,9 @@ describe('перемер контура чистого листа', () => {
       margins,
     });
     expect(draft?.remeasure?.measuredKind).toBe('blank');
+    expect(getOutlineSection(editor).textContent).toMatch(
+      /поля подтягиваются внутрь нового контура/
+    );
   });
 
   it('поля, оставшиеся от прежнего контура, уходят внутрь нового', async () => {

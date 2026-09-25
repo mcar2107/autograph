@@ -793,6 +793,22 @@ describe('инструмент «Изгиб»: сдвиг не дальше ша
   });
 });
 
+/**
+ * Описание элемента — тексты элементов из `aria-describedby`, через пробел.
+ *
+ * @param element — элемент
+ * @returns описание; пустая строка — описания нет
+ */
+const readDescription = (element: HTMLElement): string => {
+  return (element.getAttribute('aria-describedby') || '')
+    .split(' ')
+    .filter(Boolean)
+    .map((id) => {
+      return document.getElementById(id)?.textContent || '';
+    })
+    .join(' ');
+};
+
 describe('инструмент «Изгиб»: действия', () => {
   it('«Выпрямить» снимает изгиб: линии прямые и проходят через закреплённые', async () => {
     const user = userEvent.setup();
@@ -861,6 +877,37 @@ describe('инструмент «Изгиб»: действия', () => {
     });
 
     expect(readDraftRuling().bend).toBeNull();
+  });
+
+  it('удачная подгонка сообщает итог в живой области, которая есть до нажатия', async () => {
+    const user = userEvent.setup();
+    const editor = await openBendTool(
+      user,
+      buildPhotoRuling(BENT_PHOTO),
+      createSyntheticSheet(BENT_PHOTO),
+      { width: BENT_PHOTO.width, height: BENT_PHOTO.height },
+      buildBentPins([3, 20])
+    );
+    const section = within(editor).getByRole('region', { name: 'Изгиб линий' });
+    const status = within(section).getByRole('status');
+
+    expect(status.textContent).toBe('');
+
+    await user.click(
+      within(section).getByRole('button', { name: 'Подогнать изгиб по фото' })
+    );
+
+    expect(readDraftRuling().bend).not.toBeNull();
+    expect(status.textContent).toMatch(/Изгиб прослежен по\u00A0фото.*«Отменить»/);
+
+    act(() => {
+      useMarkupEditorStore.getState().undo();
+    });
+
+    /**
+     * Сообщение — об итоге подгонки: отменённой подгонке оно не принадлежит.
+     */
+    expect(status.textContent).toBe('');
   });
 
   it('«Подогнать изгиб по фото» при трёх закреплённых линиях: линии проходят через их концы', async () => {
@@ -984,12 +1031,43 @@ describe('инструмент «Изгиб»: действия', () => {
     });
 
     expect(refit).toHaveProperty('disabled', true);
+    expect(readDescription(refit)).toMatch(/Фото ещё готовится/);
 
     act(() => {
       useMarkupEditorStore.getState().setImage(SHEET.id, createSyntheticSheet(PHOTO));
     });
 
     expect(refit).toHaveProperty('disabled', false);
+    expect(readDescription(refit)).toBe('');
+  });
+
+  it('при «Без разлиновки» кнопка подгонки недоступна и объясняет почему', async () => {
+    const user = userEvent.setup();
+    const editor = await openBendTool(user, RULING, createSyntheticSheet(PHOTO));
+
+    await user.click(within(editor).getByRole('radio', { name: 'Без разлиновки' }));
+
+    const refit = within(editor).getByRole('button', {
+      name: 'Подогнать изгиб по фото',
+    });
+
+    expect(refit).toHaveProperty('disabled', true);
+    expect(readDescription(refit)).toMatch(/«Без разлиновки».*линий не\u00A0ищет/);
+  });
+
+  it('без линий кнопка подгонки недоступна и объясняет почему', async () => {
+    const user = userEvent.setup();
+    const editor = await openBendTool(
+      user,
+      { ...RULING, step: 0 },
+      createSyntheticSheet(PHOTO)
+    );
+    const refit = within(editor).getByRole('button', {
+      name: 'Подогнать изгиб по фото',
+    });
+
+    expect(refit).toHaveProperty('disabled', true);
+    expect(readDescription(refit)).toMatch(/Сначала закрепите линии/);
   });
 
   it('ровный снимок: изгиб не прослежен — сообщение, ручной изгиб прежний', async () => {
@@ -1008,9 +1086,11 @@ describe('инструмент «Изгиб»: действия', () => {
       within(editor).getByRole('button', { name: 'Подогнать изгиб по фото' })
     );
 
-    expect(within(editor).getByRole('status').textContent).toMatch(
-      /проследить не удалось/
-    );
+    expect(
+      within(within(editor).getByRole('region', { name: 'Изгиб линий' })).getByRole(
+        'status'
+      ).textContent
+    ).toMatch(/проследить не удалось/);
     expect(readDraftRuling()).toBe(bent);
   });
 });

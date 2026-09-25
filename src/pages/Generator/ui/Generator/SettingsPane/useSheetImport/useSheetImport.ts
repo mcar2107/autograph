@@ -66,13 +66,14 @@ export const useSheetImport = (): SheetImport => {
   const openMarkupEditor = useMarkupEditorStore((state) => {
     return state.open;
   });
-  const [isBusy, setBusy] = useState(false);
+  const [pendingLabel, setPendingLabel] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const add = async (file: File, options: SheetImportOptions) => {
     const { family } = options;
+    const label = toSheetLabel(file.name);
 
-    setBusy(true);
+    setPendingLabel(label);
     setError(null);
 
     try {
@@ -108,7 +109,7 @@ export const useSheetImport = (): SheetImport => {
       const kind = resolveMeasuredKind(measurement, family.kind, family.kind === 'blank');
       const sheet = {
         id: sheetId,
-        label: toSheetLabel(file.name),
+        label,
         src,
         width: frame.width,
         height: frame.height,
@@ -142,9 +143,9 @@ export const useSheetImport = (): SheetImport => {
     } catch {
       setError('Не удалось прочитать фотографию');
     } finally {
-      setBusy(false);
+      setPendingLabel(null);
     }
   };
 
-  return { add, isBusy, error };
+  return { add, isBusy: pendingLabel !== null, pendingLabel, error };
 };

@@ -6,6 +6,7 @@ import { useState } from 'react';
 
 import type { RulingKind } from '../../../../../lib/paper';
 import { useMarkupEditorStore } from '../../../../../model/useMarkupEditorStore';
+import { MarkupLiveRegion } from '../MarkupLiveRegion';
 
 import { searchRulingLines } from './searchRulingLines';
 
@@ -121,18 +122,24 @@ export const RulingKindControl: FC = () => {
         onChange={handleKindChange}
       />
 
-      {isSearching ? (
-        <p role="status" className="flex items-center gap-2 text-fg-muted">
-          <Spinner />
-          Ищем линии на фотографии…
-        </p>
-      ) : null}
+      <MarkupLiveRegion
+        tone="status"
+        message={
+          isSearching ? (
+            <>
+              <Spinner />
+              Ищем линии на фотографии…
+            </>
+          ) : null
+        }
+        className="flex items-center gap-2 text-fg-muted"
+      />
 
-      {message ? (
-        <p role="alert" className="rounded-md border border-danger p-2 text-xs text-fg">
-          {message}
-        </p>
-      ) : null}
+      <MarkupLiveRegion
+        tone="alert"
+        message={message}
+        className="rounded-md border border-danger p-2 text-xs text-fg"
+      />
     </section>
   );
 };

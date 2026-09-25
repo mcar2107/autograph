@@ -1,3 +1,5 @@
+import type { MarkupDraft } from '../../../../../model/useMarkupEditorStore.types';
+
 /**
  * Годится ли контур для перемера:
  *
@@ -15,3 +17,19 @@ export type OutlineVerdict = 'usable' | 'inverted' | 'narrow';
  * - `dropped` — результат устарел: пришёл новый контур или редактор закрыт.
  */
 export type OutlineRemeasureStatus = 'applied' | 'failed' | 'dropped';
+
+/**
+ * Итог перемера для пользователя.
+ */
+export type OutlineNotice = {
+  /**
+   * Текст сообщения.
+   */
+  text: string;
+
+  /**
+   * Черновик, который перемер положил: сообщение показывается, пока разметка
+   * — он.
+   */
+  draft: MarkupDraft | null;
+};

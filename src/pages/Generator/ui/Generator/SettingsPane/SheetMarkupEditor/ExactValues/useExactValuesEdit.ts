@@ -10,6 +10,11 @@ import { retargetComb, toMarginPoint } from './exactValuesMarkup';
 import type { CombPatch } from './exactValuesMarkup.types';
 import type { ExactValuesEdit } from './useExactValuesEdit.types';
 
+const STEP_NOT_POSITIVE_MESSAGE = 'Шаг должен быть больше нуля.';
+
+const COMB_REJECTED_MESSAGE =
+  'Такой разлиновки у\u00A0листа не\u00A0бывает: линии сошлись\u00A0бы внутри кадра.';
+
 /**
  * Правка разметки числами. Каждое число — шаг истории и тот же итог, что
  * перетаскивание ручки в то же место без магнита: поле ставится той же
@@ -30,29 +35,32 @@ export const useExactValuesEdit = (frame: SheetFrame): ExactValuesEdit => {
    * Перестраивает гребёнку под новый шаг или первую линию.
    *
    * @param patch — новые числа гребёнки
+   * @returns почему не применено; `null` — применено
    */
-  const changeComb = (patch: CombPatch) => {
+  const changeComb = (patch: CombPatch): string | null => {
     const { draft, image, commit } = useMarkupEditorStore.getState();
 
     if (!draft) {
-      return;
+      return null;
     }
 
     const markup = retargetComb(draft, patch, frame, image);
 
-    if (markup) {
-      commit(markup);
+    if (!markup) {
+      return COMB_REJECTED_MESSAGE;
     }
+
+    commit(markup);
+
+    return null;
   };
 
-  const changeStep = (step: number) => {
-    if (step > 0) {
-      changeComb({ step });
-    }
+  const changeStep = (step: number): string | null => {
+    return step > 0 ? changeComb({ step }) : STEP_NOT_POSITIVE_MESSAGE;
   };
 
-  const changeFirstLine = (phase: number) => {
-    changeComb({ firstLinePhase: phase });
+  const changeFirstLine = (phase: number): string | null => {
+    return changeComb({ firstLinePhase: phase });
   };
 
   const changeMargin = (side: GuideMarginSide, value: number) => {

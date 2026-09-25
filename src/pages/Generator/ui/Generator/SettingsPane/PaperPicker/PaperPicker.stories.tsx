@@ -21,12 +21,15 @@ const LOAD_TIMEOUT = 20_000;
 const MIN_TARGET_SIZE = 32;
 
 /**
- * Два своих листа с именами, какие даёт телефон: они совпадают до последних
- * цифр, и на плитках обязаны различаться.
+ * Свои листы с именами, какие даёт телефон, — они совпадают до последних цифр,
+ * и на плитках обязаны различаться, — и два длинных: такое не встаёт в две
+ * строки, и обрезка с середины оставляет на виду конец имени.
  */
 const OWN_SHEETS = [
-  { presetIndex: 0, id: 'user-img-1813', label: 'IMG_1813' },
-  { presetIndex: 2, id: 'user-img-1808', label: 'IMG_1808' },
+  { presetIndex: 0, id: 'user-img-1813', label: 'IMG_1813', isShort: true },
+  { presetIndex: 2, id: 'user-img-1808', label: 'IMG_1808', isShort: true },
+  { presetIndex: 1, id: 'user-img-long', label: 'IMG_20250925_143012', isShort: false },
+  { presetIndex: 3, id: 'user-ru', label: 'Тетрадь в клетку, лист 2', isShort: false },
 ];
 
 /**
@@ -68,8 +71,8 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 /**
- * Свои листы в ряду выбора бумаги: подпись обрезана с середины, кнопка
- * разметки — на подложке поверх превью.
+ * Свои листы в ряду выбора бумаги: подпись в две строки, длинная — обрезана с
+ * середины, кнопка разметки — на подложке поверх превью.
  */
 export const OwnSheets: Story = {
   beforeEach: async () => {
@@ -100,7 +103,7 @@ export const OwnSheets: Story = {
     const canvas = within(canvasElement);
     const ownSheets = await canvas.findByRole('list', { name: 'Свои листы' });
 
-    for (const { label } of OWN_SHEETS) {
+    for (const { label, isShort } of OWN_SHEETS) {
       const markup = within(ownSheets).getByRole('button', {
         name: `Разметка листа «${label}»`,
       });
@@ -109,20 +112,31 @@ export const OwnSheets: Story = {
       await expect(width).toBeGreaterThanOrEqual(MIN_TARGET_SIZE);
       await expect(height).toBeGreaterThanOrEqual(MIN_TARGET_SIZE);
 
+      const tile = within(ownSheets)
+        .getAllByRole('button')
+        .find((button) => {
+          return (
+            button.hasAttribute('aria-pressed') &&
+            (button.getAttribute('aria-label') || '').includes(label)
+          );
+        });
+      const caption = tile?.querySelector('span:last-child');
+      const text = caption?.textContent || '';
+
       /**
-       * Обрезанная с середины подпись помещается целиком: обрезка CSS с конца
-       * поверх неё снова съела бы различающиеся цифры.
+       * Подобранная подпись встаёт в свои две строки целиком: срезка CSS с
+       * конца поверх неё снова съела бы различающиеся цифры.
        */
-      const caption = within(ownSheets)
-        .getByRole('button', { name: label })
-        .querySelector('span:last-child');
+      await expect(caption?.scrollHeight).toBeLessThanOrEqual(caption?.clientHeight || 0);
+      await expect(tile?.getAttribute('aria-label')).toContain(text);
 
-      await expect(caption?.scrollWidth).toBeLessThanOrEqual(caption?.clientWidth || 0);
+      if (isShort) {
+        await expect(text).toBe(label);
+      } else {
+        await expect(text).toContain('…');
+        await expect(label.endsWith(text.slice(-3))).toBe(true);
+      }
     }
-
-    await expect(
-      within(ownSheets).getByRole('button', { name: 'IMG_1813' })
-    ).toHaveTextContent('IM…813');
 
     /**
      * Снимок ждёт превью: без них эталон вышел бы с пустыми плитками.

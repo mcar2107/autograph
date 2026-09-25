@@ -1,7 +1,7 @@
 import { Button } from '@shared/ui/Button';
 import { ValueSlider } from '@shared/ui/ValueSlider';
 import type { FC, PointerEvent } from 'react';
-import { useMemo, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 import { formatNumber, NBSP } from '../../../../../lib/format/formatNumber';
@@ -14,6 +14,7 @@ import type {
 import { resolveBendRadius, resolveBendReach } from '../../../../../lib/paper';
 import { useMarkupEditorStore } from '../../../../../model/useMarkupEditorStore';
 import { normalizePins, refitBendToPins } from '../LinesTool/linesPins';
+import { MarkupLiveRegion } from '../MarkupLiveRegion';
 import { MARKUP_MUTED_OPACITY } from '../MarkupOverlay';
 import { buildRulingLines, toPointsAttribute } from '../MarkupOverlay/markupGeometry';
 import { MarkupStroke } from '../MarkupStroke';
@@ -25,6 +26,7 @@ import {
 import type { MarkupToolProps } from '../SheetMarkupEditor.types';
 
 import { buildBendRing, toPhotoPoint } from './bendGeometry';
+import type { BendRefitBlock, BendRefitNotice } from './BendTool.types';
 import { useBendDrag } from './useBendDrag';
 
 /**
@@ -68,6 +70,22 @@ const RADIUS_RANGE = { min: 1, max: 10, step: 0.5 };
 const REFIT_FAILED_MESSAGE =
   'Изгиб по фотографии проследить не удалось — линии остались прежними.';
 
+const REFIT_APPLIED_MESSAGE =
+  'Изгиб прослежен по\u00A0фото: линии идут по\u00A0бумаге. «Отменить» вернёт прежние.';
+
+/**
+ * Почему подгонка по фото недоступна. Погасшая без объяснения кнопка
+ * выглядит сломанной, а причины у неё разные и устраняются по-разному.
+ */
+const REFIT_BLOCKED_MESSAGES: Record<BendRefitBlock, string> = {
+  blank:
+    'При «Без разлиновки» редактор линий не\u00A0ищет, и\u00A0прослеживать изгиб не\u00A0по\u00A0чему. Строки идут по\u00A0закреплённым линиям.',
+  noLines:
+    'Сначала закрепите линии в\u00A0инструменте «Линии»: изгиб прослеживается от\u00A0них.',
+  noImage:
+    'Фото ещё готовится для\u00A0подгонки — кнопка включится через несколько секунд.',
+};
+
 /**
  * Форма слова «шаг» по правилу множественного числа; дробное число
  * согласуется с родительным падежом единственного: «2,5 шага».
@@ -93,6 +111,30 @@ const formatRadius = (value: number): string => {
   const number = formatNumber(value, { fractionDigits: 1, isSigned: false });
 
   return `${number}${NBSP}${STEP_WORD_BY_PLURAL[PLURAL_RULES.select(value)]}`;
+};
+
+/**
+ * Чего не хватает подгонке изгиба по фото.
+ *
+ * @param isBlank — выбрано «Без разлиновки»
+ * @param hasLines — у разметки есть линии
+ * @param hasImage — каналы фотографии готовы
+ * @returns причина; `null` — подгонка доступна
+ */
+const resolveRefitBlock = (
+  isBlank: boolean,
+  hasLines: boolean,
+  hasImage: boolean
+): BendRefitBlock | null => {
+  if (isBlank) {
+    return 'blank';
+  }
+
+  if (!hasLines) {
+    return 'noLines';
+  }
+
+  return hasImage ? null : 'noImage';
 };
 
 /**
@@ -156,7 +198,8 @@ export const BendTool: FC<MarkupToolProps> = (props) => {
       ? resolveBendRadius(ruling, frame).radius / ruling.step
       : FALLBACK_RADIUS_STEPS;
   });
-  const [refitMessage, setRefitMessage] = useState<string | null>(null);
+  const refitHintId = useId();
+  const [refitNotice, setRefitNotice] = useState<BendRefitNotice | null>(null);
   const radius = useMemo(() => {
     return ruling
       ? scaleBendRadius(ruling, frame, radiusSteps)
@@ -189,7 +232,12 @@ export const BendTool: FC<MarkupToolProps> = (props) => {
   const activeLine = lines.find(({ index }) => {
     return index === activeIndex;
   });
-  const canRefit = hasLines && hasImage && draft.kind !== 'blank';
+  const refitBlock = resolveRefitBlock(draft.kind === 'blank', hasLines, hasImage);
+  /**
+   * Итог подгонки верен, пока разметка — его итог: после отмены или новой
+   * правки он говорил бы уже не о том, что видно.
+   */
+  const refitMessage = refitNotice?.draft === draft ? refitNotice.text : null;
   const ring =
     ringCenter && hasLines
       ? buildBendRing(ruling, ringCenter, resolveBendReach(ruling, frame, radius))
@@ -214,13 +262,16 @@ export const BendTool: FC<MarkupToolProps> = (props) => {
     );
 
     if (!refitted) {
-      setRefitMessage(REFIT_FAILED_MESSAGE);
+      setRefitNotice({ text: REFIT_FAILED_MESSAGE, draft: current });
 
       return;
     }
 
-    setRefitMessage(null);
     commit({ ruling: refitted });
+    setRefitNotice({
+      text: REFIT_APPLIED_MESSAGE,
+      draft: useMarkupEditorStore.getState().draft,
+    });
   };
 
   /**
@@ -281,7 +332,7 @@ export const BendTool: FC<MarkupToolProps> = (props) => {
   const handleStraightenClick = () => {
     const { commit } = useMarkupEditorStore.getState();
 
-    setRefitMessage(null);
+    setRefitNotice(null);
     commit((current) => {
       return { ruling: { ...current.ruling, bend: null } };
     });
@@ -307,19 +358,30 @@ export const BendTool: FC<MarkupToolProps> = (props) => {
         onChange={handleRadiusChange}
       />
 
-      <Button variant="secondary" isDisabled={!canRefit} onClick={handleRefitClick}>
+      <Button
+        variant="secondary"
+        isDisabled={refitBlock !== null}
+        describedBy={refitBlock ? refitHintId : undefined}
+        onClick={handleRefitClick}
+      >
         Подогнать изгиб по фото
       </Button>
+
+      {refitBlock ? (
+        <p id={refitHintId} className="text-xs text-fg-muted">
+          {REFIT_BLOCKED_MESSAGES[refitBlock]}
+        </p>
+      ) : null}
 
       <Button variant="ghost" isDisabled={!ruling.bend} onClick={handleStraightenClick}>
         Выпрямить
       </Button>
 
-      {refitMessage ? (
-        <p role="status" className="text-xs text-fg-muted">
-          {refitMessage}
-        </p>
-      ) : null}
+      <MarkupLiveRegion
+        tone="status"
+        message={refitMessage}
+        className="text-xs text-fg-muted"
+      />
 
       {handleLayer && hasLines
         ? createPortal(

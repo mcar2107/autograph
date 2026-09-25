@@ -230,6 +230,37 @@ const openExactValues = async (editor: HTMLElement) => {
   await user.click(within(editor).getByRole('button', { name: 'Точные значения' }));
 };
 
+/**
+ * Описание поля — тексты элементов из `aria-describedby`, через пробел.
+ *
+ * @param field — поле ввода
+ * @returns описание; пустая строка — описания нет
+ */
+const readFieldDescription = (field: HTMLElement): string => {
+  return (field.getAttribute('aria-describedby') || '')
+    .split(' ')
+    .map((id) => {
+      return document.getElementById(id)?.textContent || '';
+    })
+    .join(' ');
+};
+
+/**
+ * Тексты всех живых областей отказа в редакторе: у инструментов они стоят на
+ * месте и пустые, пока отказа нет.
+ *
+ * @param editor — диалог редактора
+ * @returns тексты подряд; пустая строка — отказов нет
+ */
+const readAlertTexts = (editor: HTMLElement): string => {
+  return within(editor)
+    .queryAllByRole('alert')
+    .map((alert) => {
+      return alert.textContent || '';
+    })
+    .join('');
+};
+
 beforeEach(() => {
   clearLayoutCache();
   useGeneratorStore.setState(DEFAULT_GENERATOR_STATE);
@@ -505,7 +536,31 @@ describe('точная правка: числа', () => {
     }
   });
 
-  it('негодное число не применяется, поле возвращается к значению', async () => {
+  it('у каждого числа подписано, от чего оно отсчитано', async () => {
+    const editor = await openEditor(null);
+
+    await openExactValues(editor);
+
+    const readDescription = (name: string): string => {
+      return readFieldDescription(within(editor).getByRole('textbox', { name }));
+    };
+
+    /**
+     * `getByText` сводит неразрывные пробелы к обычным.
+     */
+    expect(within(editor).getByText(/от краёв кадра, а не листа/)).toBeTruthy();
+    expect(readDescription('Шаг, px')).toMatch(/между соседними линиями/);
+    expect(readDescription('Первая линия, px')).toMatch(/от\u00A0верха кадра/);
+    expect(readDescription('Верхнее поле, px')).toMatch(/от\u00A0верха кадра/);
+    expect(readDescription('Нижнее поле, px')).toMatch(/от\u00A0низа кадра/);
+    expect(readDescription('Левое поле снизу, px')).toMatch(/от\u00A0левого края кадра/);
+    expect(readDescription('Правое поле сверху, px')).toMatch(
+      /от\u00A0правого края кадра/
+    );
+    expect(readDescription('Линия поля снизу, px')).toMatch(/от\u00A0левого края кадра/);
+  });
+
+  it('не число: ошибка у поля, набранное остаётся, разметка прежняя', async () => {
     const editor = await openEditor(null);
 
     await openExactValues(editor);
@@ -514,9 +569,82 @@ describe('точная правка: числа', () => {
 
     await typeExactValue(editor, 'Шаг, px', 'abc');
 
+    const field = within(editor).getByRole('textbox', { name: 'Шаг, px' });
+
     expect(readDraft()).toBe(before);
-    expect(
-      (within(editor).getByRole('textbox', { name: 'Шаг, px' }) as HTMLInputElement).value
-    ).toBe('40');
+    expect((field as HTMLInputElement).value).toBe('abc');
+    expect(field.getAttribute('aria-invalid')).toBe('true');
+    expect(readFieldDescription(field)).toMatch(/Нужно число/);
+    expect(readAlertTexts(editor)).toMatch(/Нужно число/);
+  });
+
+  it('шаг 0: ошибка у поля вместо молчаливого отката; Esc возвращает значение, редактор открыт', async () => {
+    const user = userEvent.setup();
+    const editor = await openEditor(null);
+
+    await openExactValues(editor);
+
+    const before = readDraft();
+
+    await typeExactValue(editor, 'Шаг, px', '0');
+
+    const field = within(editor).getByRole('textbox', { name: 'Шаг, px' });
+
+    expect(readDraft()).toBe(before);
+    expect((field as HTMLInputElement).value).toBe('0');
+    expect(field.getAttribute('aria-invalid')).toBe('true');
+    expect(readFieldDescription(field)).toMatch(/больше нуля/);
+
+    await user.keyboard('{Escape}');
+
+    expect(editor.isConnected).toBe(true);
+    expect(document.activeElement).toBe(field);
+    expect((field as HTMLInputElement).value).toBe('40');
+    expect(field.getAttribute('aria-invalid')).toBeNull();
+    expect(readAlertTexts(editor)).toBe('');
+
+    await user.keyboard('{Escape}');
+
+    expect(editor.isConnected).toBe(false);
+  });
+
+  it('отрицательный шаг отвергается, годное число после ошибки применяется и снимает её', async () => {
+    const editor = await openEditor(null);
+
+    await openExactValues(editor);
+
+    const before = readDraft();
+
+    await typeExactValue(editor, 'Шаг, px', '-5');
+
+    const field = within(editor).getByRole('textbox', { name: 'Шаг, px' });
+
+    expect(readDraft()).toBe(before);
+    expect(readFieldDescription(field)).toMatch(/больше нуля/);
+
+    await typeExactValue(editor, 'Шаг, px', '45');
+
+    expect(readDraft().ruling.step).toBeCloseTo(45, 9);
+    expect(field.getAttribute('aria-invalid')).toBeNull();
+    expect(readAlertTexts(editor)).toBe('');
+  });
+
+  it('ошибка у поля снимается, когда значение меняется другой правкой', async () => {
+    const editor = await openEditor(null);
+
+    await openExactValues(editor);
+    await typeExactValue(editor, 'Шаг, px', '45');
+    await typeExactValue(editor, 'Шаг, px', '0');
+
+    const field = within(editor).getByRole('textbox', { name: 'Шаг, px' });
+
+    expect((field as HTMLInputElement).value).toBe('0');
+
+    act(() => {
+      useMarkupEditorStore.getState().undo();
+    });
+
+    expect((field as HTMLInputElement).value).toBe('40');
+    expect(field.getAttribute('aria-invalid')).toBeNull();
   });
 });

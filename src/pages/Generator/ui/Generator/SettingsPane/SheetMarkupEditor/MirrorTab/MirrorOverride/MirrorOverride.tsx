@@ -11,6 +11,10 @@ import { mirrorSheetRuling } from '../../../../../../lib/paper';
 import { useMarkupEditorStore } from '../../../../../../model/useMarkupEditorStore';
 import { ExactValueField } from '../../ExactValues/ExactValueField';
 import {
+  EXACT_VALUES_LEGEND,
+  SIDE_REFERENCES,
+} from '../../ExactValues/exactValuesReferences';
+import {
   readSideHandleValue,
   resolveMarginHandles,
 } from '../../MarginsTool/marginsGeometry';
@@ -183,17 +187,24 @@ export const MirrorOverride: FC<MirrorOverrideProps> = (props) => {
           />
 
           {handles ? (
+            <p className="text-xs text-fg-muted">{EXACT_VALUES_LEGEND}</p>
+          ) : null}
+
+          {handles ? (
             <div className="grid grid-cols-2 gap-2">
               {SIDE_EDGES.flatMap((edge) => {
                 return SIDE_HANDLE_ENDS.map((end) => {
-                  const handleSideCommit = (value: number) => {
+                  const handleSideCommit = (value: number): null => {
                     setSideValue(edge, end, value);
+
+                    return null;
                   };
 
                   return (
                     <ExactValueField
                       key={`${edge}-${end}`}
                       label={`${HANDLE_LABELS[edge][end]}, px`}
+                      reference={SIDE_REFERENCES[edge]}
                       value={readSideHandleValue(handles, frame, edge, end)}
                       onValueCommit={handleSideCommit}
                     />

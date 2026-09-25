@@ -313,6 +313,19 @@ const readPinEndClass = (
 };
 
 /**
+ * Живая область отказа инструмента «Линии»: она стоит на месте и пустая,
+ * пока расстановка годна.
+ *
+ * @param editor — диалог редактора
+ * @returns область
+ */
+const readLinesAlert = (editor: HTMLElement): HTMLElement => {
+  return within(within(editor).getByRole('region', { name: 'Линии листа' })).getByRole(
+    'alert'
+  );
+};
+
+/**
  * Нажимает кнопку несколько раз.
  *
  * @param user — сессия `userEvent`
@@ -444,10 +457,10 @@ describe('инструмент «Линии»: булавки', () => {
 
     expect(readDraftPins()[1]?.right).toStrictEqual({ x: PIN_RIGHT, y: lineY(13) - 20 });
     expect(ruling.perspective).not.toBeNull();
-    expect(measurePinMiss(ruling, readDraftPins())).toBeLessThan(1);
+    expect(measurePinMiss(ruling, readDraftPins())).toBeLessThan(0.5);
     expect(
       within(editor).getByRole('listitem', { name: 'Закреплённая линия 2' }).textContent
-    ).toMatch(/невязка 0\s?px/);
+    ).not.toMatch(/невязка/);
   });
 
   it('перетащенный конец и число шагов меняют наклон, а поля и линия поля на фото на месте', async () => {
@@ -616,7 +629,7 @@ describe('инструмент «Линии»: булавки', () => {
 
     expect(first?.left.x).toBe(PIN_RIGHT);
     expect(first?.right.x).toBe(PIN_RIGHT + 20);
-    expect(within(editor).queryByRole('alert')).toBeNull();
+    expect(readLinesAlert(editor).textContent).toBe('');
     expect(measurePinMiss(readDraftRuling(), readDraftPins())).toBeLessThan(1);
   });
 
@@ -626,7 +639,7 @@ describe('инструмент «Линии»: булавки', () => {
     dragHandle(getPinEnd(editor, 1, 'левый'), { x: PIN_LEFT, y: lineY(18) });
     dragHandle(getPinEnd(editor, 1, 'правый'), { x: PIN_RIGHT, y: lineY(18) });
 
-    expect(within(editor).getByRole('alert').textContent).toMatch(
+    expect(readLinesAlert(editor).textContent).toMatch(
       /не задают разлиновку|сходятся внутри кадра/
     );
     expect(readDraftRuling()).toBe(RULING);
@@ -651,9 +664,94 @@ describe('инструмент «Линии»: булавки', () => {
     expect(item.textContent).toMatch(/невязка 5\s?px/);
     expect(item.getAttribute('class')).toMatch(/border-danger/);
     expect(readPinEndClass(editor, 2, 'правый')).toMatch(/stroke-danger/);
-    expect(
-      within(editor).getByRole('listitem', { name: 'Закреплённая линия 1' }).textContent
-    ).toMatch(/невязка 0\s?px/);
+  });
+
+  it('невязка до полупикселя не показывается, до пикселя — показывается без подсветки', async () => {
+    const [first, second] = PINS;
+
+    if (!first || !second) {
+      throw new Error('Нет булавок');
+    }
+
+    const editor = await openEditor(
+      RULING,
+      [
+        { ...first, right: { ...first.right, y: first.right.y + 0.4 } },
+        { ...second, right: { ...second.right, y: second.right.y + 0.8 } },
+      ],
+      null
+    );
+    const upper = within(editor).getByRole('listitem', { name: 'Закреплённая линия 1' });
+    const lower = within(editor).getByRole('listitem', { name: 'Закреплённая линия 2' });
+
+    expect(upper.textContent).not.toMatch(/невязка/);
+    expect(lower.textContent).toMatch(/невязка 0,8\s?px/);
+    expect(lower.getAttribute('class')).not.toMatch(/border-danger/);
+    expect(readPinEndClass(editor, 2, 'правый')).not.toMatch(/stroke-danger/);
+  });
+
+  it('пока конец тянут, невязка не показывается и булавки не краснеют', async () => {
+    /**
+     * Три булавки: промежуточная гребёнка перетаскивания через уведённый с
+     * линии конец не проходит — невязка на ней больше пикселя, — а гребёнка
+     * после отпускания её снимает.
+     */
+    const pins = buildPins([3, 8, 13]);
+    const editor = await openEditor(RULING, pins, null);
+    const [, middle] = pins;
+
+    if (!middle) {
+      throw new Error('Нет булавок');
+    }
+
+    const handle = getPinEnd(editor, 2, 'левый');
+    const svg = handle.closest('svg');
+
+    if (!svg) {
+      throw new Error('Ручка вне SVG');
+    }
+
+    Object.defineProperty(svg, 'getScreenCTM', {
+      configurable: true,
+      value: () => {
+        return {
+          inverse: () => {
+            return { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
+          },
+        };
+      },
+    });
+
+    const pointer = {
+      pointerId: 1,
+      clientX: middle.left.x,
+      clientY: middle.left.y + 12,
+      altKey: true,
+    };
+
+    fireEvent.pointerDown(handle, { ...pointer, clientX: 0, clientY: 0 });
+    fireEvent.pointerMove(handle, pointer);
+
+    const readItems = (): HTMLElement[] => {
+      return within(editor).getAllByRole('listitem', { name: /^Закреплённая линия/ });
+    };
+
+    const { draft } = useMarkupEditorStore.getState();
+
+    expect(useMarkupEditorStore.getState().history.previewBase).not.toBeNull();
+    expect(draft && measurePinMiss(draft.ruling, draft.pins)).toBeGreaterThan(1);
+
+    for (const item of readItems()) {
+      expect(item.textContent).not.toMatch(/невязка/);
+      expect(item.getAttribute('class')).not.toMatch(/border-danger/);
+    }
+
+    expect(readPinEndClass(editor, 2, 'левый')).not.toMatch(/stroke-danger/);
+
+    fireEvent.pointerUp(handle, pointer);
+
+    expect(useMarkupEditorStore.getState().history.previewBase).toBeNull();
+    expect(measurePinMiss(readDraftRuling(), readDraftPins())).toBeLessThan(0.5);
   });
 
   it('невязка учитывает изгиб: булавка на изогнутой линии мимо гребёнки годна', async () => {
@@ -672,7 +770,7 @@ describe('инструмент «Линии»: булавки', () => {
     );
     const item = within(editor).getByRole('listitem', { name: 'Закреплённая линия 2' });
 
-    expect(item.textContent).toMatch(/невязка 0\s?px/);
+    expect(item.textContent).not.toMatch(/невязка/);
     expect(item.getAttribute('class')).not.toMatch(/border-danger/);
   });
 

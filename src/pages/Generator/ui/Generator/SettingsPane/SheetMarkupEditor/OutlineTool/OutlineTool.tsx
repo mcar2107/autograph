@@ -1,3 +1,4 @@
+import { cx } from '@shared/lib/styles';
 import { Spinner } from '@shared/ui/Spinner';
 import type { FC } from 'react';
 import { useState } from 'react';
@@ -6,6 +7,7 @@ import { createPortal } from 'react-dom';
 import type { SheetOutline, SheetPoint } from '../../../../../lib/paper';
 import { useMarkupEditorStore } from '../../../../../model/useMarkupEditorStore';
 import { MarkupHandle } from '../MarkupHandle';
+import { MarkupLiveRegion } from '../MarkupLiveRegion';
 import { MarkupStroke } from '../MarkupStroke';
 import { useMarkupMirrorWidth } from '../MarkupViewport';
 import type { MarkupToolProps } from '../SheetMarkupEditor.types';
@@ -18,6 +20,7 @@ import {
   type OutlineCorner,
   resolveOutline,
 } from './outlineGeometry';
+import type { OutlineNotice } from './OutlineTool.types';
 import { remeasureOutline } from './remeasureOutline';
 
 const CORNER_LABELS: Record<OutlineCorner, string> = {
@@ -57,6 +60,27 @@ const NARROW_MESSAGE =
 const DECODE_MESSAGE = 'Не удалось прочитать фотографию: разметка осталась прежней.';
 
 /**
+ * Подсказка листа с разлиновкой. Перемер молча заменил бы поля и линии,
+ * поправленные руками, поэтому об этом сказано до того, как угол отпущен.
+ */
+const RULED_HINT =
+  'Перетащите углы на\u00A0углы листа. Отпущенный угол перемеряет лист внутри контура: линии, поля, свет и\u00A0текстуру. Ручные правки линий и\u00A0полей при этом заменяются найденными\u00A0— вернуть их можно кнопкой «Отменить».';
+
+/**
+ * Подсказка чистого листа: линий на нём не ищут, и заданное руками остаётся.
+ */
+const BLANK_HINT =
+  'Перетащите углы на\u00A0углы листа. Отпущенный угол перемеряет свет и\u00A0текстуру внутри контура; шаг и\u00A0первая линия остаются, а\u00A0поля подтягиваются внутрь нового контура.';
+
+const REMEASURING_MESSAGE = 'Лист перемеряется внутри нового контура…';
+
+const RULED_APPLIED_MESSAGE =
+  'Лист перемерен по\u00A0новому контуру. Правки линий и\u00A0полей заменены найденными\u00A0— «Отменить» вернёт их.';
+
+const BLANK_APPLIED_MESSAGE =
+  'Лист перемерен по\u00A0новому контуру: свет и\u00A0текстура сняты заново, поля внутри листа.';
+
+/**
  * Контур в атрибут `points` многоугольника SVG.
  *
  * @param outline — контур
@@ -89,8 +113,8 @@ export const OutlineTool: FC<MarkupToolProps> = (props) => {
   const record = useMarkupEditorStore((state) => {
     return state.record;
   });
-  const savedOutline = useMarkupEditorStore((state) => {
-    return state.draft?.ruling.outline || null;
+  const draft = useMarkupEditorStore((state) => {
+    return state.draft;
   });
   /**
    * Статус — только своего перемера: поиск линий после смены вида показывает
@@ -101,10 +125,23 @@ export const OutlineTool: FC<MarkupToolProps> = (props) => {
   });
   const [pending, setPending] = useState<SheetOutline | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  /**
+   * Итог последнего перемера: без него отпущенный угол менял бы разметку
+   * молча.
+   */
+  const [notice, setNotice] = useState<OutlineNotice | null>(null);
 
-  if (!record) {
+  if (!record || !draft) {
     return null;
   }
+
+  const isBlank = draft.kind === 'blank';
+  const savedOutline = draft.ruling.outline;
+  /**
+   * Итог перемера верен, пока разметка — его итог: после отмены или правки
+   * «Лист перемерен» говорил бы уже не о том, что видно.
+   */
+  const shownNotice = notice?.draft === draft ? notice.text : null;
 
   const frame = { width: record.sheet.width, height: record.sheet.height };
   const current = resolveOutline(savedOutline, frame);
@@ -134,6 +171,8 @@ export const OutlineTool: FC<MarkupToolProps> = (props) => {
 
       return;
     }
+
+    setNotice(null);
 
     const verdict = checkOutline(next, frame);
 
@@ -174,8 +213,27 @@ export const OutlineTool: FC<MarkupToolProps> = (props) => {
       return shown === next && status !== 'dropped' ? null : shown;
     });
 
-    if (status === 'failed') {
-      setMessage(DECODE_MESSAGE);
+    switch (status) {
+      case 'applied': {
+        setNotice({
+          text: isBlank ? BLANK_APPLIED_MESSAGE : RULED_APPLIED_MESSAGE,
+          draft: useMarkupEditorStore.getState().draft,
+        });
+        break;
+      }
+
+      case 'failed': {
+        setMessage(DECODE_MESSAGE);
+        break;
+      }
+
+      case 'dropped': {
+        break;
+      }
+
+      default: {
+        throw new Error(`Неизвестный итог перемера: ${String(status)}`);
+      }
     }
   };
 
@@ -206,23 +264,28 @@ export const OutlineTool: FC<MarkupToolProps> = (props) => {
 
   return (
     <section aria-label="Контур листа" className="flex flex-col gap-2 text-sm">
-      <p className="text-fg-muted">
-        Перетащите углы на углы листа. Отпущенный угол перемеряет лист внутри контура:
-        линии, поля, свет и текстуру.
-      </p>
+      <p className="text-fg-muted">{isBlank ? BLANK_HINT : RULED_HINT}</p>
 
-      {isRemeasuring ? (
-        <p role="status" className="flex items-center gap-2 text-fg-muted">
-          <Spinner />
-          Лист перемеряется внутри нового контура…
-        </p>
-      ) : null}
+      <MarkupLiveRegion
+        tone="status"
+        message={
+          isRemeasuring ? (
+            <>
+              <Spinner />
+              {REMEASURING_MESSAGE}
+            </>
+          ) : (
+            shownNotice
+          )
+        }
+        className={cx('text-fg-muted', isRemeasuring && 'flex items-center gap-2')}
+      />
 
-      {message ? (
-        <p role="alert" className="rounded-md border border-danger p-2 text-xs text-fg">
-          {message}
-        </p>
-      ) : null}
+      <MarkupLiveRegion
+        tone="alert"
+        message={message}
+        className="rounded-md border border-danger p-2 text-xs text-fg"
+      />
 
       {handleLayer
         ? createPortal(

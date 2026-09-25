@@ -10,6 +10,7 @@ import { fitRulingPins } from '../../../../../lib/paper';
 import { useMarkupEditorStore } from '../../../../../model/useMarkupEditorStore';
 import type { MarkupMoveSource } from '../MarkupHandle';
 import { MarkupHandle } from '../MarkupHandle';
+import { MarkupLiveRegion } from '../MarkupLiveRegion';
 import { useMarkupMirrorWidth } from '../MarkupViewport';
 import type { MarkupToolProps } from '../SheetMarkupEditor.types';
 
@@ -22,6 +23,13 @@ import { useLinesEdit } from './useLinesEdit';
  * через закреплённые не дальше пикселя фотографии.
  */
 const MAX_RESIDUAL_PX = 1;
+
+/**
+ * Невязка, начиная с которой она показывается: меньше полупикселя линия
+ * проходит через булавку на глаз точно, и «невязка 0 px» у каждой карточки
+ * только шумит.
+ */
+const SHOWN_RESIDUAL_PX = 0.5;
 
 const END_LABELS: Record<PinEnd, string> = {
   left: 'левый конец',
@@ -68,13 +76,11 @@ const describeRejectedFit = (fit: RulingPinsFit): string | null => {
 /**
  * Невязка булавки для панели.
  *
- * @param residual — невязка, px фотографии; `undefined` — гребёнки нет
- * @returns например «0,4 px»
+ * @param residual — невязка, px фотографии
+ * @returns например «0,8 px»
  */
-const formatResidual = (residual: number | undefined): string => {
-  return residual === undefined
-    ? '—'
-    : `${formatNumber(residual, { fractionDigits: 1, isSigned: false })}${NBSP}px`;
+const formatResidual = (residual: number): string => {
+  return `${formatNumber(residual, { fractionDigits: 1, isSigned: false })}${NBSP}px`;
 };
 
 /**
@@ -94,6 +100,13 @@ export const LinesTool: FC<MarkupToolProps> = (props) => {
   });
   const draft = useMarkupEditorStore((state) => {
     return state.draft;
+  });
+  /**
+   * Пока ручку тянут, гребёнка промежуточная: изгиб к ней ещё не подогнан, и
+   * невязка каждой булавки на ней — не итог правки, а шум.
+   */
+  const isDragging = useMarkupEditorStore((state) => {
+    return state.history.previewBase !== null;
   });
   const width = record?.sheet.width || 0;
   const height = record?.sheet.height || 0;
@@ -129,15 +142,32 @@ export const LinesTool: FC<MarkupToolProps> = (props) => {
 
   /**
    * Подсвечивается булавка, которая не держит линию: при негодной расстановке
-   * — последняя правленая, иначе — та, до линии которой больше пикселя.
+   * — последняя правленая, иначе — та, до линии которой больше пикселя. Пока
+   * ручку тянут, по невязке не подсвечивается ни одна.
    *
    * @param order — булавка
    * @returns подсвечена ли
    */
   const isPinFlagged = (order: number): boolean => {
-    return rejection
-      ? order === lastEditedOrder
-      : (residuals[order] || 0) > MAX_RESIDUAL_PX;
+    if (rejection) {
+      return order === lastEditedOrder;
+    }
+
+    return !isDragging && (residuals[order] || 0) > MAX_RESIDUAL_PX;
+  };
+
+  /**
+   * Невязка для карточки булавки: после отпускания и заметная.
+   *
+   * @param order — булавка
+   * @returns невязка, px; `null` — не показывается
+   */
+  const readShownResidual = (order: number): number | null => {
+    const residual = residuals[order];
+
+    return !isDragging && residual !== undefined && residual >= SHOWN_RESIDUAL_PX
+      ? residual
+      : null;
   };
 
   const handleAddPinClick = () => {
@@ -179,11 +209,11 @@ export const LinesTool: FC<MarkupToolProps> = (props) => {
         них. Конец притягивается к ближайшей линии; с Alt/Option — нет.
       </p>
 
-      {rejection ? (
-        <p role="alert" className="rounded-md border border-danger p-2 text-xs text-fg">
-          {rejection}
-        </p>
-      ) : null}
+      <MarkupLiveRegion
+        tone="alert"
+        message={rejection}
+        className="rounded-md border border-danger p-2 text-xs text-fg"
+      />
 
       <ol aria-label="Закреплённые линии" className="flex flex-col gap-1">
         {pins.map((_pin, order) => {
@@ -196,6 +226,8 @@ export const LinesTool: FC<MarkupToolProps> = (props) => {
           const handleRemoveClick = () => {
             removePin(order);
           };
+
+          const residual = readShownResidual(order);
 
           return (
             <Fragment key={order}>
@@ -218,9 +250,11 @@ export const LinesTool: FC<MarkupToolProps> = (props) => {
               >
                 <span className="text-fg">Линия {order + 1}</span>
 
-                <span className="text-xs text-fg-muted tabular-nums">
-                  невязка {formatResidual(residuals[order])}
-                </span>
+                {residual === null ? null : (
+                  <span className="text-xs text-fg-muted tabular-nums">
+                    невязка {formatResidual(residual)}
+                  </span>
+                )}
 
                 <Button
                   variant="ghost"

@@ -25,6 +25,11 @@ export type SheetImport = {
   isBusy: boolean;
 
   /**
+   * Подпись листа, фотография которого разбирается. `null` — разбора нет.
+   */
+  pendingLabel: string | null;
+
+  /**
    * Сообщение об ошибке чтения файла. `null` — ошибки нет.
    */
   error: string | null;

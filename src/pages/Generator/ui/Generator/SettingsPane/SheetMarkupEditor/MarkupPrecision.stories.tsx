@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { expect, waitFor } from 'storybook/test';
+import { expect, userEvent, waitFor } from 'storybook/test';
 
 import { LINED_FAMILY_ID } from '../../../../config';
 import type { RulingPin, SheetPoint } from '../../../../lib/paper';
@@ -228,6 +228,40 @@ export const ArrowNudgeAndExactValues: Story = {
     const step = await findElement<HTMLInputElement>('input[inputmode="decimal"]');
 
     await expect(step.value).not.toBe('');
+  },
+};
+
+/**
+ * Шаг 0 в «Точных значениях»: число остаётся в поле с причиной рядом, у
+ * каждого числа подписано, от чего оно отсчитано, а разметка прежняя.
+ */
+export const ExactValueRejected: Story = {
+  play: async () => {
+    await openPresetSheet();
+
+    const trigger = [...document.querySelectorAll('button')].find((button) => {
+      return button.textContent === 'Точные значения';
+    });
+
+    trigger?.click();
+
+    const step = await findElement<HTMLInputElement>('input[inputmode="decimal"]');
+    const before = useMarkupEditorStore.getState().draft;
+
+    await userEvent.clear(step);
+    await userEvent.type(step, '0{Enter}');
+
+    const description = (step.getAttribute('aria-describedby') || '')
+      .split(' ')
+      .map((id) => {
+        return document.getElementById(id)?.textContent || '';
+      })
+      .join(' ');
+
+    await expect(step.getAttribute('aria-invalid')).toBe('true');
+    await expect(step.value).toBe('0');
+    await expect(description).toMatch(/между соседними линиями.*больше нуля/);
+    await expect(useMarkupEditorStore.getState().draft).toBe(before);
   },
 };
 
