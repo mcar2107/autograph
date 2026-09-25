@@ -38,6 +38,7 @@ const toSheetFingerprint = (sheet: PaperSheet): unknown[] => {
     margins,
     marginLineX,
     marginLineSide,
+    sideSlant,
     perspective,
     mirrorOverride,
   } = ruling;
@@ -55,6 +56,11 @@ const toSheetFingerprint = (sheet: PaperSheet): unknown[] => {
     margins.left,
     marginLineX,
     marginLineSide,
+    /**
+     * Концы полей у низа кадра меняют ширину каждой строки, а с ней и
+     * переносы.
+     */
+    sideSlant && [sideSlant.left, sideSlant.right, sideSlant.marginLineX],
     /**
      * Перспектива входит четырьмя числами: от неё зависят первая линия и
      * вместимость страницы. Изгиб и контур не входят — изгиб на разбивку не
@@ -75,6 +81,11 @@ const toSheetFingerprint = (sheet: PaperSheet): unknown[] => {
       mirrorOverride.marginLineSide,
       mirrorOverride.marginLeft,
       mirrorOverride.marginRight,
+      mirrorOverride.sideSlant && [
+        mirrorOverride.sideSlant.left,
+        mirrorOverride.sideSlant.right,
+        mirrorOverride.sideSlant.marginLineX,
+      ],
     ],
   ];
 };

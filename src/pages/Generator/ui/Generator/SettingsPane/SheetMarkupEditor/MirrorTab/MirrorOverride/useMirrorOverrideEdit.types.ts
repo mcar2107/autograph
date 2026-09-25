@@ -1,6 +1,5 @@
-import type { MarginLineSide, SheetPoint } from '../../../../../../lib/paper';
-
-import type { MirrorMarginSide } from './mirrorOverrideMarkup.types';
+import type { MarginLineSide, SheetPoint, SideEdge } from '../../../../../../lib/paper';
+import type { SideHandleEnd } from '../../MarginsTool/marginsGeometry.types';
 
 /**
  * Правка линии поля и боковых полей зеркальной страницы. Точки и столбцы — в
@@ -20,25 +19,28 @@ export type MirrorOverrideEdit = {
   reflect: () => void;
 
   /**
-   * Промежуточное положение бокового поля — без шага истории.
+   * Промежуточное положение ручки бокового поля или линии поля — без шага
+   * истории. Граница проходит через эту ручку и через вторую.
    */
-  moveMargin: (side: MirrorMarginSide, x: number) => void;
+  moveSideEnd: (edge: SideEdge, end: SideHandleEnd, point: SheetPoint) => void;
 
   /**
-   * Ставит боковое поле в столбец — шаг истории.
+   * Ставит ручку бокового поля или линии поля в точку — шаг истории. С
+   * магнитом ручка линии поля притягивается к черте фотографии, без него
+   * стоит, где поставлена.
    */
-  setMargin: (side: MirrorMarginSide, x: number) => void;
+  setSideEnd: (
+    edge: SideEdge,
+    end: SideHandleEnd,
+    point: SheetPoint,
+    shouldSnap: boolean
+  ) => void;
 
   /**
-   * Промежуточное положение линии поля — без шага истории.
+   * Ставит ручку бокового поля или линии поля в столбец из числа — шаг
+   * истории. У правого поля число — отступ от правого края.
    */
-  moveMarginLine: (x: number) => void;
-
-  /**
-   * Ставит линию поля в столбец точки — шаг истории. С магнитом линия
-   * притягивается к черте фотографии, без него стоит, где поставлена.
-   */
-  setMarginLine: (point: SheetPoint, shouldSnap: boolean) => void;
+  setSideValue: (edge: SideEdge, end: SideHandleEnd, value: number) => void;
 
   /**
    * Ставит линию поля у стороны или убирает её — шаг истории.

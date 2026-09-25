@@ -1,6 +1,7 @@
 export type {
   BlockGeometry,
   GeometryCorrection,
+  LineBounds,
   SheetCalibration,
 } from './calibrate.types';
 export {

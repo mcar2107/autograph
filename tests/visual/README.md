@@ -12,7 +12,7 @@
 `.storybook/visual-setup.ts`.
 
 Редактор разметки снимается на фиксированных листах пресет-пака с фиксированным seed:
-`SheetMarkupEditor.stories.tsx` — третий лист клетки по инструменту и зеркальная страница,
+`SheetMarkupEditor.stories.tsx` — третий лист клетки по инструменту, с наклонным левым полем и зеркальная страница,
 `MarkupPrecision.stories.tsx` и `BendTool.stories.tsx` — первый лист линейки в состоянии после их проверок.
 
 Обновить эталоны после осознанной правки вёрстки — `npm run test:visual:update`: он прогоняет те же тесты с `--update`

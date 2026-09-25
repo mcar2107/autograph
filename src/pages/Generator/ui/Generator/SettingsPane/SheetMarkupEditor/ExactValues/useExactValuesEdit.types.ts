@@ -1,4 +1,8 @@
-import type { MarginSide } from '../MarginsTool/marginsGeometry.types';
+import type { SideEdge } from '../../../../../lib/paper';
+import type {
+  GuideMarginSide,
+  SideHandleEnd,
+} from '../MarginsTool/marginsGeometry.types';
 
 /**
  * Правка разметки числами.
@@ -16,12 +20,14 @@ export type ExactValuesEdit = {
   changeFirstLine: (phase: number) => void;
 
   /**
-   * Задаёт поле, px фотографии.
+   * Задаёт верхнее или нижнее поле, px фотографии.
    */
-  changeMargin: (side: MarginSide, value: number) => void;
+  changeMargin: (side: GuideMarginSide, value: number) => void;
 
   /**
-   * Ставит линию поля в столбец, px фотографии.
+   * Ставит ручку бокового поля или линии поля в столбец, px фотографии; у
+   * правого поля число — отступ от правого края. Линии поля нет — она
+   * появляется без наклона.
    */
-  changeMarginLine: (x: number) => void;
+  changeSideEnd: (edge: SideEdge, end: SideHandleEnd, value: number) => void;
 };

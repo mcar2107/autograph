@@ -3,7 +3,7 @@ import type { FC } from 'react';
 import { useMemo } from 'react';
 import { createPortal } from 'react-dom';
 
-import type { MarginLineSide, SheetPoint } from '../../../../../lib/paper';
+import type { MarginLineSide, SheetPoint, SideEdge } from '../../../../../lib/paper';
 import { useMarkupEditorStore } from '../../../../../model/useMarkupEditorStore';
 import type { MarkupMoveSource } from '../MarkupHandle';
 import { MarkupHandle } from '../MarkupHandle';
@@ -12,22 +12,31 @@ import { MarkupStroke } from '../MarkupStroke';
 import type { MarkupToolProps } from '../SheetMarkupEditor.types';
 
 import { resolveMarginHandles } from './marginsGeometry';
-import type { MarginSide } from './marginsGeometry.types';
+import type { GuideMarginSide, SideHandleEnd } from './marginsGeometry.types';
 import { useMarginsEdit } from './useMarginsEdit';
-
-const MARGIN_SIDES: MarginSide[] = ['top', 'bottom', 'left', 'right'];
 
 /**
  * Поля, общие у листа и зеркальной страницы: боковые поля и линия поля у
  * зеркала свои и правятся в его разделе.
  */
-const SHARED_MARGIN_SIDES: MarginSide[] = ['top', 'bottom'];
+const GUIDE_MARGIN_SIDES: GuideMarginSide[] = ['top', 'bottom'];
 
-const MARGIN_LABELS: Record<MarginSide, string> = {
+const GUIDE_MARGIN_LABELS: Record<GuideMarginSide, string> = {
   top: 'Верхнее поле',
   bottom: 'Нижнее поле',
-  left: 'Левое поле',
-  right: 'Правое поле',
+};
+
+const SIDE_EDGES: SideEdge[] = ['left', 'right', 'marginLine'];
+
+const SIDE_HANDLE_ENDS: SideHandleEnd[] = ['top', 'bottom'];
+
+/**
+ * Имена ручек боковых границ: у каждой границы две ручки, верхняя и нижняя.
+ */
+const SIDE_HANDLE_LABELS: Record<SideEdge, Record<SideHandleEnd, string>> = {
+  left: { top: 'Левое поле сверху', bottom: 'Левое поле снизу' },
+  right: { top: 'Правое поле сверху', bottom: 'Правое поле снизу' },
+  marginLine: { top: 'Линия поля сверху', bottom: 'Линия поля снизу' },
 };
 
 const MARGIN_LINE_SIDE_LABELS: Record<MarginLineSide, string> = {
@@ -42,11 +51,14 @@ const GUIDE_WIDTH = 2;
 
 /**
  * Инструмент «Поля»: четыре поля и линия поля — направляющими. Верхняя и
- * нижняя при отпускании встают на ближайшую линию разлиновки, боковые стоят,
- * где отпущены. Линию поля можно убрать и добавить: добавленная появляется у
- * ближайшей стороны листа и сразу идёт за указателем. Отпущенная, она
- * притягивается к черте фотографии, а сторона листа выводится из её
- * положения относительно середины листа.
+ * нижняя при отпускании встают на ближайшую линию разлиновки. Боковые поля и
+ * линия поля правятся двумя ручками — верхней и нижней, — и граница идёт
+ * через обе: на листе, снятом на столе, поле ставится вдоль наклонной стороны
+ * листа. Ручки боковых полей стоят, где отпущены. Линию поля можно убрать и
+ * добавить: добавленная появляется у ближайшей стороны листа без наклона и
+ * сразу идёт за указателем. Отпущенная ручка линии поля притягивается к черте
+ * фотографии, а сторона листа выводится из положения линии относительно
+ * середины листа.
  *
  * На зеркальной странице правятся только верхнее и нижнее поля — в
  * отражённом слое ручек, общие с листом. Боковые поля и линия поля у зеркала
@@ -70,8 +82,8 @@ export const MarginsTool: FC<MarkupToolProps> = (props) => {
     isFollowing,
     moveMargin,
     releaseMargin,
-    moveMarginLine,
-    releaseMarginLine,
+    moveSideEnd,
+    releaseSideEnd,
     removeMarginLine,
     addMarginLine,
   } = useMarginsEdit(frame, pageIndex === 0 ? handleLayer : null);
@@ -83,7 +95,6 @@ export const MarginsTool: FC<MarkupToolProps> = (props) => {
   const { ruling } = draft;
   const { marginLineSide } = ruling;
   const handles = resolveMarginHandles(ruling, frame);
-  const { marginLine } = handles;
   const guides = [
     { side: 'top', points: handles.topGuide },
     { side: 'bottom', points: handles.bottomGuide },
@@ -97,52 +108,85 @@ export const MarginsTool: FC<MarkupToolProps> = (props) => {
     addMarginLine();
   };
 
-  const handleMarginLineMove = (point: SheetPoint) => {
-    moveMarginLine(point);
-  };
+  const guideHandles = GUIDE_MARGIN_SIDES.map((side) => {
+    const { x, y } = handles[side];
+
+    const handleMarginMove = (point: SheetPoint) => {
+      moveMargin(side, point);
+    };
+
+    const handleMarginMoveEnd = (point: SheetPoint) => {
+      releaseMargin(side, point);
+    };
+
+    return (
+      <MarkupHandle
+        key={side}
+        x={x}
+        y={y}
+        label={GUIDE_MARGIN_LABELS[side]}
+        className="in-data-pan-mode:pointer-events-none"
+        onMove={handleMarginMove}
+        onMoveEnd={handleMarginMoveEnd}
+      />
+    );
+  });
 
   /**
-   * Стрелкой линию поля сдвигают на пиксель мимо черты — магнит вернул бы
-   * её обратно.
-   *
-   * @param point — точка отпускания, px фотографии
-   * @param source — чем сдвинули
+   * Ручки боковых полей и линии поля правятся только на странице листа: у
+   * зеркала они свои и правятся в его разделе.
    */
-  const handleMarginLineMoveEnd = (point: SheetPoint, source: MarkupMoveSource) => {
-    releaseMarginLine(point, source === 'pointer');
-  };
+  const sideEdges = isMirrorPage ? [] : SIDE_EDGES;
 
-  const marginHandles = (isMirrorPage ? SHARED_MARGIN_SIDES : MARGIN_SIDES).map(
-    (side) => {
-      const { x, y } = handles[side];
+  const sideHandles = sideEdges.flatMap((edge) => {
+    const pair = edge === 'marginLine' ? handles.marginLine : handles[edge];
 
-      const handleMarginMove = (point: SheetPoint) => {
-        moveMargin(side, point);
+    if (!pair) {
+      return [];
+    }
+
+    return SIDE_HANDLE_ENDS.map((end) => {
+      const { x, y } = pair[end];
+
+      const handleSideMove = (point: SheetPoint) => {
+        moveSideEnd(edge, end, point);
       };
 
-      const handleMarginMoveEnd = (point: SheetPoint) => {
-        releaseMargin(side, point);
+      /**
+       * Стрелкой ручку линии поля сдвигают на пиксель мимо черты — магнит
+       * вернул бы её обратно.
+       *
+       * @param point — точка отпускания, px фотографии
+       * @param source — чем сдвинули
+       */
+      const handleSideMoveEnd = (point: SheetPoint, source: MarkupMoveSource) => {
+        releaseSideEnd(edge, end, point, source === 'pointer');
       };
 
       return (
         <MarkupHandle
-          key={side}
+          key={`${edge}-${end}`}
           x={x}
           y={y}
-          label={MARGIN_LABELS[side]}
-          className="in-data-pan-mode:pointer-events-none"
-          onMove={handleMarginMove}
-          onMoveEnd={handleMarginMoveEnd}
+          label={SIDE_HANDLE_LABELS[edge][end]}
+          className={
+            edge === 'marginLine'
+              ? 'stroke-danger in-data-pan-mode:pointer-events-none'
+              : 'in-data-pan-mode:pointer-events-none'
+          }
+          onMove={handleSideMove}
+          onMoveEnd={handleSideMoveEnd}
         />
       );
-    }
-  );
+    });
+  });
 
   return (
     <section aria-label="Поля листа" className="flex flex-col gap-2 text-sm">
       <p className="text-fg-muted">
-        Перетащите направляющие полей: верхняя и нижняя встанут на ближайшую линию,
-        боковые — куда отпустите. Текст не заходит за поля и отступает от линии поля.
+        Перетащите направляющие полей: верхняя и нижняя встанут на ближайшую линию. У
+        бокового поля и линии поля по две ручки — ведите их вдоль края листа. Текст не
+        заходит за поля и отступает от линии поля.
       </p>
 
       {isMirrorPage ? (
@@ -197,18 +241,9 @@ export const MarginsTool: FC<MarkupToolProps> = (props) => {
                 })}
               </MarkupStroke>
 
-              {marginHandles}
+              {guideHandles}
 
-              {marginLine && !isMirrorPage ? (
-                <MarkupHandle
-                  x={marginLine.x}
-                  y={marginLine.y}
-                  label="Линия поля"
-                  className="stroke-danger in-data-pan-mode:pointer-events-none"
-                  onMove={handleMarginLineMove}
-                  onMoveEnd={handleMarginLineMoveEnd}
-                />
-              ) : null}
+              {sideHandles}
             </g>,
             handleLayer
           )

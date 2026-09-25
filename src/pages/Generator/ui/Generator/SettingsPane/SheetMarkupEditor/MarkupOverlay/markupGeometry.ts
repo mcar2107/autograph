@@ -3,14 +3,23 @@ import type {
   SheetOutline,
   SheetPoint,
   SheetRuling,
+  SideEdgeEnds,
 } from '../../../../../lib/paper';
 import {
   lineCoordinateAt,
   lineHeightAt,
+  readMarginEnds,
+  readMarginLineEnds,
   sampleRulingBend,
+  sideEdgePointAt,
 } from '../../../../../lib/paper';
 
-import type { MarginGuides, MarkupBox, RulingLinePath } from './markupGeometry.types';
+import type {
+  LineAttributes,
+  MarginGuides,
+  MarkupBox,
+  RulingLinePath,
+} from './markupGeometry.types';
 
 /**
  * Больше линий оверлей не рисует: шаг в доли пикселя — это не разлиновка, а
@@ -189,6 +198,30 @@ export const buildRulingLines = (
 };
 
 /**
+ * Боковая граница блока — прямая через оба её конца, продлённая на высоту
+ * кадра вверх и вниз: обрезает её контур листа. Точки — те же, по которым
+ * раскладка ставит начало и конец строк, поэтому граница в редакторе и край
+ * текста на странице не расходятся ни на наклонном листе, ни на листе со
+ * столом.
+ *
+ * @param ruling — разлиновка страницы
+ * @param frame — кадр фотографии
+ * @param ends — концы границы
+ * @returns концы отрезка, px фотографии
+ */
+const toSideGuide = (
+  ruling: SheetRuling,
+  frame: SheetFrame,
+  ends: SideEdgeEnds
+): SheetPoint[] => {
+  const { height } = frame;
+
+  return [-height, 2 * height].map((v) => {
+    return sideEdgePointAt(ruling.skewAngle, ends, height, v);
+  });
+};
+
+/**
  * Верхняя и нижняя границы области письма — линии гребёнки с координатой
  * поля. Поле задано высотой у левого края кадра, и так же его читает
  * автокалибровка (`lib/calibrate/deriveGeometry.ts`): горизонталь кадра на
@@ -198,6 +231,8 @@ export const buildRulingLines = (
  *
  * С перспективой линия с постоянной координатой остаётся прямой, поэтому
  * двух концов у краёв листа хватает.
+ *
+ * Боковые поля и линия поля — прямые через оба конца (`toSideGuide`).
  *
  * @param ruling — разлиновка страницы
  * @param frame — кадр фотографии
@@ -224,9 +259,14 @@ export const buildMarginGuides = (
     });
   };
 
+  const lineEnds = readMarginLineEnds(ruling);
+
   return {
     top: toGuide(margins.top),
     bottom: toGuide(frame.height - margins.bottom),
+    left: toSideGuide(ruling, frame, readMarginEnds(ruling, frame, 'left')),
+    right: toSideGuide(ruling, frame, readMarginEnds(ruling, frame, 'right')),
+    marginLine: lineEnds && toSideGuide(ruling, frame, lineEnds),
   };
 };
 
@@ -242,4 +282,17 @@ export const toPointsAttribute = (points: SheetPoint[]): string => {
       return `${x.toFixed(POINT_DIGITS)},${y.toFixed(POINT_DIGITS)}`;
     })
     .join(' ');
+};
+
+/**
+ * Концы отрезка в атрибуты линии SVG.
+ *
+ * @param points — концы отрезка в пикселях фотографии
+ * @returns атрибуты `x1`, `y1`, `x2`, `y2`
+ */
+export const toLineAttributes = (points: SheetPoint[]): LineAttributes => {
+  const start = points[0] || { x: 0, y: 0 };
+  const end = points.at(-1) || start;
+
+  return { x1: start.x, y1: start.y, x2: end.x, y2: end.y };
 };

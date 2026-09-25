@@ -8,7 +8,7 @@ import type {
 import { deriveRulingPins, fitRulingPins, lineHeightAt } from '../../../../../lib/paper';
 import type { MarkupDraft } from '../../../../../model/useMarkupEditorStore.types';
 import { normalizePins, refitBendToPins } from '../LinesTool/linesPins';
-import type { MarginSide } from '../MarginsTool/marginsGeometry.types';
+import type { GuideMarginSide } from '../MarginsTool/marginsGeometry.types';
 
 import type { CombPatch } from './exactValuesMarkup.types';
 
@@ -81,9 +81,8 @@ export const retargetComb = (
 };
 
 /**
- * Точка, в которую перетащили бы направляющую поля, чтобы поле стало равно
- * числу. Верхнее и нижнее поля хранятся высотой у левого края кадра, боковые
- * — отступом от своего края.
+ * Точка, в которую перетащили бы верхнюю или нижнюю направляющую, чтобы поле
+ * стало равно числу: поле хранится высотой у левого края кадра.
  *
  * @param side — какое поле
  * @param value — поле, px фотографии
@@ -91,7 +90,7 @@ export const retargetComb = (
  * @returns точка направляющей, px фотографии
  */
 export const toMarginPoint = (
-  side: MarginSide,
+  side: GuideMarginSide,
   value: number,
   frame: SheetFrame
 ): SheetPoint => {
@@ -102,14 +101,6 @@ export const toMarginPoint = (
 
     case 'bottom': {
       return { x: 0, y: frame.height - value };
-    }
-
-    case 'left': {
-      return { x: value, y: 0 };
-    }
-
-    case 'right': {
-      return { x: frame.width - value, y: 0 };
     }
 
     default: {

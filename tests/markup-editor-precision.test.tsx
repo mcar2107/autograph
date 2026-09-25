@@ -385,9 +385,12 @@ describe('точная правка: числа', () => {
     expect(readField('Первая линия, px')).toBe('20');
     expect(readField('Верхнее поле, px')).toBe('60');
     expect(readField('Нижнее поле, px')).toBe('60');
-    expect(readField('Левое поле, px')).toBe('90');
-    expect(readField('Правое поле, px')).toBe('60');
-    expect(readField('Линия поля, px')).toBe('120');
+    expect(readField('Левое поле сверху, px')).toBe('90');
+    expect(readField('Левое поле снизу, px')).toBe('90');
+    expect(readField('Правое поле сверху, px')).toBe('60');
+    expect(readField('Правое поле снизу, px')).toBe('60');
+    expect(readField('Линия поля сверху, px')).toBe('120');
+    expect(readField('Линия поля снизу, px')).toBe('120');
   });
 
   it('поле числом — то же, что перетаскивание его направляющей в то же место', async () => {
@@ -396,9 +399,9 @@ describe('точная правка: числа', () => {
 
     await openExactValues(editor);
     await typeExactValue(editor, 'Верхнее поле, px', '147');
-    await typeExactValue(editor, 'Левое поле, px', '101,5');
+    await typeExactValue(editor, 'Левое поле снизу, px', '101,5');
 
-    const typed = readDraft().ruling.margins;
+    const { margins: typed, sideSlant } = readDraft().ruling;
 
     act(() => {
       useMarkupEditorStore.getState().undo();
@@ -406,6 +409,7 @@ describe('точная правка: числа', () => {
     });
 
     expect(readDraft().ruling.margins).toStrictEqual(RULING.margins);
+    expect(readDraft().ruling.sideSlant).toBeNull();
 
     await user.click(within(editor).getByRole('radio', { name: 'Поля' }));
 
@@ -413,22 +417,42 @@ describe('точная правка: числа', () => {
 
     dragHandle(top, { x: Number(top.getAttribute('cx')), y: 147 });
 
-    const left = within(editor).getByRole('button', { name: 'Левое поле' });
+    const left = within(editor).getByRole('button', { name: 'Левое поле снизу' });
 
     dragHandle(left, { x: 101.5, y: Number(left.getAttribute('cy')) });
 
     expect(readDraft().ruling.margins).toStrictEqual(typed);
+    expect(readDraft().ruling.sideSlant).toStrictEqual(sideSlant);
     expect(typed.top).toBe(140);
-    expect(typed.left).toBe(101.5);
+    expect(
+      Number(
+        within(editor)
+          .getByRole('button', { name: 'Левое поле снизу' })
+          .getAttribute('cx')
+      )
+    ).toBe(101.5);
+    expect(
+      Number(
+        within(editor)
+          .getByRole('button', { name: 'Левое поле сверху' })
+          .getAttribute('cx')
+      )
+    ).toBe(RULING.margins.left);
   });
 
-  it('линия поля числом ставится в тот столбец, сторона — по положению', async () => {
+  it('линия поля числами обоих концов ставится в тот столбец, сторона — по положению', async () => {
     const editor = await openEditor(null);
 
     await openExactValues(editor);
-    await typeExactValue(editor, 'Линия поля, px', '520');
+    await typeExactValue(editor, 'Линия поля сверху, px', '520');
+
+    expect(readDraft().ruling.sideSlant?.marginLineX).not.toBeNull();
+    expect(readDraft().ruling.marginLineSide).toBe('right');
+
+    await typeExactValue(editor, 'Линия поля снизу, px', '520');
 
     expect(readDraft().ruling.marginLineX).toBe(520);
+    expect(readDraft().ruling.sideSlant).toBeNull();
     expect(readDraft().ruling.marginLineSide).toBe('right');
   });
 

@@ -1,7 +1,10 @@
-import type { SheetFrame } from '../../../../../lib/paper';
+import type { SheetFrame, SideEdge } from '../../../../../lib/paper';
 import { useMarkupEditorStore } from '../../../../../model/useMarkupEditorStore';
-import { placeMargin, placeMarginLine } from '../MarginsTool/marginsGeometry';
-import type { MarginSide } from '../MarginsTool/marginsGeometry.types';
+import { placeMargin, placeSideHandleValue } from '../MarginsTool/marginsGeometry';
+import type {
+  GuideMarginSide,
+  SideHandleEnd,
+} from '../MarginsTool/marginsGeometry.types';
 
 import { retargetComb, toMarginPoint } from './exactValuesMarkup';
 import type { CombPatch } from './exactValuesMarkup.types';
@@ -11,7 +14,9 @@ import type { ExactValuesEdit } from './useExactValuesEdit.types';
  * Правка разметки числами. Каждое число — шаг истории и тот же итог, что
  * перетаскивание ручки в то же место без магнита: поле ставится той же
  * функцией, что направляющая по отпусканию (верхнее и нижнее встают на
- * линию), шаг и первая линия — через булавки, как после их перетаскивания.
+ * линию), ручка бокового поля и линии поля — как перетащенная в этот столбец
+ * по своей направляющей, шаг и первая линия — через булавки, как после их
+ * перетаскивания.
  * Магнит не притягивает: набранное число — уже точное место.
  *
  * Каналы фотографии для изгиба берутся из стора в момент правки, как у
@@ -50,7 +55,7 @@ export const useExactValuesEdit = (frame: SheetFrame): ExactValuesEdit => {
     changeComb({ firstLinePhase: phase });
   };
 
-  const changeMargin = (side: MarginSide, value: number) => {
+  const changeMargin = (side: GuideMarginSide, value: number) => {
     const { commit } = useMarkupEditorStore.getState();
 
     commit((draft) => {
@@ -65,13 +70,13 @@ export const useExactValuesEdit = (frame: SheetFrame): ExactValuesEdit => {
     });
   };
 
-  const changeMarginLine = (x: number) => {
+  const changeSideEnd = (edge: SideEdge, end: SideHandleEnd, value: number) => {
     const { commit } = useMarkupEditorStore.getState();
 
     commit((draft) => {
-      return { ruling: { ...draft.ruling, ...placeMarginLine(draft.ruling, frame, x) } };
+      return { ruling: placeSideHandleValue(draft.ruling, frame, edge, end, value) };
     });
   };
 
-  return { changeStep, changeFirstLine, changeMargin, changeMarginLine };
+  return { changeStep, changeFirstLine, changeMargin, changeSideEnd };
 };

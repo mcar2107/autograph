@@ -181,7 +181,11 @@ describe('перенос своих листов из localStorage в IndexedDB'
 
     expect(manual?.familyId).toBe('lined');
     expect(manual?.sheet.label).toBe('Тетрадь в линейку');
-    expect(manual?.sheet.ruling).toEqual({ ...MANUAL_RULING, mirrorOverride: null });
+    expect(manual?.sheet.ruling).toEqual({
+      ...MANUAL_RULING,
+      sideSlant: null,
+      mirrorOverride: null,
+    });
     expect(manual?.sheet.lighting?.values).toEqual([1, 0.9]);
     expect(manual?.sheet.texture?.amplitude).toBe(0.04);
     expect(readLegacyKeys()).toEqual([]);
@@ -194,7 +198,11 @@ describe('перенос своих листов из localStorage в IndexedDB'
 
     expect(records).toHaveLength(2);
     expect(stored?.kind).toBe('lined');
-    expect(stored?.ruling).toEqual({ ...MANUAL_RULING, mirrorOverride: null });
+    expect(stored?.ruling).toEqual({
+      ...MANUAL_RULING,
+      sideSlant: null,
+      mirrorOverride: null,
+    });
     expect(stored?.measuredRuling).toEqual(stored?.ruling);
     expect(stored?.pins).toEqual(
       manual && deriveRulingPins(manual.sheet.ruling, { width: 1200, height: 1600 })

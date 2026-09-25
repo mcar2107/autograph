@@ -146,6 +146,7 @@ export const buildPageRenderParams = (input: PageRenderInput): PageRenderParams 
       topOffset: geometry.topOffset,
       leftPadding: geometry.leftPadding,
       blockWidth: geometry.blockWidth,
+      ...(geometry.lineBounds && { lineBounds: geometry.lineBounds }),
       blockRotate: calibration.ruling.skewAngle,
       fontMetrics: metrics,
       bend: calibration.ruling.bend,

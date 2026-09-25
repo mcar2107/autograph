@@ -110,7 +110,7 @@ describe('запись своего листа в IndexedDB', () => {
     expect(sheet?.kind).toBe('lined');
     expect(sheet?.label).toBe('Мой лист');
     expect(sheet?.ruling.step).toBe(40);
-    expect(sheet?.ruling.mirrorOverride).toEqual(MIRROR_OVERRIDE);
+    expect(sheet?.ruling.mirrorOverride).toEqual({ ...MIRROR_OVERRIDE, sideSlant: null });
     expect(sheet?.measuredRuling.step).toBe(41);
     expect(sheet?.measuredKind).toBe('grid');
     expect(sheet?.pins).toEqual(PINS);

@@ -150,6 +150,41 @@ export const Margins: Story = {
 };
 
 /**
+ * Сколько раз нижняя ручка левого поля сдвигается влево на десять пикселей:
+ * поле заметно наклоняется, как вдоль стороны листа, снятого на столе.
+ */
+const SLANT_STEPS = 8;
+
+/**
+ * «Поля» с наклонным левым полем: нижняя ручка сдвинута влево, граница идёт
+ * через обе ручки, а числа показывают оба конца.
+ */
+export const SlantedMargin: Story = {
+  play: async ({ canvasElement }) => {
+    await openWithTool(canvasElement, 'Поля');
+
+    const body = within(canvasElement.ownerDocument.body);
+    const bottom = await body.findByRole('button', { name: 'Левое поле снизу' });
+
+    bottom.focus();
+
+    for (let step = 0; step < SLANT_STEPS; step += 1) {
+      await userEvent.keyboard('{Shift>}{ArrowLeft}{/Shift}');
+    }
+
+    await expect(useMarkupEditorStore.getState().draft?.ruling.sideSlant).not.toBeNull();
+    await expect(
+      await body.findByRole('button', { name: 'Левое поле сверху' })
+    ).toBeVisible();
+
+    await userEvent.click(await body.findByRole('button', { name: 'Точные значения' }));
+    await expect(
+      await body.findByRole('textbox', { name: 'Левое поле снизу, px' })
+    ).toBeVisible();
+  },
+};
+
+/**
  * Зеркальная страница: отражённые фотография и разметка, линия поля и боковые
  * поля зеркала — отражением оригинала.
  */

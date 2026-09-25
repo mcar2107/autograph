@@ -47,6 +47,7 @@ export type {
   RulingPerspective,
   RulingPin,
   RulingProjection,
+  RulingSideSlant,
   SheetFrame,
   SheetImageData,
   SheetOutline,
@@ -64,6 +65,19 @@ export {
 } from './rulingPerspective';
 export { sampleRulingBend, sampleRulingBendSlope } from './sampleRulingBend';
 export { buildSheetRuling, MARGIN_FALLBACK_STEPS, resolveFirstLine } from './sheetRuling';
+export {
+  intersectSideEdge,
+  normalizeSideSlant,
+  readMarginEnds,
+  readMarginLineEnds,
+  readSideEdge,
+  resolveSideEdgeAt,
+  sideEdgePointAt,
+  sideEdgePointAtHeight,
+  toSideEdgeEnds,
+  writeSideEdge,
+} from './sideEdges';
+export type { SideEdge, SideEdgeEnds } from './sideEdges.types';
 export { snapMarginLine } from './snapMarginLine';
 export { snapToMarginLine, snapToRulingLine } from './snapToRulingLine';
 export { synthesizeLighting } from './synthesizeLighting';

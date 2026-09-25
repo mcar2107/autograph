@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
-import type { SheetFrame, SheetPoint } from '../../../../../lib/paper';
+import type { SheetFrame, SheetPoint, SideEdge } from '../../../../../lib/paper';
 import { useMarkupEditorStore } from '../../../../../model/useMarkupEditorStore';
 import type { MarkupDraft } from '../../../../../model/useMarkupEditorStore.types';
 import { toPhotoPoint } from '../BendTool/bendGeometry';
@@ -8,14 +8,16 @@ import { toPhotoPoint } from '../BendTool/bendGeometry';
 import {
   placeMargin,
   placeMarginLine,
-  resolveAddedMarginLineX,
+  placeSideEnd,
+  removeMarginLine as removeRulingMarginLine,
+  resolveAddedMarginLinePoint,
   snapMarginLineX,
 } from './marginsGeometry';
-import type { MarginSide } from './marginsGeometry.types';
+import type { GuideMarginSide, SideHandleEnd } from './marginsGeometry.types';
 import type { MarginsEdit } from './useMarginsEdit.types';
 
 /**
- * Показывает линию поля в столбце точки — без шага истории.
+ * Показывает линию поля без наклона в столбце точки — без шага истории.
  *
  * @param frame — кадр фотографии
  * @param point — точка, px фотографии
@@ -27,14 +29,12 @@ const previewMarginLine = (frame: SheetFrame, point: SheetPoint) => {
     return;
   }
 
-  preview({
-    ruling: { ...draft.ruling, ...placeMarginLine(draft.ruling, frame, point.x) },
-  });
+  preview({ ruling: placeMarginLine(draft.ruling, frame, point) });
 };
 
 /**
- * Ставит линию поля в столбец точки, притянув её к черте фотографии, — шаг
- * истории. Каналы фотографии для магнита берутся из стора в момент вызова:
+ * Ставит добавленную линию поля без наклона в столбец точки, притянув её к
+ * черте фотографии, — шаг истории. Каналы фотографии для магнита берутся из стора в момент вызова:
  * при открытии с плитки они приходят позже редактора, и до них магнита нет.
  * У листа без разлиновки магнита нет вовсе — притягивать не к чему.
  *
@@ -55,7 +55,7 @@ const commitMarginLine = (frame: SheetFrame, point: SheetPoint, shouldSnap = tru
       ? snapMarginLineX(image, draft.ruling, point)
       : point.x;
 
-  commit({ ruling: { ...draft.ruling, ...placeMarginLine(draft.ruling, frame, x) } });
+  commit({ ruling: placeMarginLine(draft.ruling, frame, { x, y: point.y }) });
 };
 
 /**
@@ -88,8 +88,9 @@ const readVisibleCenterX = (svg: SVGSVGElement | null | undefined): number | nul
 /**
  * Правка полей и линии поля черновика. Перетаскивание показывает
  * направляющую, где указатель, без шага истории; отпускание ставит верхнюю и
- * нижнюю на линию разлиновки, а линию поля — на черту фотографии, и
- * записывает шаг.
+ * нижнюю на линию разлиновки, а ручку линии поля — на черту фотографии, и
+ * записывает шаг. Боковое поле и линия поля правятся двумя ручками: граница
+ * проходит через обе.
  *
  * Добавленная линия поля встаёт в восьмую ширины листа от стороны, ближайшей
  * к середине видимой части фотографии, и сразу тянется: идёт за указателем
@@ -198,7 +199,7 @@ export const useMarginsEdit = (
     };
   }, [isFollowing, handleLayer, frame]);
 
-  const moveMargin = (side: MarginSide, point: SheetPoint) => {
+  const moveMargin = (side: GuideMarginSide, point: SheetPoint) => {
     const { draft, preview } = useMarkupEditorStore.getState();
 
     if (!draft) {
@@ -210,7 +211,7 @@ export const useMarginsEdit = (
     preview({ ruling: { ...draft.ruling, margins } });
   };
 
-  const releaseMargin = (side: MarginSide, point: SheetPoint) => {
+  const releaseMargin = (side: GuideMarginSide, point: SheetPoint) => {
     const { draft, commit } = useMarkupEditorStore.getState();
 
     if (!draft) {
@@ -222,19 +223,52 @@ export const useMarginsEdit = (
     commit({ ruling: { ...draft.ruling, margins } });
   };
 
-  const moveMarginLine = (point: SheetPoint) => {
-    previewMarginLine(frame, point);
+  const moveSideEnd = (edge: SideEdge, end: SideHandleEnd, point: SheetPoint) => {
+    const { draft, preview } = useMarkupEditorStore.getState();
+
+    if (!draft) {
+      return;
+    }
+
+    preview({ ruling: placeSideEnd(draft.ruling, frame, edge, end, point) });
   };
 
-  const releaseMarginLine = (point: SheetPoint, shouldSnap: boolean) => {
-    commitMarginLine(frame, point, shouldSnap);
+  /**
+   * Ручка линии поля с магнитом встаёт на черту фотографии в своей строке —
+   * у каждой ручки своя точка черты, и линия поля ложится вдоль наклонной
+   * черты. Каналы фотографии берутся из стора в момент вызова, как у
+   * добавления линии.
+   *
+   * @param edge — какая граница
+   * @param end — какая ручка
+   * @param point — точка отпускания, px фотографии
+   * @param shouldSnap — притягивать ли линию поля к черте
+   */
+  const releaseSideEnd = (
+    edge: SideEdge,
+    end: SideHandleEnd,
+    point: SheetPoint,
+    shouldSnap: boolean
+  ) => {
+    const { draft, image, commit } = useMarkupEditorStore.getState();
+
+    if (!draft) {
+      return;
+    }
+
+    const target =
+      edge === 'marginLine' && shouldSnap && image && draft.kind !== 'blank'
+        ? { x: snapMarginLineX(image, draft.ruling, point), y: point.y }
+        : point;
+
+    commit({ ruling: placeSideEnd(draft.ruling, frame, edge, end, target) });
   };
 
   const removeMarginLine = () => {
     const { commit } = useMarkupEditorStore.getState();
 
     commit((draft) => {
-      return { ruling: { ...draft.ruling, marginLineX: null, marginLineSide: null } };
+      return { ruling: removeRulingMarginLine(draft.ruling) };
     });
   };
 
@@ -243,9 +277,13 @@ export const useMarginsEdit = (
     const { commit } = useMarkupEditorStore.getState();
 
     commit((draft) => {
-      const x = resolveAddedMarginLineX(draft.ruling, frame, readVisibleCenterX(svg));
+      const point = resolveAddedMarginLinePoint(
+        draft.ruling,
+        frame,
+        readVisibleCenterX(svg)
+      );
 
-      return { ruling: { ...draft.ruling, ...placeMarginLine(draft.ruling, frame, x) } };
+      return { ruling: placeMarginLine(draft.ruling, frame, point) };
     });
 
     addedRef.current = useMarkupEditorStore.getState().draft;
@@ -256,8 +294,8 @@ export const useMarginsEdit = (
     isFollowing,
     moveMargin,
     releaseMargin,
-    moveMarginLine,
-    releaseMarginLine,
+    moveSideEnd,
+    releaseSideEnd,
     removeMarginLine,
     addMarginLine,
   };

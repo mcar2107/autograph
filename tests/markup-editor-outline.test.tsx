@@ -337,6 +337,7 @@ describe('инструмент «Контур»', () => {
       marginLineSide: 'right' as const,
       marginLeft: 40,
       marginRight: 90,
+      sideSlant: null,
     };
     const record = buildUserSheetRecord({
       familyId: 'lined',

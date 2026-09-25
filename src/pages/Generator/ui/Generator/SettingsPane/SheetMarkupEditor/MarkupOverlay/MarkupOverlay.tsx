@@ -7,6 +7,7 @@ import { useMarkupMirrorWidth, useMarkupScale } from '../MarkupViewport';
 import {
   buildMarginGuides,
   buildRulingLines,
+  toLineAttributes,
   toOutlinePolygon,
   toPointsAttribute,
 } from './markupGeometry';
@@ -50,7 +51,6 @@ export const MarkupOverlay: FC<MarkupOverlayProps> = (props) => {
   const scale = useMarkupScale();
   const mirrorWidth = useMarkupMirrorWidth();
   const { width, height } = frame;
-  const { margins, marginLineX } = ruling;
   const polygon = toPointsAttribute(toOutlinePolygon(ruling.outline, frame));
   const marginGuides = buildMarginGuides(ruling, frame);
 
@@ -113,25 +113,13 @@ export const MarkupOverlay: FC<MarkupOverlayProps> = (props) => {
             points={toPointsAttribute(marginGuides.bottom)}
           />
 
-          <line
-            data-margin="left"
-            x1={margins.left}
-            y1={0}
-            x2={margins.left}
-            y2={height}
-          />
+          <line data-margin="left" {...toLineAttributes(marginGuides.left)} />
 
-          <line
-            data-margin="right"
-            x1={width - margins.right}
-            y1={0}
-            x2={width - margins.right}
-            y2={height}
-          />
+          <line data-margin="right" {...toLineAttributes(marginGuides.right)} />
         </MarkupStroke>
       ) : null}
 
-      {layers.marginLine && marginLineX !== null ? (
+      {layers.marginLine && marginGuides.marginLine ? (
         <MarkupStroke
           data-layer="marginLine"
           clipPath={`url(#${clipId})`}
@@ -139,7 +127,7 @@ export const MarkupOverlay: FC<MarkupOverlayProps> = (props) => {
           width={SINGLE_STROKE_WIDTH}
           className="stroke-markup-margin-line"
         >
-          <line x1={marginLineX} y1={0} x2={marginLineX} y2={height} />
+          <line {...toLineAttributes(marginGuides.marginLine)} />
         </MarkupStroke>
       ) : null}
 

@@ -1,6 +1,6 @@
-import type { SheetPoint } from '../../../../../lib/paper';
+import type { SheetPoint, SideEdge } from '../../../../../lib/paper';
 
-import type { MarginSide } from './marginsGeometry.types';
+import type { GuideMarginSide, SideHandleEnd } from './marginsGeometry.types';
 
 /**
  * Правка полей и линии поля черновика.
@@ -13,26 +13,34 @@ export type MarginsEdit = {
   isFollowing: boolean;
 
   /**
-   * Промежуточное положение направляющей поля — без шага истории.
-   */
-  moveMargin: (side: MarginSide, point: SheetPoint) => void;
-
-  /**
-   * Отпускание направляющей поля: верхняя и нижняя встают на линию — шаг
+   * Промежуточное положение верхней или нижней направляющей — без шага
    * истории.
    */
-  releaseMargin: (side: MarginSide, point: SheetPoint) => void;
+  moveMargin: (side: GuideMarginSide, point: SheetPoint) => void;
 
   /**
-   * Промежуточное положение линии поля — без шага истории.
+   * Отпускание верхней или нижней направляющей: она встаёт на линию — шаг
+   * истории.
    */
-  moveMarginLine: (point: SheetPoint) => void;
+  releaseMargin: (side: GuideMarginSide, point: SheetPoint) => void;
 
   /**
-   * Отпускание линии поля — шаг истории. С магнитом линия притягивается к
-   * черте фотографии, без него стоит, где отпущена.
+   * Промежуточное положение ручки бокового поля или линии поля — без шага
+   * истории. Граница проходит через эту ручку и через вторую.
    */
-  releaseMarginLine: (point: SheetPoint, shouldSnap: boolean) => void;
+  moveSideEnd: (edge: SideEdge, end: SideHandleEnd, point: SheetPoint) => void;
+
+  /**
+   * Отпускание ручки бокового поля или линии поля — шаг истории. С магнитом
+   * ручка линии поля притягивается к черте фотографии, без него стоит, где
+   * отпущена.
+   */
+  releaseSideEnd: (
+    edge: SideEdge,
+    end: SideHandleEnd,
+    point: SheetPoint,
+    shouldSnap: boolean
+  ) => void;
 
   /**
    * Убирает линию поля.

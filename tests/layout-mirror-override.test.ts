@@ -26,6 +26,7 @@ const MIRROR_OVERRIDE: RulingMirrorOverride = {
   marginLineSide: 'left',
   marginLeft: 500,
   marginRight: 300,
+  sideSlant: null,
 };
 
 /**
@@ -54,6 +55,7 @@ const buildSheet = (mirrorOverride: RulingMirrorOverride | null): PaperSheet => 
       },
       marginLineX: null,
       marginLineSide: null,
+      sideSlant: null,
       bend: null,
       perspective: null,
       outline: null,

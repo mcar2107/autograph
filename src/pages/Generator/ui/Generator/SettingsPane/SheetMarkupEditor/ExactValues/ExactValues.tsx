@@ -2,25 +2,43 @@ import { Disclosure } from '@shared/ui/Disclosure';
 import type { FC } from 'react';
 import { useMemo } from 'react';
 
+import type { SideEdge } from '../../../../../lib/paper';
 import { useMarkupEditorStore } from '../../../../../model/useMarkupEditorStore';
-import type { MarginSide } from '../MarginsTool/marginsGeometry.types';
+import {
+  readSideHandleValue,
+  resolveMarginHandles,
+} from '../MarginsTool/marginsGeometry';
+import type {
+  GuideMarginSide,
+  SideHandleEnd,
+} from '../MarginsTool/marginsGeometry.types';
 
 import { ExactValueField } from './ExactValueField';
 import { useExactValuesEdit } from './useExactValuesEdit';
 
-const MARGIN_SIDES: MarginSide[] = ['top', 'bottom', 'left', 'right'];
+const GUIDE_MARGIN_SIDES: GuideMarginSide[] = ['top', 'bottom'];
 
-const MARGIN_LABELS: Record<MarginSide, string> = {
+const GUIDE_MARGIN_LABELS: Record<GuideMarginSide, string> = {
   top: 'Верхнее поле, px',
   bottom: 'Нижнее поле, px',
-  left: 'Левое поле, px',
-  right: 'Правое поле, px',
+};
+
+const SIDE_EDGES: SideEdge[] = ['left', 'right', 'marginLine'];
+
+const SIDE_HANDLE_ENDS: SideHandleEnd[] = ['top', 'bottom'];
+
+const SIDE_LABELS: Record<SideEdge, Record<SideHandleEnd, string>> = {
+  left: { top: 'Левое поле сверху, px', bottom: 'Левое поле снизу, px' },
+  right: { top: 'Правое поле сверху, px', bottom: 'Правое поле снизу, px' },
+  marginLine: { top: 'Линия поля сверху, px', bottom: 'Линия поля снизу, px' },
 };
 
 /**
- * «Точные значения»: шаг, первая линия, четыре поля и линия поля числами в
- * пикселях фотографии. Свёрнуты по умолчанию — разметку правят ручками, а
- * числа нужны, когда место известно точнее, чем его видно.
+ * «Точные значения»: шаг, первая линия, верхнее и нижнее поля, оба конца
+ * боковых полей и линии поля числами в пикселях фотографии. Свёрнуты по
+ * умолчанию — разметку правят ручками, а числа нужны, когда место известно
+ * точнее, чем его видно. Конец бокового поля или линии поля — столбец его
+ * ручки, у правого поля — отступ ручки от правого края кадра.
  *
  * Показывают и правят разметку самого листа: у зеркальной страницы свои
  * поля правятся на её вкладке.
@@ -38,14 +56,15 @@ export const ExactValues: FC = () => {
   const frame = useMemo(() => {
     return { width, height };
   }, [width, height]);
-  const { changeStep, changeFirstLine, changeMargin, changeMarginLine } =
+  const { changeStep, changeFirstLine, changeMargin, changeSideEnd } =
     useExactValuesEdit(frame);
 
   if (!ruling) {
     return null;
   }
 
-  const { step, firstLinePhase, margins, marginLineX } = ruling;
+  const { step, firstLinePhase, margins } = ruling;
+  const handles = resolveMarginHandles(ruling, frame);
 
   const handleStepCommit = (value: number) => {
     changeStep(value);
@@ -53,10 +72,6 @@ export const ExactValues: FC = () => {
 
   const handleFirstLineCommit = (value: number) => {
     changeFirstLine(value);
-  };
-
-  const handleMarginLineCommit = (value: number) => {
-    changeMarginLine(value);
   };
 
   return (
@@ -70,7 +85,7 @@ export const ExactValues: FC = () => {
           onValueCommit={handleFirstLineCommit}
         />
 
-        {MARGIN_SIDES.map((side) => {
+        {GUIDE_MARGIN_SIDES.map((side) => {
           const handleMarginCommit = (value: number) => {
             changeMargin(side, value);
           };
@@ -78,18 +93,29 @@ export const ExactValues: FC = () => {
           return (
             <ExactValueField
               key={side}
-              label={MARGIN_LABELS[side]}
+              label={GUIDE_MARGIN_LABELS[side]}
               value={margins[side]}
               onValueCommit={handleMarginCommit}
             />
           );
         })}
 
-        <ExactValueField
-          label="Линия поля, px"
-          value={marginLineX}
-          onValueCommit={handleMarginLineCommit}
-        />
+        {SIDE_EDGES.flatMap((edge) => {
+          return SIDE_HANDLE_ENDS.map((end) => {
+            const handleSideCommit = (value: number) => {
+              changeSideEnd(edge, end, value);
+            };
+
+            return (
+              <ExactValueField
+                key={`${edge}-${end}`}
+                label={SIDE_LABELS[edge][end]}
+                value={readSideHandleValue(handles, frame, edge, end)}
+                onValueCommit={handleSideCommit}
+              />
+            );
+          });
+        })}
       </div>
     </Disclosure>
   );

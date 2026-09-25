@@ -48,6 +48,7 @@ const PERSPECTIVE_RULING: SheetRuling = {
   margins: { top: 180, right: RIGHT_MARGIN, bottom: 160, left: LEFT_MARGIN },
   marginLineX: null,
   marginLineSide: null,
+  sideSlant: null,
   bend: null,
   perspective: {
     originX: 450,

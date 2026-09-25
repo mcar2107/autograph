@@ -5,17 +5,38 @@ import type {
   SheetImageData,
   SheetPoint,
   SheetRuling,
+  SideEdge,
 } from '../../../../../../lib/paper';
-import { mirrorSheetRuling } from '../../../../../../lib/paper';
+import { mirrorSheetRuling, readMarginLineEnds } from '../../../../../../lib/paper';
 import {
-  placeMargin,
   placeMarginLine,
-  resolveAddedMarginLineX,
+  placeMarginLineEnds,
+  placeSideEnd,
+  placeSideHandleValue,
+  removeMarginLine,
+  resolveAddedMarginLinePoint,
   snapMarginLineX,
 } from '../../MarginsTool/marginsGeometry';
+import type { SideHandleEnd } from '../../MarginsTool/marginsGeometry.types';
 import { mirrorMarkupPoint } from '../../MarkupViewport';
 
-import type { MirrorMarginSide } from './mirrorOverrideMarkup.types';
+/**
+ * Линия поля и боковые поля зеркала из разлиновки зеркальной страницы.
+ *
+ * @param page — разлиновка зеркальной страницы
+ * @returns линия поля и боковые поля зеркала, px отражённого кадра
+ */
+const toMirrorOverride = (page: SheetRuling): RulingMirrorOverride => {
+  const { margins, marginLineX, marginLineSide, sideSlant } = page;
+
+  return {
+    marginLineX,
+    marginLineSide,
+    marginLeft: margins.left,
+    marginRight: margins.right,
+    sideSlant,
+  };
+};
 
 /**
  * Линия поля и боковые поля, с которыми зеркальная страница ляжет сейчас:
@@ -30,63 +51,62 @@ export const readMirrorOverride = (
   ruling: SheetRuling,
   frame: SheetFrame
 ): RulingMirrorOverride => {
-  const { margins, marginLineX, marginLineSide } = mirrorSheetRuling(ruling, frame);
-
-  return {
-    marginLineX,
-    marginLineSide,
-    marginLeft: margins.left,
-    marginRight: margins.right,
-  };
+  return toMirrorOverride(mirrorSheetRuling(ruling, frame));
 };
 
 /**
- * Боковое поле зеркала в столбце `x` — теми же правилами, что поле листа: не
- * уже пикселя и не за противоположным полем. Поле не бывает нулевым:
- * запись листа с таким полем зеркала читается без полей зеркала вовсе.
+ * Боковая граница зеркала после перетаскивания одной её ручки — теми же
+ * правилами, что граница листа: через ручку и вторую ручку, поле не уже
+ * пикселя и не за противоположным, линия поля — внутри отражённого листа.
  *
  * @param ruling — разлиновка листа
  * @param frame — кадр фотографии
- * @param side — какое поле
- * @param x — столбец края блока, px отражённого кадра
- * @returns поля зеркала с новым боковым
+ * @param edge — какая граница
+ * @param end — какая ручка
+ * @param point — точка ручки, px отражённого кадра
+ * @returns поля зеркала
  */
-export const placeMirrorMargin = (
+export const placeMirrorSideEnd = (
   ruling: SheetRuling,
   frame: SheetFrame,
-  side: MirrorMarginSide,
-  x: number
+  edge: SideEdge,
+  end: SideHandleEnd,
+  point: SheetPoint
 ): RulingMirrorOverride => {
   const page = mirrorSheetRuling(ruling, frame);
-  const { left, right } = placeMargin(page, frame, side, { x, y: 0 }, false);
 
-  return { ...readMirrorOverride(ruling, frame), marginLeft: left, marginRight: right };
+  return toMirrorOverride(placeSideEnd(page, frame, edge, end, point));
 };
 
 /**
- * Линия поля зеркала в столбце `x`: внутри контура отражённого листа, сторона
- * — по положению относительно его середины.
+ * Боковая граница зеркала, ручка которой стоит в столбце из числа, — тот же
+ * итог, что перетаскивание ручки туда.
  *
  * @param ruling — разлиновка листа
  * @param frame — кадр фотографии
- * @param x — столбец, px отражённого кадра
- * @returns поля зеркала с новой линией поля
+ * @param edge — какая граница
+ * @param end — какая ручка
+ * @param value — столбец, у правого поля — отступ от правого края, px
+ *   отражённого кадра
+ * @returns поля зеркала
  */
-export const placeMirrorMarginLine = (
+export const placeMirrorSideValue = (
   ruling: SheetRuling,
   frame: SheetFrame,
-  x: number
+  edge: SideEdge,
+  end: SideHandleEnd,
+  value: number
 ): RulingMirrorOverride => {
   const page = mirrorSheetRuling(ruling, frame);
 
-  return { ...readMirrorOverride(ruling, frame), ...placeMarginLine(page, frame, x) };
+  return toMirrorOverride(placeSideHandleValue(page, frame, edge, end, value));
 };
 
 /**
  * Линия поля зеркала у заданной стороны. Линия с другой стороны переезжает
- * в столбец, отражённый по кадру: у тетради, где черта справа на обеих
- * страницах, это ровно столбец черты листа. Линии не было — она встаёт в
- * восьмую ширины листа от этой стороны.
+ * в столбцы, отражённые по кадру: у тетради, где черта справа на обеих
+ * страницах, это ровно столбцы черты листа. Линии не было — она встаёт без
+ * наклона в восьмую ширины листа от этой стороны.
  *
  * @param ruling — разлиновка листа
  * @param frame — кадр фотографии
@@ -98,34 +118,45 @@ export const placeMirrorMarginLineSide = (
   frame: SheetFrame,
   side: MarginLineSide | null
 ): RulingMirrorOverride => {
-  const current = readMirrorOverride(ruling, frame);
+  const page = mirrorSheetRuling(ruling, frame);
 
   if (side === null) {
-    return { ...current, marginLineX: null, marginLineSide: null };
+    return toMirrorOverride(removeMarginLine(page));
   }
 
-  if (current.marginLineSide === side) {
-    return current;
+  if (page.marginLineSide === side) {
+    return toMirrorOverride(page);
   }
 
-  const page = mirrorSheetRuling(ruling, frame);
-  const x =
-    current.marginLineX === null
-      ? resolveAddedMarginLineX(page, frame, side === 'right' ? frame.width : 0)
-      : frame.width - current.marginLineX;
+  const ends = readMarginLineEnds(page);
 
-  return { ...current, ...placeMarginLine(page, frame, x) };
+  if (!ends) {
+    const point = resolveAddedMarginLinePoint(
+      page,
+      frame,
+      side === 'right' ? frame.width : 0
+    );
+
+    return toMirrorOverride(placeMarginLine(page, frame, point));
+  }
+
+  return toMirrorOverride(
+    placeMarginLineEnds(page, frame, {
+      top: frame.width - ends.top,
+      bottom: frame.width - ends.bottom,
+    })
+  );
 };
 
 /**
- * Столбец черты под линией поля зеркала. Отражённая фотография — та же
+ * Столбец черты под ручкой линии поля зеркала. Отражённая фотография — та же
  * фотография листа, поэтому черта ищется на ней в отражённом столбце и
  * отражается обратно.
  *
  * @param image — каналы фотографии листа
  * @param ruling — разлиновка листа
  * @param frame — кадр фотографии
- * @param point — где отпущена линия, px отражённого кадра
+ * @param point — где отпущена ручка, px отражённого кадра
  * @returns столбец линии, px отражённого кадра
  */
 export const snapMirrorMarginLineX = (

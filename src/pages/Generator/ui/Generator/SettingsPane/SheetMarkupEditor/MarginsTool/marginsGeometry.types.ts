@@ -1,4 +1,4 @@
-import type { MarginLineSide, SheetPoint } from '../../../../../lib/paper';
+import type { SheetPoint } from '../../../../../lib/paper';
 
 /**
  * Поле листа, которое правится направляющей.
@@ -6,14 +6,50 @@ import type { MarginLineSide, SheetPoint } from '../../../../../lib/paper';
 export type MarginSide = 'top' | 'bottom' | 'left' | 'right';
 
 /**
+ * Поле, которое правится одной направляющей вдоль линий: верхнее или нижнее.
+ */
+export type GuideMarginSide = 'top' | 'bottom';
+
+/**
+ * Конец боковой границы блока, который правится ручкой: верхний или нижний.
+ */
+export type SideHandleEnd = 'top' | 'bottom';
+
+/**
+ * Две ручки боковой границы блока в пикселях фотографии.
+ */
+export type SideHandles = Record<SideHandleEnd, SheetPoint>;
+
+/**
  * Ручки полей и линии поля и верхняя и нижняя направляющие в пикселях
  * фотографии.
  */
-export type MarginHandles = Record<MarginSide, SheetPoint> & {
+export type MarginHandles = {
   /**
-   * Ручка линии поля. `null` — линии поля нет.
+   * Ручка верхнего поля.
    */
-  marginLine: SheetPoint | null;
+  top: SheetPoint;
+
+  /**
+   * Ручка нижнего поля.
+   */
+  bottom: SheetPoint;
+
+  /**
+   * Ручки левого поля — на верхней и нижней направляющих.
+   */
+  left: SideHandles;
+
+  /**
+   * Ручки правого поля — на верхней и нижней направляющих.
+   */
+  right: SideHandles;
+
+  /**
+   * Ручки линии поля — на трети и двух третях высоты листа. `null` — линии
+   * поля нет.
+   */
+  marginLine: SideHandles | null;
 
   /**
    * Верхняя направляющая — концы у краёв листа.
@@ -39,19 +75,4 @@ export type MarginCoordinates = {
    * Нижняя граница.
    */
   bottom: number;
-};
-
-/**
- * Положение линии поля в разлиновке.
- */
-export type MarginLinePlacement = {
-  /**
-   * Столбец линии поля, px фотографии.
-   */
-  marginLineX: number;
-
-  /**
-   * Сторона листа, у которой она проходит.
-   */
-  marginLineSide: MarginLineSide;
 };

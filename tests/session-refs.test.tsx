@@ -40,6 +40,7 @@ const USER_SHEET: PaperSheet = {
     margins: { top: 135.5, right: 90, bottom: 110, left: 120 },
     marginLineX: null,
     marginLineSide: 'left',
+    sideSlant: null,
     bend: null,
     perspective: null,
     outline: null,

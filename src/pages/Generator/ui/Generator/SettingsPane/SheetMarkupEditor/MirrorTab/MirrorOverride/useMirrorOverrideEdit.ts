@@ -7,9 +7,9 @@ import { useMarkupEditorStore } from '../../../../../../model/useMarkupEditorSto
 import type { MarkupDraft } from '../../../../../../model/useMarkupEditorStore.types';
 
 import {
-  placeMirrorMargin,
-  placeMirrorMarginLine,
   placeMirrorMarginLineSide,
+  placeMirrorSideEnd,
+  placeMirrorSideValue,
   readMirrorOverride,
   snapMirrorMarginLineX,
 } from './mirrorOverrideMarkup';
@@ -74,38 +74,32 @@ export const useMirrorOverrideEdit = (frame: SheetFrame): MirrorOverrideEdit => 
     });
   };
 
-  const moveMargin: MirrorOverrideEdit['moveMargin'] = (side, x) => {
+  const moveSideEnd: MirrorOverrideEdit['moveSideEnd'] = (edge, end, point) => {
     previewOverride((ruling) => {
-      return placeMirrorMargin(ruling, frame, side, x);
-    });
-  };
-
-  const setMargin: MirrorOverrideEdit['setMargin'] = (side, x) => {
-    commitOverride((ruling) => {
-      return placeMirrorMargin(ruling, frame, side, x);
-    });
-  };
-
-  const moveMarginLine: MirrorOverrideEdit['moveMarginLine'] = (x) => {
-    previewOverride((ruling) => {
-      return placeMirrorMarginLine(ruling, frame, x);
+      return placeMirrorSideEnd(ruling, frame, edge, end, point);
     });
   };
 
   /**
    * Каналы фотографии для магнита берутся в момент вызова: при открытии с
    * плитки они приходят позже редактора. У листа без разлиновки магнита нет —
-   * притягивать не к чему.
+   * притягивать не к чему. Притягивается только ручка линии поля.
    */
-  const setMarginLine: MirrorOverrideEdit['setMarginLine'] = (point, shouldSnap) => {
+  const setSideEnd: MirrorOverrideEdit['setSideEnd'] = (edge, end, point, shouldSnap) => {
     const { image, draft } = useMarkupEditorStore.getState();
-    const x =
-      shouldSnap && image && draft && draft.kind !== 'blank'
-        ? snapMirrorMarginLineX(image, draft.ruling, frame, point)
-        : point.x;
+    const target =
+      edge === 'marginLine' && shouldSnap && image && draft && draft.kind !== 'blank'
+        ? { x: snapMirrorMarginLineX(image, draft.ruling, frame, point), y: point.y }
+        : point;
 
     commitOverride((ruling) => {
-      return placeMirrorMarginLine(ruling, frame, x);
+      return placeMirrorSideEnd(ruling, frame, edge, end, target);
+    });
+  };
+
+  const setSideValue: MirrorOverrideEdit['setSideValue'] = (edge, end, value) => {
+    commitOverride((ruling) => {
+      return placeMirrorSideValue(ruling, frame, edge, end, value);
     });
   };
 
@@ -118,10 +112,9 @@ export const useMirrorOverrideEdit = (frame: SheetFrame): MirrorOverrideEdit => 
   return {
     separate,
     reflect,
-    moveMargin,
-    setMargin,
-    moveMarginLine,
-    setMarginLine,
+    moveSideEnd,
+    setSideEnd,
+    setSideValue,
     setMarginLineSide,
   };
 };

@@ -93,7 +93,10 @@ type LiveSheet = {
 const toLiveSheet = (
   width: number,
   height: number,
-  ruling: Omit<SheetRuling, 'bend' | 'perspective' | 'outline' | 'mirrorOverride'>
+  ruling: Omit<
+    SheetRuling,
+    'bend' | 'perspective' | 'outline' | 'mirrorOverride' | 'sideSlant'
+  >
 ): SheetCalibration => {
   return {
     kind: 'lined',
@@ -102,6 +105,7 @@ const toLiveSheet = (
     ruling: {
       ...ruling,
       bend: null,
+      sideSlant: null,
       perspective: null,
       outline: null,
       mirrorOverride: null,

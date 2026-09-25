@@ -109,6 +109,7 @@ const buildSheet = (perspective: RulingPerspective | null, id: string): PaperShe
       },
       marginLineX: null,
       marginLineSide: null,
+      sideSlant: null,
       bend: null,
       perspective,
       outline: null,

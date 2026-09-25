@@ -32,6 +32,7 @@ const buildSheet = (id: string): PaperSheet => {
       margins: { top: 100, right: 100, bottom: 100, left: 100 },
       marginLineX: null,
       marginLineSide: null,
+      sideSlant: null,
       bend: null,
       perspective: null,
       outline: null,

@@ -6,17 +6,20 @@ import type { FC } from 'react';
 import { useMemo } from 'react';
 import { createPortal } from 'react-dom';
 
-import type { MarginLineSide, SheetPoint } from '../../../../../../lib/paper';
+import type { MarginLineSide, SheetPoint, SideEdge } from '../../../../../../lib/paper';
 import { mirrorSheetRuling } from '../../../../../../lib/paper';
 import { useMarkupEditorStore } from '../../../../../../model/useMarkupEditorStore';
 import { ExactValueField } from '../../ExactValues/ExactValueField';
-import { resolveMarginHandles } from '../../MarginsTool/marginsGeometry';
+import {
+  readSideHandleValue,
+  resolveMarginHandles,
+} from '../../MarginsTool/marginsGeometry';
+import type { SideHandleEnd } from '../../MarginsTool/marginsGeometry.types';
 import type { MarkupMoveSource } from '../../MarkupHandle';
 import { MarkupHandle } from '../../MarkupHandle';
 import { mirrorMarkupPoint } from '../../MarkupViewport';
 
 import type { MirrorOverrideProps } from './MirrorOverride.types';
-import type { MirrorMarginSide } from './mirrorOverrideMarkup.types';
 import { useMirrorOverrideEdit } from './useMirrorOverrideEdit';
 
 const MODE_OPTIONS: RadioGroupOption[] = [
@@ -32,16 +35,17 @@ const MARGIN_LINE_OPTIONS: SegmentedControlOption[] = [
   { value: 'right', label: 'Справа' },
 ];
 
-const MIRROR_MARGIN_SIDES: MirrorMarginSide[] = ['left', 'right'];
+const SIDE_EDGES: SideEdge[] = ['left', 'right', 'marginLine'];
 
-const MARGIN_HANDLE_LABELS: Record<MirrorMarginSide, string> = {
-  left: 'Левое поле зеркала',
-  right: 'Правое поле зеркала',
-};
+const SIDE_HANDLE_ENDS: SideHandleEnd[] = ['top', 'bottom'];
 
-const MARGIN_FIELD_LABELS: Record<MirrorMarginSide, string> = {
-  left: 'Левое поле зеркала, px',
-  right: 'Правое поле зеркала, px',
+const HANDLE_LABELS: Record<SideEdge, Record<SideHandleEnd, string>> = {
+  left: { top: 'Левое поле зеркала сверху', bottom: 'Левое поле зеркала снизу' },
+  right: { top: 'Правое поле зеркала сверху', bottom: 'Правое поле зеркала снизу' },
+  marginLine: {
+    top: 'Линия поля зеркала сверху',
+    bottom: 'Линия поля зеркала снизу',
+  },
 };
 
 /**
@@ -69,8 +73,9 @@ const toMarginLineSide = (value: string): MarginLineSide | null => {
 /**
  * Линия поля и боковые поля зеркальной страницы: по умолчанию отражены из
  * листа, по выбору — свои. Свои правятся числами и, пока выбран инструмент
- * «Поля», ручками в окне; линия поля ставится с любой стороны или убирается
- * только на зеркале.
+ * «Поля», ручками в окне — у каждой границы две, верхняя и нижняя, как у
+ * листа; линия поля ставится с любой стороны или убирается только на
+ * зеркале.
  *
  * Ручки стоят в отражённом слое: их точки — в пикселях листа, а поля зеркала
  * — в пикселях отражённого кадра, и каждая переводится через `x → W − x`.
@@ -89,15 +94,8 @@ export const MirrorOverride: FC<MirrorOverrideProps> = (props) => {
   const frame = useMemo(() => {
     return { width, height };
   }, [width, height]);
-  const {
-    separate,
-    reflect,
-    moveMargin,
-    setMargin,
-    moveMarginLine,
-    setMarginLine,
-    setMarginLineSide,
-  } = useMirrorOverrideEdit(frame);
+  const { separate, reflect, moveSideEnd, setSideEnd, setSideValue, setMarginLineSide } =
+    useMirrorOverrideEdit(frame);
 
   if (!ruling) {
     return null;
@@ -117,28 +115,56 @@ export const MirrorOverride: FC<MirrorOverrideProps> = (props) => {
     setMarginLineSide(toMarginLineSide(value));
   };
 
-  const handleMarginLineCommit = (value: number) => {
-    setMarginLine({ x: value, y: 0 }, false);
-  };
-
-  const handleMarginLineMove = (point: SheetPoint) => {
-    moveMarginLine(mirrorMarkupPoint(point, width).x);
-  };
-
-  /**
-   * Стрелкой линию поля сдвигают на пиксель мимо черты — магнит вернул бы
-   * её обратно.
-   *
-   * @param point — точка отпускания, px листа
-   * @param source — чем сдвинули
-   */
-  const handleMarginLineMoveEnd = (point: SheetPoint, source: MarkupMoveSource) => {
-    setMarginLine(mirrorMarkupPoint(point, width), source === 'pointer');
-  };
-
   const handles = override
     ? resolveMarginHandles(mirrorSheetRuling(ruling, frame), frame)
     : null;
+
+  /**
+   * Ручки стоят в отражённом слое: точка ручки зеркала переводится в пиксели
+   * листа, а точка перетаскивания — обратно в пиксели отражённого кадра.
+   */
+  const sideHandles = SIDE_EDGES.flatMap((edge) => {
+    const pair = edge === 'marginLine' ? handles?.marginLine : handles?.[edge];
+
+    if (!pair) {
+      return [];
+    }
+
+    return SIDE_HANDLE_ENDS.map((end) => {
+      const { x, y } = mirrorMarkupPoint(pair[end], width);
+
+      const handleSideMove = (point: SheetPoint) => {
+        moveSideEnd(edge, end, mirrorMarkupPoint(point, width));
+      };
+
+      /**
+       * Стрелкой ручку линии поля сдвигают на пиксель мимо черты — магнит
+       * вернул бы её обратно.
+       *
+       * @param point — точка отпускания, px листа
+       * @param source — чем сдвинули
+       */
+      const handleSideMoveEnd = (point: SheetPoint, source: MarkupMoveSource) => {
+        setSideEnd(edge, end, mirrorMarkupPoint(point, width), source === 'pointer');
+      };
+
+      return (
+        <MarkupHandle
+          key={`${edge}-${end}`}
+          x={x}
+          y={y}
+          label={HANDLE_LABELS[edge][end]}
+          className={
+            edge === 'marginLine'
+              ? 'stroke-danger in-data-pan-mode:pointer-events-none'
+              : 'in-data-pan-mode:pointer-events-none'
+          }
+          onMove={handleSideMove}
+          onMoveEnd={handleSideMoveEnd}
+        />
+      );
+    });
+  });
 
   return (
     <div className="flex flex-col gap-2">
@@ -158,71 +184,31 @@ export const MirrorOverride: FC<MirrorOverrideProps> = (props) => {
             onChange={handleMarginLineSideChange}
           />
 
-          <div className="grid grid-cols-2 gap-2">
-            {MIRROR_MARGIN_SIDES.map((side) => {
-              const handleMarginCommit = (value: number) => {
-                setMargin(side, side === 'left' ? value : width - value);
-              };
+          {handles ? (
+            <div className="grid grid-cols-2 gap-2">
+              {SIDE_EDGES.flatMap((edge) => {
+                return SIDE_HANDLE_ENDS.map((end) => {
+                  const handleSideCommit = (value: number) => {
+                    setSideValue(edge, end, value);
+                  };
 
-              return (
-                <ExactValueField
-                  key={side}
-                  label={MARGIN_FIELD_LABELS[side]}
-                  value={side === 'left' ? override.marginLeft : override.marginRight}
-                  onValueCommit={handleMarginCommit}
-                />
-              );
-            })}
-
-            <ExactValueField
-              label="Линия поля зеркала, px"
-              value={override.marginLineX}
-              onValueCommit={handleMarginLineCommit}
-            />
-          </div>
+                  return (
+                    <ExactValueField
+                      key={`${edge}-${end}`}
+                      label={`${HANDLE_LABELS[edge][end]}, px`}
+                      value={readSideHandleValue(handles, frame, edge, end)}
+                      onValueCommit={handleSideCommit}
+                    />
+                  );
+                });
+              })}
+            </div>
+          ) : null}
         </>
       ) : null}
 
       {handleLayer && withHandles && handles
-        ? createPortal(
-            <g data-tool="mirror-margins">
-              {MIRROR_MARGIN_SIDES.map((side) => {
-                const { x, y } = mirrorMarkupPoint(handles[side], width);
-
-                const handleMarginMove = (point: SheetPoint) => {
-                  moveMargin(side, mirrorMarkupPoint(point, width).x);
-                };
-
-                const handleMarginMoveEnd = (point: SheetPoint) => {
-                  setMargin(side, mirrorMarkupPoint(point, width).x);
-                };
-
-                return (
-                  <MarkupHandle
-                    key={side}
-                    x={x}
-                    y={y}
-                    label={MARGIN_HANDLE_LABELS[side]}
-                    className="in-data-pan-mode:pointer-events-none"
-                    onMove={handleMarginMove}
-                    onMoveEnd={handleMarginMoveEnd}
-                  />
-                );
-              })}
-
-              {handles.marginLine ? (
-                <MarkupHandle
-                  x={width - handles.marginLine.x}
-                  y={handles.marginLine.y}
-                  label="Линия поля зеркала"
-                  className="stroke-danger in-data-pan-mode:pointer-events-none"
-                  onMove={handleMarginLineMove}
-                  onMoveEnd={handleMarginLineMoveEnd}
-                />
-              ) : null}
-            </g>,
-            handleLayer
-          )
+        ? createPortal(<g data-tool="mirror-margins">{sideHandles}</g>, handleLayer)
         : null}
     </div>
   );

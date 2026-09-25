@@ -42,6 +42,7 @@ const buildCalibration = (
       margins: { top: step, right: 0, bottom: BOTTOM_MARGIN_PX, left: 0 },
       marginLineX: null,
       marginLineSide: null,
+      sideSlant: null,
       bend: null,
       perspective: null,
       outline: null,

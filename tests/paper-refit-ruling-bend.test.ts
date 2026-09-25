@@ -108,6 +108,7 @@ const toRuling = (params: SyntheticSheetParams): SheetRuling => {
     margins: { top: TOP, right: SIDE, bottom: BOTTOM, left: SIDE },
     marginLineX: null,
     marginLineSide: null,
+    sideSlant: null,
     bend: null,
     perspective: computeSyntheticPerspective(params),
     outline: null,

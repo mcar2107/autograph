@@ -52,6 +52,7 @@ const buildMeasuredSheet = (id: string): PaperSheet => {
       margins: { top: 137.5, right: 90, bottom: 110, left: 120 },
       marginLineX: 1080,
       marginLineSide: 'right',
+      sideSlant: null,
       bend: null,
       perspective: null,
       outline: null,
@@ -260,6 +261,7 @@ describe('форма записи в хранилище', () => {
 
     expect(restored?.sheet.ruling).toEqual({
       ...ruling,
+      sideSlant: null,
       bend: null,
       perspective: null,
       outline: null,
@@ -296,6 +298,7 @@ describe('форма записи в хранилище', () => {
       margins: { top: 78, right: 72, bottom: 72, left: 72 },
       marginLineX: null,
       marginLineSide: null,
+      sideSlant: null,
       bend: null,
       perspective: null,
       outline: null,

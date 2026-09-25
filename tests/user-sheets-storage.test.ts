@@ -42,6 +42,7 @@ const RULING: SheetRuling = {
   margins: { top: 137.5, right: 90, bottom: 110, left: 120 },
   marginLineX: 1080,
   marginLineSide: 'right',
+  sideSlant: { left: 150, right: 70, marginLineX: 1060 },
   bend: {
     columnOrigin: 75,
     columnSpacing: 150,
@@ -68,6 +69,7 @@ const RULING: SheetRuling = {
     marginLineSide: 'left',
     marginLeft: 140,
     marginRight: 95,
+    sideSlant: null,
   },
 };
 

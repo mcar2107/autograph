@@ -41,6 +41,7 @@ const RULING: SheetRuling = {
   margins: { top: 180, right: 240, bottom: 150, left: 90 },
   marginLineX: 1360,
   marginLineSide: 'right',
+  sideSlant: null,
   bend: null,
   perspective: null,
   outline: null,
@@ -173,6 +174,7 @@ describe('поля зеркала, заданные отдельно', () => {
     marginLineSide: 'left',
     marginLeft: 360,
     marginRight: 70,
+    sideSlant: null,
   };
   const OVERRIDDEN: SheetRuling = { ...RULING, mirrorOverride: MIRROR_OVERRIDE };
 
@@ -327,6 +329,7 @@ const PERSPECTIVE_RULING: SheetRuling = {
   margins: { top: PERSPECTIVE_MARGIN_TOP, right: 240, bottom: 150, left: 90 },
   marginLineX: 1360,
   marginLineSide: 'right',
+  sideSlant: null,
   bend: PERSPECTIVE_BEND,
   perspective: PERSPECTIVE,
   outline: OUTLINE,

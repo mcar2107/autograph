@@ -37,6 +37,7 @@ import userEvent from '@testing-library/user-event';
 import { IDBFactory } from 'fake-indexeddb';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { readHandlePoint, SIDE_HANDLE_ENDS } from './helpers/side-handles';
 import { createSyntheticSheet } from './helpers/synthetic-sheet';
 import { RULED_PHOTO } from './helpers/user-sheet-photo';
 import { buildUserSheetRecord } from './helpers/user-sheet-record';
@@ -467,6 +468,7 @@ describe('вкладка зеркальной страницы: линия по�
       marginLineSide: 'right',
       marginLeft: PHOTO.margins.right,
       marginRight: PHOTO.margins.left,
+      sideSlant: null,
     });
 
     await save(user, editor);
@@ -487,6 +489,7 @@ describe('вкладка зеркальной страницы: линия по�
       marginLineSide: 'right',
       marginLeft: PHOTO.margins.right,
       marginRight: PHOTO.margins.left,
+      sideSlant: null,
     });
   });
 
@@ -509,6 +512,7 @@ describe('вкладка зеркальной страницы: линия по�
       marginLineSide: 'right',
       marginLeft: 70,
       marginRight: 80,
+      sideSlant: null,
     };
     const editor = await openMirror(
       user,
@@ -542,13 +546,52 @@ describe('вкладка зеркальной страницы: линия по�
     expect(stored?.sheet.ruling.mirrorOverride).toBeNull();
   });
 
+  it('боковое поле зеркала ставится двумя ручками вдоль наклонной стороны', async () => {
+    const user = userEvent.setup();
+    const editor = await openMirror(user, buildRuling(null, null), 'Поля');
+
+    await user.click(within(editor).getByRole('radio', { name: 'Задать отдельно' }));
+
+    const bottom = within(editor).getByRole('button', {
+      name: 'Левое поле зеркала снизу',
+    });
+    const mirroredX = WIDTH - readHandlePoint(bottom).x;
+
+    dragHandle(editor, bottom, { x: mirroredX - 40, y: readHandlePoint(bottom).y });
+
+    expect(readDraftRuling().mirrorOverride?.sideSlant).not.toBeNull();
+    expect(readDraftRuling().sideSlant).toBeNull();
+    expect(
+      (
+        within(editor).getByRole('textbox', {
+          name: 'Левое поле зеркала снизу, px',
+        }) as HTMLInputElement
+      ).value
+    ).toBe(String(mirroredX - 40));
+
+    await save(user, editor);
+
+    const [page, mirror] = [0, 1].map((pageIndex) => {
+      return selectBlockGeometry(
+        useGeneratorStore.getState(),
+        pageIndex,
+        FALLBACK_FONT_METRICS
+      );
+    });
+
+    expect(page?.lineBounds).toBeUndefined();
+    expect(mirror?.lineBounds?.offsets.at(-1)).toBeLessThan(-30);
+  });
+
   it('боковое поле зеркала не опускается до нуля ни числом, ни ручкой', async () => {
     const user = userEvent.setup();
     const editor = await openMirror(user, buildRuling(null, null), 'Поля');
 
     await user.click(within(editor).getByRole('radio', { name: 'Задать отдельно' }));
 
-    const field = within(editor).getByRole('textbox', { name: 'Левое поле зеркала, px' });
+    const field = within(editor).getByRole('textbox', {
+      name: 'Левое поле зеркала сверху, px',
+    });
 
     await user.clear(field);
     await user.type(field, '-5{Enter}');
@@ -557,7 +600,7 @@ describe('вкладка зеркальной страницы: линия по�
 
     dragHandle(
       editor,
-      within(editor).getByRole('button', { name: 'Правое поле зеркала' }),
+      within(editor).getByRole('button', { name: 'Правое поле зеркала сверху' }),
       { x: WIDTH + 50, y: 300 }
     );
 
@@ -575,20 +618,35 @@ describe('вкладка зеркальной страницы: линия по�
 
     await user.click(within(editor).getByRole('radio', { name: 'Задать отдельно' }));
 
-    const handle = within(editor).getByRole('button', { name: 'Линия поля зеркала' });
     const mirroredLine = WIDTH - PHOTO.marginLineX;
 
-    dragHandle(editor, handle, { x: mirroredLine + 9, y: 300 });
+    for (const end of SIDE_HANDLE_ENDS) {
+      const handle = within(editor).getByRole('button', {
+        name: `Линия поля зеркала ${end}`,
+      });
 
+      dragHandle(editor, handle, {
+        x: mirroredLine + 9,
+        y: readHandlePoint(handle).y,
+      });
+    }
+
+    const { mirrorOverride } = readDraftRuling();
+
+    expect(Math.abs((mirrorOverride?.marginLineX || 0) - mirroredLine)).toBeLessThan(1);
     expect(
-      Math.abs((readDraftRuling().mirrorOverride?.marginLineX || 0) - mirroredLine)
+      Math.abs((mirrorOverride?.sideSlant?.marginLineX || mirroredLine) - mirroredLine)
     ).toBeLessThan(1);
 
-    const snapped = readDraftRuling().mirrorOverride?.marginLineX || 0;
+    const snapped = mirrorOverride?.marginLineX || 0;
 
-    within(editor).getByRole('button', { name: 'Линия поля зеркала' }).focus();
-    await user.keyboard('{ArrowRight}');
+    for (const end of SIDE_HANDLE_ENDS) {
+      within(editor)
+        .getByRole('button', { name: `Линия поля зеркала ${end}` })
+        .focus();
+      await user.keyboard('{ArrowRight}');
+    }
 
-    expect(readDraftRuling().mirrorOverride?.marginLineX).toBeCloseTo(snapped + 1, 9);
+    expect(readDraftRuling().mirrorOverride?.marginLineX).toBeCloseTo(snapped + 1, 6);
   });
 });

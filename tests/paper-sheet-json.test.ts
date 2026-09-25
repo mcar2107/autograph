@@ -291,7 +291,10 @@ describe('разбор полей зеркала из JSON', () => {
       buildEntry({ ...RULING, mirrorOverride: MIRROR_OVERRIDE })
     );
 
-    expect(sheet?.ruling.mirrorOverride).toStrictEqual(MIRROR_OVERRIDE);
+    expect(sheet?.ruling.mirrorOverride).toStrictEqual({
+      ...MIRROR_OVERRIDE,
+      sideSlant: null,
+    });
   });
 
   it('читает запись без полей зеркала отражением', () => {
@@ -322,6 +325,88 @@ describe('разбор полей зеркала из JSON', () => {
       ...MIRROR_OVERRIDE,
       marginLineX: null,
       marginLineSide: null,
+      sideSlant: null,
+    });
+  });
+});
+
+describe('разбор концов полей у низа кадра из JSON', () => {
+  const SLANTED_RULING = {
+    ...RULING,
+    marginLineX: 110,
+    marginLineSide: 'left',
+    sideSlant: { left: 30, right: 90, marginLineX: 95 },
+  };
+
+  it('читает концы у низа строго равными записанным', () => {
+    const sheet = parsePaperSheet(buildEntry(SLANTED_RULING));
+
+    expect(sheet?.ruling.sideSlant).toStrictEqual({
+      left: 30,
+      right: 90,
+      marginLineX: 95,
+    });
+    expect(sheet?.ruling.margins.left).toBe(60);
+    expect(sheet?.ruling.marginLineX).toBe(110);
+  });
+
+  it('читает запись без концов у низа полями без наклона', () => {
+    expect(parsePaperSheet(buildEntry(RULING))?.ruling.sideSlant).toBeNull();
+  });
+
+  it('концы, совпавшие с верхними, читает полями без наклона', () => {
+    const sheet = parsePaperSheet(
+      buildEntry({
+        ...SLANTED_RULING,
+        sideSlant: { left: 60, right: 60, marginLineX: 110 },
+      })
+    );
+
+    expect(sheet?.ruling.sideSlant).toBeNull();
+  });
+
+  it('конец линии поля без самой линии не читает', () => {
+    const sheet = parsePaperSheet(
+      buildEntry({ ...RULING, sideSlant: { left: 30, right: 60, marginLineX: 95 } })
+    );
+
+    expect(sheet?.ruling.sideSlant).toStrictEqual({
+      left: 30,
+      right: 60,
+      marginLineX: null,
+    });
+  });
+
+  it.each([
+    { name: 'левое поле строкой', value: { left: '30', right: 90, marginLineX: 95 } },
+    { name: 'нулевое правое поле', value: { left: 30, right: 0, marginLineX: 95 } },
+    { name: 'нет левого поля', value: { right: 90, marginLineX: 95 } },
+    { name: 'не объектом', value: [30, 90] },
+  ])('испорченные концы читает полями без наклона: $name', ({ value }) => {
+    const sheet = parsePaperSheet(buildEntry({ ...SLANTED_RULING, sideSlant: value }));
+
+    expect(sheet?.ruling.sideSlant).toBeNull();
+    expect(sheet?.ruling.margins.left).toBe(60);
+  });
+
+  it('читает концы у низа у полей зеркала', () => {
+    const sheet = parsePaperSheet(
+      buildEntry({
+        ...RULING,
+        mirrorOverride: {
+          marginLineX: null,
+          marginLineSide: null,
+          marginLeft: 140,
+          marginRight: 50,
+          sideSlant: { left: 100, right: 50, marginLineX: null },
+        },
+      })
+    );
+
+    expect(sheet?.ruling.mirrorOverride?.sideSlant).toStrictEqual({
+      left: 100,
+      right: 50,
+      marginLineX: null,
     });
   });
 });

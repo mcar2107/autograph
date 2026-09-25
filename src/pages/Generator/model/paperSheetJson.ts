@@ -10,6 +10,7 @@ import type {
   RulingMirrorOverride,
   RulingPerspective,
   RulingPin,
+  RulingSideSlant,
   SheetFrame,
   SheetOutline,
   SheetPoint,
@@ -269,6 +270,30 @@ const parseSheetOutline = (value: unknown): SheetOutline | null => {
 };
 
 /**
+ * Концы полей и линии поля у низа кадра из JSON. Нечитаемое боковое поле
+ * снимает наклон целиком: поля ложатся без наклона к строкам, как у записи,
+ * где концов у низа нет вовсе. Линия поля без конца у низа идёт без наклона.
+ *
+ * @param value — разобранное значение
+ * @returns концы у низа кадра; `null` — наклона нет
+ */
+const parseSideSlant = (value: unknown): RulingSideSlant | null => {
+  if (
+    !isJsonRecord(value) ||
+    !isPositiveNumber(value.left) ||
+    !isPositiveNumber(value.right)
+  ) {
+    return null;
+  }
+
+  return {
+    left: value.left,
+    right: value.right,
+    marginLineX: toFiniteNumber(value.marginLineX, 0) || null,
+  };
+};
+
+/**
  * Отдельно заданные поля зеркальной страницы из JSON. Нечитаемое боковое поле
  * снимает всю замену, а не одно поле: половина замены с отражённой второй
  * половиной дала бы блок, которого пользователь не задавал.
@@ -294,6 +319,7 @@ const parseMirrorOverride = (value: unknown): RulingMirrorOverride | null => {
     marginLineSide: hasMarginLine ? marginLineSide : null,
     marginLeft: value.marginLeft,
     marginRight: value.marginRight,
+    sideSlant: parseSideSlant(value.sideSlant),
   };
 };
 
@@ -407,6 +433,7 @@ const parseSheetRuling = (
       margins: parseMargins(ruling.margins),
       marginLineX: toFiniteNumber(ruling.marginLineX, 0) || null,
       marginLineSide: parseMarginLineSide(ruling.marginLineSide),
+      sideSlant: parseSideSlant(ruling.sideSlant),
       bend: parseRulingBend(ruling.bend),
       perspective: parseRulingPerspective(ruling.perspective, skewAngle, frame),
       outline: parseSheetOutline(ruling.outline),

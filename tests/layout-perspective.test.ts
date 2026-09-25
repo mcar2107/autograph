@@ -74,6 +74,7 @@ const buildSheet = (perspective: RulingPerspective | null): PaperSheet => {
       },
       marginLineX: null,
       marginLineSide: null,
+      sideSlant: null,
       bend: null,
       perspective,
       outline: null,

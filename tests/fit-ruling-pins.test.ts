@@ -33,6 +33,7 @@ const BASE_RULING: SheetRuling = {
   margins: { top: 160, right: 120, bottom: 140, left: 180 },
   marginLineX: 170,
   marginLineSide: 'left',
+  sideSlant: null,
   bend: null,
   perspective: null,
   outline: null,

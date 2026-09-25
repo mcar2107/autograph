@@ -1,3 +1,4 @@
+import type { LineBounds } from '../calibrate/calibrate.types';
 import type { GlyphSource } from '../glyph/glyph.types';
 import type { LightingField, RulingBend, RulingPerspective } from '../paper/paper.types';
 import type { LineDistortion, WordDistortion } from '../randomize/randomize.types';
@@ -339,6 +340,14 @@ export type RenderGeometry = {
   blockWidth: number;
 
   /**
+   * Края каждой строки на листе с наклонными полями: строка начинается со
+   * своего сдвига от `leftPadding` и не выходит за свою ширину. Не задано —
+   * у всех строк `leftPadding` и `blockWidth`, и лента вызовов та же, что у
+   * листа без наклона полей.
+   */
+  lineBounds?: LineBounds;
+
+  /**
    * Поворот блока текста целиком в градусах вокруг левого верхнего угла
    * листа.
    */
@@ -371,6 +380,21 @@ export type RenderGeometry = {
    * что точки не сдвигаются вовсе.
    */
   perspective: RulingPerspective | null;
+};
+
+/**
+ * Где строка начинается и сколько занимает в системе блока.
+ */
+export type LineStart = {
+  /**
+   * Сдвиг начала строки от левого края блока вдоль неё, px.
+   */
+  startX: number;
+
+  /**
+   * Ширина строки, px: слова дальше неё не рисуются.
+   */
+  width: number;
 };
 
 /**
