@@ -22,7 +22,7 @@ import {
   MarkupScaleContext,
   MarkupViewport,
 } from '../MarkupViewport';
-import { mirrorPins, MirrorTab } from '../MirrorTab';
+import { MirrorOverride, mirrorPins, MirrorTab } from '../MirrorTab';
 import { OutlineTool } from '../OutlineTool';
 import { RulingKindControl } from '../RulingKindControl';
 import type { MarkupToolId, MarkupToolProps } from '../SheetMarkupEditor.types';
@@ -188,36 +188,44 @@ export const MarkupEditorContent: FC<MarkupEditorContentProps> = (props) => {
   return (
     <MarkupMirrorContext value={isMirrorPage ? sheet.width : null}>
       <div className="flex min-h-0 flex-1 gap-4">
-        <MarkupViewport
-          frame={sheet}
-          photoSrc={sheet.src}
-          photoLabel={
-            isMirrorPage
-              ? `Фотография листа «${sheet.label}», отражённая`
-              : `Фотография листа «${sheet.label}»`
-          }
-          onScaleChange={handleScaleChange}
-        >
-          {/*
-           * Пробный текст — страница с фотографией целиком: лежит над снимком и
-           * под разметкой, чтобы ручки оставались видны; линии под ним
-           * приглушены.
-           */}
-          <div
-            ref={handleTrialLayerChange}
-            className="pointer-events-none absolute inset-0"
-          />
+        {/*
+         * Вкладки страниц — над окном, а не в панели: они меняют то, что
+         * показано на снимке.
+         */}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
+          <MirrorTab pageIndex={pageIndex} onPageIndexChange={handlePageIndexChange} />
 
-          <MarkupOverlay
+          <MarkupViewport
             frame={sheet}
-            ruling={pageRuling}
-            pins={isMirrorPage ? mirrorPins(draft.pins, sheet.width) : draft.pins}
-            layers={layers}
-            isMuted={isTrialEnabled}
-            isHidden={isMarkupHidden}
-            onHandleLayerChange={handleHandleLayerChange}
-          />
-        </MarkupViewport>
+            photoSrc={sheet.src}
+            photoLabel={
+              isMirrorPage
+                ? `Фотография листа «${sheet.label}», отражённая`
+                : `Фотография листа «${sheet.label}»`
+            }
+            onScaleChange={handleScaleChange}
+          >
+            {/*
+             * Пробный текст — страница с фотографией целиком: лежит над снимком и
+             * под разметкой, чтобы ручки оставались видны; линии под ним
+             * приглушены.
+             */}
+            <div
+              ref={handleTrialLayerChange}
+              className="pointer-events-none absolute inset-0"
+            />
+
+            <MarkupOverlay
+              frame={sheet}
+              ruling={pageRuling}
+              pins={isMirrorPage ? mirrorPins(draft.pins, sheet.width) : draft.pins}
+              layers={layers}
+              isMuted={isTrialEnabled}
+              isHidden={isMarkupHidden}
+              onHandleLayerChange={handleHandleLayerChange}
+            />
+          </MarkupViewport>
+        </div>
 
         {/*
          * Подвал с историей, сбросом и сохранением лежит вне прокрутки: высота
@@ -247,7 +255,21 @@ export const MarkupEditorContent: FC<MarkupEditorContentProps> = (props) => {
 
             <MarkupNotices tool={tool} draft={draft} />
 
-            {isMirrorPage ? null : <ExactValues />}
+            {/*
+             * Выбор полей зеркала стоит там же, где у листа точные значения:
+             * вкладка зеркала их не показывает, а в конце панели собственные
+             * поля и числа зеркала терялись бы под инструментом и слоями.
+             */}
+            {isMirrorPage ? (
+              <div className="text-sm">
+                <MirrorOverride
+                  handleLayer={handleLayer}
+                  withHandles={tool === 'margins'}
+                />
+              </div>
+            ) : (
+              <ExactValues />
+            )}
 
             {/*
              * Ручки инструментов уходят порталом в оверлей, но в дереве React
@@ -265,13 +287,6 @@ export const MarkupEditorContent: FC<MarkupEditorContentProps> = (props) => {
                 onEnabledChange={handleTrialEnabledChange}
               />
             </MarkupScaleContext>
-
-            <MirrorTab
-              pageIndex={pageIndex}
-              tool={tool}
-              handleLayer={handleLayer}
-              onPageIndexChange={handlePageIndexChange}
-            />
 
             <div className="border-t border-border pt-4">
               <MarkupSheetDelete sheetLabel={sheet.label} onDelete={handleDelete} />

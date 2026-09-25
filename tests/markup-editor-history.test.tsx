@@ -83,7 +83,7 @@ const openEditor = async (user: User): Promise<HTMLElement> => {
     .getState()
     .addUserSheet(buildUserSheetRecord({ familyId: 'lined', sheet: SHEET }));
   render(<EditorHarness />);
-  await user.click(screen.getByRole('button', { name: `Настроить «${LABEL}»` }));
+  await user.click(screen.getByRole('button', { name: `Разметка листа «${LABEL}»` }));
 
   return await screen.findByRole('dialog', { name: `Разметка листа «${LABEL}»` });
 };
@@ -269,7 +269,7 @@ describe('подзаголовок редактора', () => {
 
     removeMarginLine();
     await user.click(within(editor).getByRole('button', { name: 'Сохранить' }));
-    await user.click(screen.getByRole('button', { name: `Настроить «${LABEL}»` }));
+    await user.click(screen.getByRole('button', { name: `Разметка листа «${LABEL}»` }));
 
     const reopened = await screen.findByRole('dialog', {
       name: `Разметка листа «${LABEL}»`,
@@ -286,7 +286,7 @@ describe('подзаголовок редактора', () => {
       measuredRuling: structuredClone(MEASURED_RULING),
     });
     render(<EditorHarness />);
-    await user.click(screen.getByRole('button', { name: `Настроить «${LABEL}»` }));
+    await user.click(screen.getByRole('button', { name: `Разметка листа «${LABEL}»` }));
 
     const editor = await screen.findByRole('dialog', {
       name: `Разметка листа «${LABEL}»`,
@@ -303,7 +303,7 @@ describe('подзаголовок редактора', () => {
       measuredKind: 'grid',
     });
     render(<EditorHarness />);
-    await user.click(screen.getByRole('button', { name: `Настроить «${LABEL}»` }));
+    await user.click(screen.getByRole('button', { name: `Разметка листа «${LABEL}»` }));
 
     const editor = await screen.findByRole('dialog', {
       name: `Разметка листа «${LABEL}»`,

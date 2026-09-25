@@ -751,3 +751,66 @@ describe('вкладка зеркальной страницы: линия по�
     expect(readDraftRuling().mirrorOverride?.marginLineX).toBeCloseTo(snapped + 1, 6);
   });
 });
+
+describe('вкладки страниц над окном просмотра', () => {
+  it('стоят над окном, а не в панели, и переключают показанную страницу', async () => {
+    const user = userEvent.setup();
+    const editor = await openMirror(user, buildRuling(null, null), 'Контур');
+    const pages = within(editor).getByRole('radiogroup', { name: 'Страница разворота' });
+    const panel = within(editor).getByRole('complementary', {
+      name: 'Настройка разметки',
+    });
+    const viewport = within(editor).getByTestId('markup-viewport');
+
+    expect(panel.contains(pages)).toBe(false);
+    expect(pages.compareDocumentPosition(viewport)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    );
+    expect(within(editor).getByRole('img', { name: /отражённая$/ })).toBeTruthy();
+
+    await user.click(within(pages).getByRole('radio', { name: 'Страница' }));
+
+    expect(within(editor).queryByRole('img', { name: /отражённая$/ })).toBeNull();
+    expect(
+      within(editor).getByRole('img', { name: `Фотография листа «${SHEET_LABEL}»` })
+    ).toBeTruthy();
+  });
+
+  it('переключаются с клавиатуры', async () => {
+    const user = userEvent.setup();
+    const editor = await openMirror(user, buildRuling(null, null), 'Контур');
+    const pages = within(editor).getByRole('radiogroup', { name: 'Страница разворота' });
+
+    within(pages).getByRole('radio', { name: 'Зеркальная страница' }).focus();
+    await user.keyboard('{ArrowLeft}');
+
+    expect(document.activeElement).toBe(
+      within(pages).getByRole('radio', { name: 'Страница' })
+    );
+
+    await user.keyboard(' ');
+
+    expect(within(editor).queryByRole('img', { name: /отражённая$/ })).toBeNull();
+  });
+
+  it('плашка «Зеркальная страница» лежит на фото только на зеркале', async () => {
+    const user = userEvent.setup();
+    const editor = await openMirror(user, buildRuling(null, null), 'Контур');
+    const viewport = within(editor).getByTestId('markup-viewport');
+    const stage = within(editor).getByTestId('markup-stage');
+    const badge = within(viewport).getByTestId('markup-mirror-badge');
+
+    expect(badge.textContent).toBe('Зеркальная страница');
+
+    /**
+     * Плашка — вне сцены: она не отражается и не масштабируется вместе со
+     * снимком и не перехватывает сдвиг окна.
+     */
+    expect(stage.contains(badge)).toBe(false);
+    expect(badge.className).toMatch(/pointer-events-none/);
+
+    await user.click(within(editor).getByRole('radio', { name: 'Страница' }));
+
+    expect(within(editor).queryByTestId('markup-mirror-badge')).toBeNull();
+  });
+});

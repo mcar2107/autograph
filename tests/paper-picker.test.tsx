@@ -14,6 +14,7 @@ import { IDBFactory } from 'fake-indexeddb';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createSyntheticSheet } from './helpers/synthetic-sheet';
+import { buildUserSheetRecord } from './helpers/user-sheet-record';
 
 /**
  * Съём пикселей подменяется: канвы в jsdom нет, а проверяется здесь не
@@ -193,7 +194,7 @@ describe('PaperPicker', () => {
      */
     useMarkupEditorStore.getState().close();
     await user.click(
-      within(ownSheets).getByRole('button', { name: 'Настроить «моя тетрадь»' })
+      within(ownSheets).getByRole('button', { name: 'Разметка листа «моя тетрадь»' })
     );
 
     expect(useMarkupEditorStore.getState().record?.sheet.id).toBe(sheetId);
@@ -249,5 +250,82 @@ describe('PaperPicker', () => {
 
     expect(stored?.kind).toBe('grid');
     expect(stored?.familyId).toBe('grid');
+  });
+});
+
+/**
+ * Свой лист в семье линейки с заданной подписью: разлиновка — синтетическая
+ * по умолчанию, её плитка не читает.
+ *
+ * @param id — идентификатор листа
+ * @param label — подпись листа
+ * @returns запись своего листа
+ */
+const buildLabeledRecord = (id: string, label: string) => {
+  const { width, height } = RULED_PHOTO;
+  const [preset] =
+    store().presetFamilies.find(({ id: familyId }) => {
+      return familyId === 'lined';
+    })?.sheets || [];
+
+  if (!preset) {
+    throw new Error('В семье линейки нет листов');
+  }
+
+  return buildUserSheetRecord({
+    familyId: 'lined',
+    sheet: { ...preset, id, label, src: `data:image/jpeg;base64,${id}`, width, height },
+  });
+};
+
+describe('плитки своих листов: подпись и кнопка разметки', () => {
+  it('длинная подпись обрезана с середины, полное имя — в доступном имени', () => {
+    store().selectFamily('lined');
+    store().addUserSheet(buildLabeledRecord('user-1813', 'IMG_1813'));
+    store().addUserSheet(buildLabeledRecord('user-1808', 'IMG_1808'));
+
+    render(<PaperPicker />);
+
+    const ownSheets = screen.getByRole('list', { name: 'Свои листы' });
+    const first = within(ownSheets).getByRole('button', { name: 'IMG_1813' });
+    const second = within(ownSheets).getByRole('button', { name: 'IMG_1808' });
+
+    /**
+     * Видимые подписи двух снимков различаются: у них разные концы имени.
+     */
+    expect(first.textContent).toBe('IM…813');
+    expect(second.textContent).toBe('IM…808');
+  });
+
+  it('кнопка разметки заметна, подсказка называет лист целиком, нажатие открывает редактор', async () => {
+    const user = userEvent.setup();
+
+    store().selectFamily('lined');
+    store().addUserSheet(buildLabeledRecord('user-1813', 'IMG_1813'));
+
+    render(<PaperPicker />);
+
+    const button = within(screen.getByRole('list', { name: 'Свои листы' })).getByRole(
+      'button',
+      { name: 'Разметка листа «IMG_1813»' }
+    );
+
+    /**
+     * Цель не меньше 32 px и подложка под значком: без неё белый значок
+     * теряется на светлом снимке.
+     */
+    expect(button.className).toMatch(/\bsize-8\b/);
+    expect(button.className).not.toMatch(/\bsize-6\b/);
+    expect(button.className).toMatch(/\bbg-surface\//);
+
+    await user.hover(button);
+
+    expect((await screen.findByRole('tooltip')).textContent).toBe(
+      'Разметка листа «IMG_1813»'
+    );
+
+    await user.click(button);
+
+    expect(useMarkupEditorStore.getState().record?.sheet.id).toBe('user-1813');
   });
 });

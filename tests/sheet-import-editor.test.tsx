@@ -102,7 +102,7 @@ type User = ReturnType<typeof userEvent.setup>;
  * @param label — подпись листа
  */
 const openSheetEditor = async (user: User, label: string) => {
-  await user.click(screen.getByRole('button', { name: `Настроить «${label}»` }));
+  await user.click(screen.getByRole('button', { name: `Разметка листа «${label}»` }));
 };
 
 /**
@@ -726,7 +726,7 @@ describe('удаление листа', () => {
     expect(await readUserSheets()).toHaveLength(0);
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(
-      screen.queryByRole('button', { name: `Настроить «${TABLE_SHEET_LABEL}»` })
+      screen.queryByRole('button', { name: `Разметка листа «${TABLE_SHEET_LABEL}»` })
     ).toBeNull();
   });
 

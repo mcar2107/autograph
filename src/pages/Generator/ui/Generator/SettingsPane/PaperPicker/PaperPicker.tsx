@@ -3,6 +3,7 @@ import { IconButton } from '@shared/ui/IconButton';
 import { Spinner } from '@shared/ui/Spinner';
 import type { TileRadioOption } from '@shared/ui/TileRadio';
 import { TileRadio } from '@shared/ui/TileRadio';
+import { Tooltip } from '@shared/ui/Tooltip';
 import type { ChangeEvent, FC } from 'react';
 import { useId, useRef } from 'react';
 import { useShallow } from 'zustand/react/shallow';
@@ -13,12 +14,20 @@ import { useGeneratorStore } from '../../../../model/useGeneratorStore';
 import type { UserSheetRecord } from '../../../../model/userSheetsStorage.types';
 import { openSheetEditor, useSheetImport } from '../useSheetImport';
 
+import { truncateMiddle } from './truncateMiddle';
+
 /**
  * Классы плитки — те же, что у плиток семей в `TileRadio`: свои листы и
  * добавление стоят с ними в одном ряду и не должны отличаться формой.
  */
 const TILE_CLASS_NAME =
   'flex w-16 cursor-pointer flex-col items-center gap-1 rounded-md border border-border bg-surface-raised p-1 text-xs text-fg-muted transition-colors hover:border-border-strong hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-50';
+
+/**
+ * Сколько символов подписи своего листа помещается под превью шириной в
+ * плитку: `IMG_1813` не помещается, а `IM…813` — да.
+ */
+const OWN_SHEET_LABEL_LENGTH = 6;
 
 /**
  * Превью листа в плитке. Подпись плитки рядом, поэтому картинка —
@@ -66,7 +75,7 @@ const listOwnSheets = (
 
 /**
  * Выбор бумаги: семьи плитками, в том же ряду — добавление своей фотографии
- * и свои листы семьи с кнопкой настройки.
+ * и свои листы семьи с кнопкой разметки.
  *
  * Выбор семьи снимает закрепление экземпляра — рецепт снова раздаёт листы по
  * страницам. Выбор своего листа закрепляет его: иначе добавленную фотографию
@@ -203,40 +212,62 @@ export const PaperPicker: FC = () => {
               selectSheet(id);
             };
 
-            const handleSettingsClick = () => {
+            const handleMarkupClick = () => {
               void openSheetEditor(record);
             };
 
             return (
               <li key={id} className="relative">
-                <button
-                  type="button"
-                  aria-pressed={isSelected}
-                  className={cx(
-                    TILE_CLASS_NAME,
-                    'aria-pressed:border-accent aria-pressed:text-fg'
-                  )}
-                  onClick={handleSheetClick}
-                >
-                  <span className="flex aspect-square w-full items-center justify-center overflow-hidden rounded-sm bg-canvas">
-                    {renderSheetPreview(sheet)}
-                  </span>
+                {/**
+                 * Подпись под превью обрезана, поэтому полное имя — в
+                 * доступном имени и в подсказке.
+                 */}
+                <Tooltip content={label}>
+                  <button
+                    type="button"
+                    aria-label={label}
+                    aria-pressed={isSelected}
+                    className={cx(
+                      TILE_CLASS_NAME,
+                      'aria-pressed:border-accent aria-pressed:text-fg'
+                    )}
+                    onClick={handleSheetClick}
+                  >
+                    <span className="flex aspect-square w-full items-center justify-center overflow-hidden rounded-sm bg-canvas">
+                      {renderSheetPreview(sheet)}
+                    </span>
 
-                  <span className="w-full truncate">{label}</span>
-                </button>
+                    <span className="w-full truncate">
+                      {truncateMiddle(label, OWN_SHEET_LABEL_LENGTH)}
+                    </span>
+                  </button>
+                </Tooltip>
 
                 {/**
-                 * Пока разбирается новая фотография, настройка недоступна: по
+                 * Пока разбирается новая фотография, разметка недоступна: по
                  * концу разбора редактор откроется на новом листе и сменил бы
-                 * открытый с правками.
+                 * открытый с правками. Подложка держит значок на светлом
+                 * снимке, размер — цель для пальца.
                  */}
                 <IconButton
-                  label={`Настроить «${label}»`}
+                  label={`Разметка листа «${label}»`}
                   isDisabled={sheetImport.isBusy}
-                  className="absolute top-0.5 right-0.5 size-6"
-                  onClick={handleSettingsClick}
+                  className="absolute top-0 right-0 border border-border-strong bg-surface/90 text-fg shadow-popover [&_svg]:size-5"
+                  onClick={handleMarkupClick}
                 >
-                  <span aria-hidden="true">⚙</span>
+                  <svg
+                    aria-hidden="true"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <circle cx="12" cy="12" r="3" />
+
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                  </svg>
                 </IconButton>
               </li>
             );

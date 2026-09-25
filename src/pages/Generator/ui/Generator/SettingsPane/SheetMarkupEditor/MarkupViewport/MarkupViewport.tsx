@@ -141,6 +141,20 @@ export const MarkupViewport: FC<MarkupViewportProps> = (props) => {
 
           <MarkupScaleContext value={scale}>{children}</MarkupScaleContext>
         </div>
+
+        {/*
+         * Плашка — вне сцены: отражённый снимок без неё легко принять за
+         * оригинал, а в сцене она отражалась бы и уезжала бы вместе с ним.
+         * Нажатия проходят сквозь неё — сдвигу окна она не мешает.
+         */}
+        {isMirrored ? (
+          <p
+            data-testid="markup-mirror-badge"
+            className="pointer-events-none absolute top-2 left-2 rounded-md border border-border-strong bg-surface/90 px-2 py-1 text-xs font-medium text-fg shadow-popover"
+          >
+            Зеркальная страница
+          </p>
+        ) : null}
       </div>
 
       <div className="flex items-center justify-between gap-4">

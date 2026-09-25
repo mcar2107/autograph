@@ -2,7 +2,6 @@ import type { SegmentedControlOption } from '@shared/ui/SegmentedControl';
 import { SegmentedControl } from '@shared/ui/SegmentedControl';
 import type { FC } from 'react';
 
-import { MirrorOverride } from './MirrorOverride';
 import type { MirrorTabProps } from './MirrorTab.types';
 
 const MIRROR_PAGE = '1';
@@ -13,14 +12,13 @@ const PAGE_OPTIONS: SegmentedControlOption[] = [
 ];
 
 /**
- * Вкладки «Страница / Зеркальная страница». Зеркальная — отражённая
- * фотография с отражённой разметкой, как она ляжет на правую страницу
- * разворота. Контур, линии, изгиб, верхнее и нижнее поля у страниц общие и
- * правятся на любой вкладке; линия поля и боковые поля зеркала по выбору
- * отражены или свои — они правятся здесь.
+ * Вкладки «Страница / Зеркальная страница» над окном просмотра. Зеркальная —
+ * отражённая фотография с отражённой разметкой, как она ляжет на правую
+ * страницу разворота. Вкладки стоят над снимком, а не в панели: они меняют
+ * то, что показано в окне, и внизу панели их не находили.
  */
 export const MirrorTab: FC<MirrorTabProps> = (props) => {
-  const { pageIndex, tool, handleLayer, onPageIndexChange } = props;
+  const { pageIndex, onPageIndexChange } = props;
   const isMirrorPage = pageIndex !== 0;
 
   const handlePageChange = (value: string) => {
@@ -28,17 +26,12 @@ export const MirrorTab: FC<MirrorTabProps> = (props) => {
   };
 
   return (
-    <section aria-label="Страница разворота" className="flex flex-col gap-2 text-sm">
-      <SegmentedControl
-        label="Страница разворота"
-        value={isMirrorPage ? MIRROR_PAGE : '0'}
-        options={PAGE_OPTIONS}
-        onChange={handlePageChange}
-      />
-
-      {isMirrorPage ? (
-        <MirrorOverride handleLayer={handleLayer} withHandles={tool === 'margins'} />
-      ) : null}
-    </section>
+    <SegmentedControl
+      label="Страница разворота"
+      value={isMirrorPage ? MIRROR_PAGE : '0'}
+      options={PAGE_OPTIONS}
+      className="self-start"
+      onChange={handlePageChange}
+    />
   );
 };

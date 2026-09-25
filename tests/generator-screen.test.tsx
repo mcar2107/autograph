@@ -379,7 +379,7 @@ describe('колонка оформления', () => {
 
     expect(screen.queryByRole('dialog')).toBeNull();
 
-    await user.click(await screen.findByRole('button', { name: /^Настроить «/ }));
+    await user.click(await screen.findByRole('button', { name: /^Разметка листа «/ }));
 
     expect(screen.getAllByRole('dialog').length).toBe(1);
   });

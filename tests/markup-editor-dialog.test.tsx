@@ -174,7 +174,7 @@ const measureOverlayMiss = (editor: HTMLElement, ruling: SheetRuling): number =>
  * @param label — подпись листа
  */
 const openFromTile = async (user: User, label: string) => {
-  await user.click(screen.getByRole('button', { name: `Настроить «${label}»` }));
+  await user.click(screen.getByRole('button', { name: `Разметка листа «${label}»` }));
 };
 
 beforeEach(() => {
@@ -334,7 +334,9 @@ describe('редактор с плитки листа', () => {
     seedEditedSheet();
     render(<EditorHarness />);
 
-    const settings = screen.getByRole('button', { name: `Настроить «${SEEDED_LABEL}»` });
+    const settings = screen.getByRole('button', {
+      name: `Разметка листа «${SEEDED_LABEL}»`,
+    });
 
     expect(settings).toHaveProperty('disabled', false);
 
@@ -347,7 +349,10 @@ describe('редактор с плитки листа', () => {
     await findEditor(UPLOADED_LABEL);
 
     expect(
-      screen.getByRole('button', { name: `Настроить «${SEEDED_LABEL}»`, hidden: true })
+      screen.getByRole('button', {
+        name: `Разметка листа «${SEEDED_LABEL}»`,
+        hidden: true,
+      })
     ).toHaveProperty('disabled', false);
   });
 

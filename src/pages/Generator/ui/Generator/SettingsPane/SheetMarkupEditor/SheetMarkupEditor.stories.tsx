@@ -298,6 +298,23 @@ export const MirrorPage: Story = {
         name: 'Фотография листа «Тетрадь в клетку», отражённая',
       })
     ).toBeVisible();
+
+    /**
+     * Вкладки страниц — над окном просмотра, плашка зеркала — в окне, поверх
+     * снимка.
+     */
+    const pages = body.getByRole('radiogroup', { name: 'Страница разворота' });
+    const viewport = body.getByTestId('markup-viewport');
+    const badge = body.getByTestId('markup-mirror-badge');
+    const viewportRect = viewport.getBoundingClientRect();
+    const badgeRect = badge.getBoundingClientRect();
+
+    await expect(pages.getBoundingClientRect().bottom).toBeLessThanOrEqual(
+      viewportRect.top
+    );
+    await expect(badge).toBeVisible();
+    await expect(badgeRect.top).toBeGreaterThanOrEqual(viewportRect.top);
+    await expect(badgeRect.left).toBeGreaterThanOrEqual(viewportRect.left);
   },
 };
 
