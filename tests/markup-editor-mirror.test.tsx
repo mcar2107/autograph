@@ -215,6 +215,37 @@ const dragHandle = (editor: HTMLElement, handle: HTMLElement, point: SheetPoint)
 };
 
 /**
+ * Ручка угла области текста.
+ *
+ * @param editor — диалог редактора
+ * @param name — видимый угол без хвоста: «Левый верхний»
+ * @returns ручка
+ */
+const getCorner = (editor: HTMLElement, name: string): HTMLElement => {
+  return within(editor).getByRole('button', { name: `${name} угол полей` });
+};
+
+/**
+ * Где стоит угол области текста.
+ *
+ * @param editor — диалог редактора
+ * @param name — видимый угол без хвоста: «Левый верхний»
+ * @returns точка угла, px листа
+ */
+const readCorner = (editor: HTMLElement, name: string): SheetPoint => {
+  return readHandlePoint(getCorner(editor, name));
+};
+
+/**
+ * Число шагов в истории черновика.
+ *
+ * @returns длина прошлого истории
+ */
+const readHistoryLength = (): number => {
+  return useMarkupEditorStore.getState().history.past.length;
+};
+
+/**
  * Края блока текста, px кадра страницы.
  */
 type BlockEdges = {
@@ -430,22 +461,95 @@ describe('вкладка зеркальной страницы: общая ра�
     ).toBeLessThan(Math.abs(sampleRulingBend(bend, edited, sheetX, grabbed)));
   });
 
-  it('на зеркале «Поля» правят общие верхнее и нижнее поля, боковых ручек нет', async () => {
+  it('на зеркале с отражёнными полями углы двигают только общие верхнее и нижнее поля', async () => {
     const user = userEvent.setup();
     const editor = await openMirror(user, buildRuling(120, 'left'), 'Поля');
 
-    expect(within(editor).queryByRole('button', { name: 'Левое поле' })).toBeNull();
-    expect(within(editor).queryByRole('button', { name: 'Линия поля' })).toBeNull();
+    expect(
+      within(editor).queryByRole('button', { name: 'Линия поля сверху' })
+    ).toBeNull();
+
+    const corner = readCorner(editor, 'Левый верхний');
+
+    /**
+     * Видимый левый угол зеркала — отражённое правое поле листа.
+     */
+    expect(WIDTH - corner.x).toBeCloseTo(PHOTO.margins.right, 6);
+
+    const historyBefore = readHistoryLength();
+
+    dragHandle(editor, getCorner(editor, 'Левый верхний'), { x: 150, y: 142 });
+
+    /**
+     * Верхнее поле встаёт на ближайшую линию — у листа и у зеркала оно одно, —
+     * а боковые поля не трогаются: у зеркала они отражены из листа.
+     */
+    const edited = readDraftRuling();
+
+    expect(readHistoryLength()).toBe(historyBefore + 1);
+    expect(edited.margins).toStrictEqual({ ...PHOTO.margins, top: 140 });
+    expect(edited.sideSlant).toBeNull();
+    expect(edited.mirrorOverride).toBeNull();
+    expect(readCorner(editor, 'Левый верхний')).toStrictEqual({ x: corner.x, y: 140 });
+
+    getCorner(editor, 'Левый верхний').focus();
+    await user.keyboard('{ArrowRight}');
+
+    expect(readHistoryLength()).toBe(historyBefore + 1);
 
     dragHandle(editor, within(editor).getByRole('button', { name: 'Верхнее поле' }), {
       x: 300,
-      y: 142,
+      y: 182,
     });
 
+    expect(readDraftRuling().margins.top).toBeCloseTo(180, 6);
+  });
+});
+
+describe('вкладка зеркальной страницы: углы области текста', () => {
+  it('угол зеркала по диагонали: по высоте — общее поле, вдоль строки — поле зеркала', async () => {
+    const user = userEvent.setup();
+    const editor = await openMirror(user, buildRuling(null, null), 'Поля');
+
+    await user.click(within(editor).getByRole('radio', { name: 'Задать отдельно' }));
+
+    const rightBottom = readCorner(editor, 'Правый нижний');
+    const rightTop = readCorner(editor, 'Правый верхний');
+    const historyBefore = readHistoryLength();
+
     /**
-     * Верхнее поле встаёт на ближайшую линию — у листа и у зеркала оно одно.
+     * Видимый левый верхний угол зеркала тянут вправо-вниз: к столбцу 100
+     * отражённого кадра и между второй и третьей линиями.
      */
-    expect(readDraftRuling().margins.top).toBeCloseTo(140, 6);
+    dragHandle(editor, getCorner(editor, 'Левый верхний'), { x: 100, y: 105 });
+
+    const edited = readDraftRuling();
+
+    expect(readHistoryLength()).toBe(historyBefore + 1);
+    expect(edited.margins).toStrictEqual({ ...PHOTO.margins, top: 100 });
+    expect(edited.sideSlant).toBeNull();
+    expect(edited.mirrorOverride?.marginLeft).toBeGreaterThan(100);
+    expect(readCorner(editor, 'Левый верхний')).toStrictEqual({ x: WIDTH - 100, y: 100 });
+    expect(readCorner(editor, 'Правый верхний')).toStrictEqual({ x: rightTop.x, y: 100 });
+    expect(readCorner(editor, 'Правый нижний')).toStrictEqual(rightBottom);
+
+    expect(
+      (
+        within(editor).getByRole('textbox', {
+          name: 'Левое поле зеркала сверху, px',
+        }) as HTMLInputElement
+      ).value
+    ).toBe('100');
+
+    getCorner(editor, 'Левый верхний').focus();
+    await user.keyboard('{ArrowRight}');
+
+    /**
+     * Стрелка вправо двигает видимый угол вправо — на пиксель отражённого
+     * кадра.
+     */
+    expect(WIDTH - readCorner(editor, 'Левый верхний').x).toBeCloseTo(101, 6);
+    expect(readDraftRuling().margins.top).toBe(100);
   });
 });
 
@@ -546,15 +650,13 @@ describe('вкладка зеркальной страницы: линия по�
     expect(stored?.sheet.ruling.mirrorOverride).toBeNull();
   });
 
-  it('боковое поле зеркала ставится двумя ручками вдоль наклонной стороны', async () => {
+  it('боковое поле зеркала ставится двумя углами вдоль наклонной стороны', async () => {
     const user = userEvent.setup();
     const editor = await openMirror(user, buildRuling(null, null), 'Поля');
 
     await user.click(within(editor).getByRole('radio', { name: 'Задать отдельно' }));
 
-    const bottom = within(editor).getByRole('button', {
-      name: 'Левое поле зеркала снизу',
-    });
+    const bottom = getCorner(editor, 'Левый нижний');
     const mirroredX = WIDTH - readHandlePoint(bottom).x;
 
     dragHandle(editor, bottom, { x: mirroredX - 40, y: readHandlePoint(bottom).y });
@@ -598,11 +700,10 @@ describe('вкладка зеркальной страницы: линия по�
 
     expect(readDraftRuling().mirrorOverride?.marginLeft).toBe(1);
 
-    dragHandle(
-      editor,
-      within(editor).getByRole('button', { name: 'Правое поле зеркала сверху' }),
-      { x: WIDTH + 50, y: 300 }
-    );
+    dragHandle(editor, getCorner(editor, 'Правый верхний'), {
+      x: WIDTH + 50,
+      y: readCorner(editor, 'Правый верхний').y,
+    });
 
     expect(readDraftRuling().mirrorOverride?.marginRight).toBe(1);
   });

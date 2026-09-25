@@ -16,6 +16,38 @@ export type GuideMarginSide = 'top' | 'bottom';
 export type SideHandleEnd = 'top' | 'bottom';
 
 /**
+ * Угол области текста — пересечение верхней или нижней направляющей с левым
+ * или правым полем.
+ */
+export type MarginCorner = 'topLeft' | 'topRight' | 'bottomRight' | 'bottomLeft';
+
+/**
+ * Боковое поле, которое угол области текста правит по горизонтали.
+ */
+export type MarginCornerEdge = 'left' | 'right';
+
+/**
+ * Из чего сложен угол области текста.
+ */
+export type MarginCornerParts = {
+  /**
+   * Направляющая, которую угол двигает по высоте.
+   */
+  side: GuideMarginSide;
+
+  /**
+   * Боковое поле, конец которого угол двигает вдоль строки.
+   */
+  edge: MarginCornerEdge;
+};
+
+/**
+ * Как сдвинули угол области текста: `drag` — перетаскивание идёт, `drop` —
+ * отпущен, `nudgeX` и `nudgeY` — стрелкой вдоль строк или поперёк.
+ */
+export type MarginCornerMove = 'drag' | 'drop' | 'nudgeX' | 'nudgeY';
+
+/**
  * Две ручки боковой границы блока в пикселях фотографии.
  */
 export type SideHandles = Record<SideHandleEnd, SheetPoint>;
@@ -26,22 +58,22 @@ export type SideHandles = Record<SideHandleEnd, SheetPoint>;
  */
 export type MarginHandles = {
   /**
-   * Ручка верхнего поля.
+   * Ручка верхнего поля — середина верхнего края области текста.
    */
   top: SheetPoint;
 
   /**
-   * Ручка нижнего поля.
+   * Ручка нижнего поля — середина нижнего края области текста.
    */
   bottom: SheetPoint;
 
   /**
-   * Ручки левого поля — на верхней и нижней направляющих.
+   * Углы области текста у левого поля — на верхней и нижней направляющих.
    */
   left: SideHandles;
 
   /**
-   * Ручки правого поля — на верхней и нижней направляющих.
+   * Углы области текста у правого поля — на верхней и нижней направляющих.
    */
   right: SideHandles;
 

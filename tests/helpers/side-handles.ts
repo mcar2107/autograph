@@ -40,3 +40,32 @@ export const dragSideEdge = (
     drag(handle, { x, y: readHandlePoint(handle).y });
   });
 };
+
+/**
+ * Углы области текста у бокового поля: верхний и нижний.
+ */
+export const MARGIN_CORNER_ROWS = ['верхний', 'нижний'] as const;
+
+/**
+ * Ставит боковое поле в столбец целиком: сначала верхний угол области текста,
+ * потом нижний — каждый в его строке, так что поля по высоте не сдвигаются.
+ *
+ * @param editor — диалог редактора
+ * @param side — какое поле: «Левый» или «Правый»
+ * @param x — столбец в пикселях слоя ручек
+ * @param drag — перетаскивание ручки в точку
+ */
+export const dragMarginSide = (
+  editor: HTMLElement,
+  side: 'Левый' | 'Правый',
+  x: number,
+  drag: (handle: HTMLElement, point: SheetPoint) => void
+): void => {
+  MARGIN_CORNER_ROWS.forEach((row) => {
+    const handle = within(editor).getByRole('button', {
+      name: `${side} ${row} угол полей`,
+    });
+
+    drag(handle, { x, y: readHandlePoint(handle).y });
+  });
+};

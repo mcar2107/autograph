@@ -9,6 +9,8 @@ import type {
 } from '../../../../../../lib/paper';
 import { mirrorSheetRuling, readMarginLineEnds } from '../../../../../../lib/paper';
 import {
+  placeCornerColumn,
+  placeCornerMargin,
   placeMarginLine,
   placeMarginLineEnds,
   placeSideEnd,
@@ -17,7 +19,11 @@ import {
   resolveAddedMarginLinePoint,
   snapMarginLineX,
 } from '../../MarginsTool/marginsGeometry';
-import type { SideHandleEnd } from '../../MarginsTool/marginsGeometry.types';
+import type {
+  MarginCorner,
+  MarginCornerMove,
+  SideHandleEnd,
+} from '../../MarginsTool/marginsGeometry.types';
 import { mirrorMarkupPoint } from '../../MarkupViewport';
 
 /**
@@ -76,6 +82,45 @@ export const placeMirrorSideEnd = (
   const page = mirrorSheetRuling(ruling, frame);
 
   return toMirrorOverride(placeSideEnd(page, frame, edge, end, point));
+};
+
+/**
+ * Разлиновка после сдвига угла области текста на зеркальной странице. По
+ * высоте угол двигает направляющую, общую у листа и зеркала, — точка угла
+ * для этого в пикселях листа, как у ручки середины края. По горизонтали — конец
+ * бокового поля зеркала, если поля зеркала заданы отдельно. Пока они отражены
+ * из листа, угол идёт только по высоте: боковые поля листа с вкладки зеркала
+ * не правятся, а завести отдельные поля зеркала от случайного дрожания
+ * указателя значило бы молча отвязать их от листа.
+ *
+ * @param ruling — разлиновка листа
+ * @param frame — кадр фотографии
+ * @param corner — видимый угол зеркальной страницы
+ * @param point — точка угла, px листа
+ * @param move — как сдвинули
+ * @returns разлиновка листа с полями зеркала
+ */
+export const placeMirrorCorner = (
+  ruling: SheetRuling,
+  frame: SheetFrame,
+  corner: MarginCorner,
+  point: SheetPoint,
+  move: MarginCornerMove
+): SheetRuling => {
+  const moved = placeCornerMargin(ruling, frame, corner, point, move);
+
+  if (!ruling.mirrorOverride || move === 'nudgeY') {
+    return moved;
+  }
+
+  const page = placeCornerColumn(
+    mirrorSheetRuling(moved, frame),
+    frame,
+    corner,
+    frame.width - point.x
+  );
+
+  return { ...moved, mirrorOverride: toMirrorOverride(page) };
 };
 
 /**

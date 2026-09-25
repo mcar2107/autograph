@@ -1,6 +1,11 @@
 import type { SheetPoint, SideEdge } from '../../../../../lib/paper';
 
-import type { GuideMarginSide, SideHandleEnd } from './marginsGeometry.types';
+import type {
+  GuideMarginSide,
+  MarginCorner,
+  MarginCornerMove,
+  SideHandleEnd,
+} from './marginsGeometry.types';
 
 /**
  * Правка полей и линии поля черновика.
@@ -19,10 +24,25 @@ export type MarginsEdit = {
   moveMargin: (side: GuideMarginSide, point: SheetPoint) => void;
 
   /**
-   * Отпускание верхней или нижней направляющей: она встаёт на линию — шаг
-   * истории.
+   * Отпускание верхней или нижней направляющей — шаг истории. С магнитом она
+   * встаёт на линию, без него — стоит, где отпущена.
    */
-  releaseMargin: (side: GuideMarginSide, point: SheetPoint) => void;
+  releaseMargin: (side: GuideMarginSide, point: SheetPoint, shouldSnap: boolean) => void;
+
+  /**
+   * Промежуточное положение угла области текста — без шага истории.
+   */
+  moveCorner: (corner: MarginCorner, point: SheetPoint) => void;
+
+  /**
+   * Завершённый сдвиг угла области текста: направляющая и конец бокового
+   * поля угла — одним шагом истории.
+   */
+  releaseCorner: (
+    corner: MarginCorner,
+    point: SheetPoint,
+    move: MarginCornerMove
+  ) => void;
 
   /**
    * Промежуточное положение ручки бокового поля или линии поля — без шага

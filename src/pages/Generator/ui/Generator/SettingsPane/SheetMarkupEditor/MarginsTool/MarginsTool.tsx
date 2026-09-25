@@ -3,16 +3,27 @@ import type { FC } from 'react';
 import { useMemo } from 'react';
 import { createPortal } from 'react-dom';
 
-import type { MarginLineSide, SheetPoint, SideEdge } from '../../../../../lib/paper';
+import type { MarginLineSide, SheetPoint } from '../../../../../lib/paper';
+import { mirrorSheetRuling } from '../../../../../lib/paper';
 import { useMarkupEditorStore } from '../../../../../model/useMarkupEditorStore';
 import type { MarkupMoveSource } from '../MarkupHandle';
 import { MarkupHandle } from '../MarkupHandle';
 import { toPointsAttribute } from '../MarkupOverlay/markupGeometry';
 import { MarkupStroke } from '../MarkupStroke';
+import { mirrorMarkupPoint } from '../MarkupViewport';
 import type { MarkupToolProps } from '../SheetMarkupEditor.types';
 
-import { resolveMarginHandles } from './marginsGeometry';
-import type { GuideMarginSide, SideHandleEnd } from './marginsGeometry.types';
+import {
+  MARGIN_CORNERS,
+  readMarginCorner,
+  resolveCornerMove,
+  resolveMarginHandles,
+} from './marginsGeometry';
+import type {
+  GuideMarginSide,
+  MarginCorner,
+  SideHandleEnd,
+} from './marginsGeometry.types';
 import { useMarginsEdit } from './useMarginsEdit';
 
 /**
@@ -26,17 +37,22 @@ const GUIDE_MARGIN_LABELS: Record<GuideMarginSide, string> = {
   bottom: 'Нижнее поле',
 };
 
-const SIDE_EDGES: SideEdge[] = ['left', 'right', 'marginLine'];
-
 const SIDE_HANDLE_ENDS: SideHandleEnd[] = ['top', 'bottom'];
 
+const MARGIN_LINE_LABELS: Record<SideHandleEnd, string> = {
+  top: 'Линия поля сверху',
+  bottom: 'Линия поля снизу',
+};
+
 /**
- * Имена ручек боковых границ: у каждой границы две ручки, верхняя и нижняя.
+ * Имена углов области текста. На зеркальной странице угол назван тем, каким
+ * его видно: углы там — углы её собственной области текста.
  */
-const SIDE_HANDLE_LABELS: Record<SideEdge, Record<SideHandleEnd, string>> = {
-  left: { top: 'Левое поле сверху', bottom: 'Левое поле снизу' },
-  right: { top: 'Правое поле сверху', bottom: 'Правое поле снизу' },
-  marginLine: { top: 'Линия поля сверху', bottom: 'Линия поля снизу' },
+const CORNER_LABELS: Record<MarginCorner, string> = {
+  topLeft: 'Левый верхний угол полей',
+  topRight: 'Правый верхний угол полей',
+  bottomRight: 'Правый нижний угол полей',
+  bottomLeft: 'Левый нижний угол полей',
 };
 
 const MARGIN_LINE_SIDE_LABELS: Record<MarginLineSide, string> = {
@@ -50,19 +66,26 @@ const MARGIN_LINE_SIDE_LABELS: Record<MarginLineSide, string> = {
 const GUIDE_WIDTH = 2;
 
 /**
- * Инструмент «Поля»: четыре поля и линия поля — направляющими. Верхняя и
- * нижняя при отпускании встают на ближайшую линию разлиновки. Боковые поля и
- * линия поля правятся двумя ручками — верхней и нижней, — и граница идёт
- * через обе: на листе, снятом на столе, поле ставится вдоль наклонной стороны
- * листа. Ручки боковых полей стоят, где отпущены. Линию поля можно убрать и
- * добавить: добавленная появляется у ближайшей стороны листа без наклона и
- * сразу идёт за указателем. Отпущенная ручка линии поля притягивается к черте
- * фотографии, а сторона листа выводится из положения линии относительно
- * середины листа.
+ * Инструмент «Поля»: область текста — четыре угла, как контур листа, и
+ * направляющие верхнего и нижнего полей вдоль линий. Угол тянут в обе
+ * стороны сразу: по высоте он ведёт свою направляющую, и при отпускании она
+ * встаёт на ближайшую линию разлиновки — соседний угол едет по высоте
+ * вместе с ним; вдоль строки — конец своего бокового поля, и поле идёт через
+ * оба своих угла: на листе, снятом на столе, оно ставится вдоль наклонной
+ * стороны листа. Ручка в середине верхнего и нижнего края двигает только
+ * поле по высоте: угол тянет за собой и боковое поле, а поправить одну
+ * строку начала текста, не задев полей по бокам, рукой иначе не выйдет.
  *
- * На зеркальной странице правятся только верхнее и нижнее поля — в
- * отражённом слое ручек, общие с листом. Боковые поля и линия поля у зеркала
- * свои: их задают в разделе зеркальной страницы.
+ * Линия поля правится двумя своими ручками — на трети и двух третях высоты
+ * листа. Её можно убрать и добавить: добавленная появляется у ближайшей
+ * стороны листа без наклона и сразу идёт за указателем. Отпущенная ручка
+ * линии поля притягивается к черте фотографии, а сторона листа выводится из
+ * положения линии относительно середины листа.
+ *
+ * На зеркальной странице углы — видимые углы её области текста, в
+ * отражённом слое ручек: по высоте они правят поля, общие с листом, вдоль
+ * строки — боковые поля зеркала, если те заданы отдельно. Линия поля
+ * зеркала правится в его разделе.
  */
 export const MarginsTool: FC<MarkupToolProps> = (props) => {
   const { handleLayer, pageIndex } = props;
@@ -82,11 +105,13 @@ export const MarginsTool: FC<MarkupToolProps> = (props) => {
     isFollowing,
     moveMargin,
     releaseMargin,
+    moveCorner,
+    releaseCorner,
     moveSideEnd,
     releaseSideEnd,
     removeMarginLine,
     addMarginLine,
-  } = useMarginsEdit(frame, pageIndex === 0 ? handleLayer : null);
+  } = useMarginsEdit(frame, isMirrorPage ? null : handleLayer, isMirrorPage);
 
   if (!draft) {
     return null;
@@ -115,8 +140,19 @@ export const MarginsTool: FC<MarkupToolProps> = (props) => {
       moveMargin(side, point);
     };
 
-    const handleMarginMoveEnd = (point: SheetPoint) => {
-      releaseMargin(side, point);
+    /**
+     * Ручка середины края ходит только по высоте: стрелка вдоль строк её не
+     * двигает, а стрелка поперёк сдвигает поле на пиксель мимо линий.
+     *
+     * @param point — точка отпускания, px фотографии
+     * @param source — чем сдвинули
+     */
+    const handleMarginMoveEnd = (point: SheetPoint, source: MarkupMoveSource) => {
+      if (source === 'keyboard' && point.y === y) {
+        return;
+      }
+
+      releaseMargin(side, point, source === 'pointer');
     };
 
     return (
@@ -133,65 +169,94 @@ export const MarginsTool: FC<MarkupToolProps> = (props) => {
   });
 
   /**
-   * Ручки боковых полей и линии поля правятся только на странице листа: у
-   * зеркала они свои и правятся в его разделе.
+   * Углы на зеркале — углы его области текста: её боковые поля свои, а слой
+   * ручек отражён, и точка угла переводится в пиксели листа.
    */
-  const sideEdges = isMirrorPage ? [] : SIDE_EDGES;
+  const cornerHandles = isMirrorPage
+    ? resolveMarginHandles(mirrorSheetRuling(ruling, frame), frame)
+    : handles;
 
-  const sideHandles = sideEdges.flatMap((edge) => {
-    const pair = edge === 'marginLine' ? handles.marginLine : handles[edge];
+  const corners = MARGIN_CORNERS.map((corner) => {
+    const { x, y } = mirrorMarkupPoint(
+      readMarginCorner(cornerHandles, corner),
+      isMirrorPage ? width : null
+    );
 
-    if (!pair) {
-      return [];
-    }
+    const handleCornerMove = (point: SheetPoint) => {
+      moveCorner(corner, point);
+    };
 
-    return SIDE_HANDLE_ENDS.map((end) => {
-      const { x, y } = pair[end];
+    const handleCornerMoveEnd = (point: SheetPoint, source: MarkupMoveSource) => {
+      releaseCorner(corner, point, resolveCornerMove(source, { x, y }, point));
+    };
 
-      const handleSideMove = (point: SheetPoint) => {
-        moveSideEnd(edge, end, point);
-      };
-
-      /**
-       * Стрелкой ручку линии поля сдвигают на пиксель мимо черты — магнит
-       * вернул бы её обратно.
-       *
-       * @param point — точка отпускания, px фотографии
-       * @param source — чем сдвинули
-       */
-      const handleSideMoveEnd = (point: SheetPoint, source: MarkupMoveSource) => {
-        releaseSideEnd(edge, end, point, source === 'pointer');
-      };
-
-      return (
-        <MarkupHandle
-          key={`${edge}-${end}`}
-          x={x}
-          y={y}
-          label={SIDE_HANDLE_LABELS[edge][end]}
-          className={
-            edge === 'marginLine'
-              ? 'stroke-danger in-data-pan-mode:pointer-events-none'
-              : 'in-data-pan-mode:pointer-events-none'
-          }
-          onMove={handleSideMove}
-          onMoveEnd={handleSideMoveEnd}
-        />
-      );
-    });
+    return (
+      <MarkupHandle
+        key={corner}
+        x={x}
+        y={y}
+        label={CORNER_LABELS[corner]}
+        className="in-data-pan-mode:pointer-events-none"
+        onMove={handleCornerMove}
+        onMoveEnd={handleCornerMoveEnd}
+      />
+    );
   });
+
+  /**
+   * Ручки линии поля правятся только на странице листа: у зеркала линия
+   * поля своя и правится в его разделе.
+   */
+  const { marginLine } = handles;
+  const marginLineHandles =
+    isMirrorPage || !marginLine
+      ? []
+      : SIDE_HANDLE_ENDS.map((end) => {
+          const { x, y } = marginLine[end];
+
+          const handleMarginLineMove = (point: SheetPoint) => {
+            moveSideEnd('marginLine', end, point);
+          };
+
+          /**
+           * Стрелкой ручку линии поля сдвигают на пиксель мимо черты — магнит
+           * вернул бы её обратно.
+           *
+           * @param point — точка отпускания, px фотографии
+           * @param source — чем сдвинули
+           */
+          const handleMarginLineMoveEnd = (
+            point: SheetPoint,
+            source: MarkupMoveSource
+          ) => {
+            releaseSideEnd('marginLine', end, point, source === 'pointer');
+          };
+
+          return (
+            <MarkupHandle
+              key={`marginLine-${end}`}
+              x={x}
+              y={y}
+              label={MARGIN_LINE_LABELS[end]}
+              className="stroke-danger in-data-pan-mode:pointer-events-none"
+              onMove={handleMarginLineMove}
+              onMoveEnd={handleMarginLineMoveEnd}
+            />
+          );
+        });
 
   return (
     <section aria-label="Поля листа" className="flex flex-col gap-2 text-sm">
       <p className="text-fg-muted">
-        Перетащите направляющие полей: верхняя и нижняя встанут на ближайшую линию. У
-        бокового поля и линии поля по две ручки — ведите их вдоль края листа. Текст не
-        заходит за поля и отступает от линии поля.
+        Тяните углы области текста: по высоте поле встанет на ближайшую линию, в сторону —
+        сдвинется край бокового поля. Ручка в середине края двигает только верхнее или
+        нижнее поле. Текст не заходит за поля и отступает от линии поля.
       </p>
 
       {isMirrorPage ? (
         <p className="text-fg-muted">
-          Боковые поля и линия поля зеркальной страницы задаются в её разделе ниже.
+          Боковые поля и линия поля зеркальной страницы задаются в её разделе ниже. Пока
+          они отражены, углы двигают только верхнее и нижнее поля.
         </p>
       ) : (
         <>
@@ -243,7 +308,9 @@ export const MarginsTool: FC<MarkupToolProps> = (props) => {
 
               {guideHandles}
 
-              {sideHandles}
+              {corners}
+
+              {marginLineHandles}
             </g>,
             handleLayer
           )

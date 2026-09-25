@@ -150,21 +150,21 @@ export const Margins: Story = {
 };
 
 /**
- * Сколько раз нижняя ручка левого поля сдвигается влево на десять пикселей:
+ * Сколько раз левый нижний угол полей сдвигается влево на десять пикселей:
  * поле заметно наклоняется, как вдоль стороны листа, снятого на столе.
  */
 const SLANT_STEPS = 8;
 
 /**
- * «Поля» с наклонным левым полем: нижняя ручка сдвинута влево, граница идёт
- * через обе ручки, а числа показывают оба конца.
+ * «Поля» с наклонным левым полем: левый нижний угол сдвинут влево, поле идёт
+ * через оба угла, а числа показывают оба конца.
  */
 export const SlantedMargin: Story = {
   play: async ({ canvasElement }) => {
     await openWithTool(canvasElement, 'Поля');
 
     const body = within(canvasElement.ownerDocument.body);
-    const bottom = await body.findByRole('button', { name: 'Левое поле снизу' });
+    const bottom = await body.findByRole('button', { name: 'Левый нижний угол полей' });
 
     bottom.focus();
 
@@ -174,7 +174,7 @@ export const SlantedMargin: Story = {
 
     await expect(useMarkupEditorStore.getState().draft?.ruling.sideSlant).not.toBeNull();
     await expect(
-      await body.findByRole('button', { name: 'Левое поле сверху' })
+      await body.findByRole('button', { name: 'Левый верхний угол полей' })
     ).toBeVisible();
 
     await userEvent.click(await body.findByRole('button', { name: 'Точные значения' }));

@@ -1,19 +1,31 @@
 import { useEffect, useRef, useState } from 'react';
 
-import type { SheetFrame, SheetPoint, SideEdge } from '../../../../../lib/paper';
+import type {
+  SheetFrame,
+  SheetPoint,
+  SheetRuling,
+  SideEdge,
+} from '../../../../../lib/paper';
 import { useMarkupEditorStore } from '../../../../../model/useMarkupEditorStore';
 import type { MarkupDraft } from '../../../../../model/useMarkupEditorStore.types';
 import { toPhotoPoint } from '../BendTool/bendGeometry';
+import { placeMirrorCorner } from '../MirrorTab/MirrorOverride/mirrorOverrideMarkup';
 
 import {
   placeMargin,
+  placeMarginCorner,
   placeMarginLine,
   placeSideEnd,
   removeMarginLine as removeRulingMarginLine,
   resolveAddedMarginLinePoint,
   snapMarginLineX,
 } from './marginsGeometry';
-import type { GuideMarginSide, SideHandleEnd } from './marginsGeometry.types';
+import type {
+  GuideMarginSide,
+  MarginCorner,
+  MarginCornerMove,
+  SideHandleEnd,
+} from './marginsGeometry.types';
 import type { MarginsEdit } from './useMarginsEdit.types';
 
 /**
@@ -89,8 +101,10 @@ const readVisibleCenterX = (svg: SVGSVGElement | null | undefined): number | nul
  * Правка полей и линии поля черновика. Перетаскивание показывает
  * направляющую, где указатель, без шага истории; отпускание ставит верхнюю и
  * нижнюю на линию разлиновки, а ручку линии поля — на черту фотографии, и
- * записывает шаг. Боковое поле и линия поля правятся двумя ручками: граница
- * проходит через обе.
+ * записывает шаг. Угол области текста двигает сразу направляющую и конец
+ * своего бокового поля — одним шагом истории. Линия поля правится двумя
+ * ручками: она проходит через обе. Стрелка — точная правка на пиксель, и
+ * магнит её не отменяет.
  *
  * Добавленная линия поля встаёт в восьмую ширины листа от стороны, ближайшей
  * к середине видимой части фотографии, и сразу тянется: идёт за указателем
@@ -99,14 +113,19 @@ const readVisibleCenterX = (svg: SVGSVGElement | null | undefined): number | nul
  * панели утащил бы её к краю листа. Любая другая правка черновика, отмена в
  * том числе, ведение прекращает.
  *
+ * На зеркальной странице углы — видимые углы её области текста: по высоте
+ * они правят общую направляющую, по горизонтали — поля зеркала.
+ *
  * @param frame — кадр фотографии
  * @param handleLayer — слой ручек оверлея; `null` — линию поля не ведут
  *   указателем, а только ставят
+ * @param isMirrorPage — правится ли зеркальная страница
  * @returns методы правки и идёт ли ведение добавленной линии
  */
 export const useMarginsEdit = (
   frame: SheetFrame,
-  handleLayer: SVGGElement | null
+  handleLayer: SVGGElement | null,
+  isMirrorPage: boolean
 ): MarginsEdit => {
   const [isFollowing, setIsFollowing] = useState(false);
 
@@ -211,16 +230,76 @@ export const useMarginsEdit = (
     preview({ ruling: { ...draft.ruling, margins } });
   };
 
-  const releaseMargin = (side: GuideMarginSide, point: SheetPoint) => {
+  const releaseMargin = (
+    side: GuideMarginSide,
+    point: SheetPoint,
+    shouldSnap: boolean
+  ) => {
     const { draft, commit } = useMarkupEditorStore.getState();
 
     if (!draft) {
       return;
     }
 
-    const margins = placeMargin(draft.ruling, frame, side, point, true);
+    const margins = placeMargin(draft.ruling, frame, side, point, shouldSnap);
 
     commit({ ruling: { ...draft.ruling, margins } });
+  };
+
+  /**
+   * Разлиновка после сдвига угла на странице, которая сейчас правится.
+   *
+   * @param ruling — разлиновка листа
+   * @param corner — угол
+   * @param point — точка угла, px листа
+   * @param move — как сдвинули
+   * @returns разлиновка
+   */
+  const placeCorner = (
+    ruling: SheetRuling,
+    corner: MarginCorner,
+    point: SheetPoint,
+    move: MarginCornerMove
+  ): SheetRuling => {
+    return isMirrorPage
+      ? placeMirrorCorner(ruling, frame, corner, point, move)
+      : placeMarginCorner(ruling, frame, corner, point, move);
+  };
+
+  const moveCorner = (corner: MarginCorner, point: SheetPoint) => {
+    const { draft, preview } = useMarkupEditorStore.getState();
+
+    if (!draft) {
+      return;
+    }
+
+    preview({ ruling: placeCorner(draft.ruling, corner, point, 'drag') });
+  };
+
+  /**
+   * Стрелка вдоль строк на зеркале с отражёнными полями угол не двигает —
+   * такой сдвиг шагом истории не становится.
+   *
+   * @param corner — угол
+   * @param point — точка угла, px листа
+   * @param move — как сдвинули
+   */
+  const releaseCorner = (
+    corner: MarginCorner,
+    point: SheetPoint,
+    move: MarginCornerMove
+  ) => {
+    const { draft, commit } = useMarkupEditorStore.getState();
+
+    if (!draft) {
+      return;
+    }
+
+    const ruling = placeCorner(draft.ruling, corner, point, move);
+
+    if (ruling !== draft.ruling) {
+      commit({ ruling });
+    }
   };
 
   const moveSideEnd = (edge: SideEdge, end: SideHandleEnd, point: SheetPoint) => {
@@ -294,6 +373,8 @@ export const useMarginsEdit = (
     isFollowing,
     moveMargin,
     releaseMargin,
+    moveCorner,
+    releaseCorner,
     moveSideEnd,
     releaseSideEnd,
     removeMarginLine,

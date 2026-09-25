@@ -73,9 +73,9 @@ const toMarginLineSide = (value: string): MarginLineSide | null => {
 /**
  * Линия поля и боковые поля зеркальной страницы: по умолчанию отражены из
  * листа, по выбору — свои. Свои правятся числами и, пока выбран инструмент
- * «Поля», ручками в окне — у каждой границы две, верхняя и нижняя, как у
- * листа; линия поля ставится с любой стороны или убирается только на
- * зеркале.
+ * «Поля», в окне: боковые поля — углами области текста зеркала (их ставит
+ * инструмент), линия поля — двумя своими ручками, как у листа; линия поля
+ * ставится с любой стороны или убирается только на зеркале.
  *
  * Ручки стоят в отражённом слое: их точки — в пикселях листа, а поля зеркала
  * — в пикселях отражённого кадра, и каждая переводится через `x → W − x`.
@@ -120,51 +120,48 @@ export const MirrorOverride: FC<MirrorOverrideProps> = (props) => {
     : null;
 
   /**
-   * Ручки стоят в отражённом слое: точка ручки зеркала переводится в пиксели
-   * листа, а точка перетаскивания — обратно в пиксели отражённого кадра.
+   * Ручки линии поля зеркала стоят в отражённом слое: точка ручки переводится
+   * в пиксели листа, а точка перетаскивания — обратно в пиксели отражённого
+   * кадра. Боковые поля зеркала в окне правят углы инструмента «Поля».
    */
-  const sideHandles = SIDE_EDGES.flatMap((edge) => {
-    const pair = edge === 'marginLine' ? handles?.marginLine : handles?.[edge];
+  const marginLine = handles?.marginLine;
+  const marginLineHandles = marginLine
+    ? SIDE_HANDLE_ENDS.map((end) => {
+        const { x, y } = mirrorMarkupPoint(marginLine[end], width);
 
-    if (!pair) {
-      return [];
-    }
+        const handleMarginLineMove = (point: SheetPoint) => {
+          moveSideEnd('marginLine', end, mirrorMarkupPoint(point, width));
+        };
 
-    return SIDE_HANDLE_ENDS.map((end) => {
-      const { x, y } = mirrorMarkupPoint(pair[end], width);
+        /**
+         * Стрелкой ручку линии поля сдвигают на пиксель мимо черты — магнит
+         * вернул бы её обратно.
+         *
+         * @param point — точка отпускания, px листа
+         * @param source — чем сдвинули
+         */
+        const handleMarginLineMoveEnd = (point: SheetPoint, source: MarkupMoveSource) => {
+          setSideEnd(
+            'marginLine',
+            end,
+            mirrorMarkupPoint(point, width),
+            source === 'pointer'
+          );
+        };
 
-      const handleSideMove = (point: SheetPoint) => {
-        moveSideEnd(edge, end, mirrorMarkupPoint(point, width));
-      };
-
-      /**
-       * Стрелкой ручку линии поля сдвигают на пиксель мимо черты — магнит
-       * вернул бы её обратно.
-       *
-       * @param point — точка отпускания, px листа
-       * @param source — чем сдвинули
-       */
-      const handleSideMoveEnd = (point: SheetPoint, source: MarkupMoveSource) => {
-        setSideEnd(edge, end, mirrorMarkupPoint(point, width), source === 'pointer');
-      };
-
-      return (
-        <MarkupHandle
-          key={`${edge}-${end}`}
-          x={x}
-          y={y}
-          label={HANDLE_LABELS[edge][end]}
-          className={
-            edge === 'marginLine'
-              ? 'stroke-danger in-data-pan-mode:pointer-events-none'
-              : 'in-data-pan-mode:pointer-events-none'
-          }
-          onMove={handleSideMove}
-          onMoveEnd={handleSideMoveEnd}
-        />
-      );
-    });
-  });
+        return (
+          <MarkupHandle
+            key={`marginLine-${end}`}
+            x={x}
+            y={y}
+            label={HANDLE_LABELS.marginLine[end]}
+            className="stroke-danger in-data-pan-mode:pointer-events-none"
+            onMove={handleMarginLineMove}
+            onMoveEnd={handleMarginLineMoveEnd}
+          />
+        );
+      })
+    : [];
 
   return (
     <div className="flex flex-col gap-2">
@@ -208,7 +205,7 @@ export const MirrorOverride: FC<MirrorOverrideProps> = (props) => {
       ) : null}
 
       {handleLayer && withHandles && handles
-        ? createPortal(<g data-tool="mirror-margins">{sideHandles}</g>, handleLayer)
+        ? createPortal(<g data-tool="mirror-margins">{marginLineHandles}</g>, handleLayer)
         : null}
     </div>
   );

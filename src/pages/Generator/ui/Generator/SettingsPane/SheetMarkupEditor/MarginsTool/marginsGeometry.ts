@@ -22,12 +22,16 @@ import {
   toSideEdgeEnds,
   writeSideEdge,
 } from '../../../../../lib/paper';
+import type { MarkupMoveSource } from '../MarkupHandle';
 import { buildMarginGuides, toOutlineBox } from '../MarkupOverlay/markupGeometry';
 import type { MarkupBox } from '../MarkupOverlay/markupGeometry.types';
 
 import type {
   GuideMarginSide,
   MarginCoordinates,
+  MarginCorner,
+  MarginCornerMove,
+  MarginCornerParts,
   MarginHandles,
   SideHandleEnd,
   SideHandles,
@@ -47,9 +51,9 @@ const MIN_MARGIN = 1;
 const ADDED_MARGIN_LINE_SHARE = 1 / 8;
 
 /**
- * На каких долях высоты листа стоят ручки линии поля. Ручки боковых полей
- * стоят на верхней и нижней направляющих, и у близких границ ручки не должны
- * лечь друг на друга.
+ * На каких долях высоты листа стоят ручки линии поля. Углы области текста
+ * стоят на верхней и нижней направляющих, и у линии поля, близкой к полю,
+ * ручки не должны лечь на углы.
  */
 const MARGIN_LINE_HANDLE_SHARES: Record<SideHandleEnd, number> = {
   top: 1 / 3,
@@ -159,9 +163,9 @@ const toMarginLineRow = (box: MarkupBox, end: SideHandleEnd): number => {
  * направляющие. Направляющие — те же границы полей, что пунктир оверлея
  * (`buildMarginGuides`): на наклонном листе и на листе с перспективой они идут
  * вдоль линий, а не по строке кадра. Ручки верхнего и нижнего полей — в
- * середине своей направляющей между боковыми полями, ручки боковых полей —
- * на пересечении с верхней и нижней направляющими: так боковое поле ставится
- * вдоль стороны листа по углам области письма.
+ * середине своей направляющей между боковыми полями, углы области текста —
+ * на пересечении боковых полей с верхней и нижней направляющими: так боковое
+ * поле ставится вдоль стороны листа по углам области письма.
  *
  * @param ruling — разлиновка листа
  * @param frame — кадр фотографии
@@ -279,6 +283,174 @@ export const placeMargin = (
       throw new Error(`Неизвестное поле: ${String(side)}`);
     }
   }
+};
+
+/**
+ * Углы области текста в порядке обхода — как у контура листа, чтобы Tab шёл
+ * по ним по кругу.
+ */
+export const MARGIN_CORNERS: MarginCorner[] = [
+  'topLeft',
+  'topRight',
+  'bottomRight',
+  'bottomLeft',
+];
+
+/**
+ * Из чего сложен угол области текста: направляющая, которую он двигает по
+ * высоте, и боковое поле, конец которого он двигает вдоль строки.
+ */
+const CORNER_PARTS: Record<MarginCorner, MarginCornerParts> = {
+  topLeft: { side: 'top', edge: 'left' },
+  topRight: { side: 'top', edge: 'right' },
+  bottomRight: { side: 'bottom', edge: 'right' },
+  bottomLeft: { side: 'bottom', edge: 'left' },
+};
+
+/**
+ * Где стоит угол области текста.
+ *
+ * @param handles — ручки полей
+ * @param corner — угол
+ * @returns точка угла, px фотографии
+ */
+export const readMarginCorner = (
+  handles: MarginHandles,
+  corner: MarginCorner
+): SheetPoint => {
+  const { side, edge } = CORNER_PARTS[corner];
+
+  return handles[edge][side];
+};
+
+/**
+ * Как сдвинули угол: перетаскивание отпущено — по обеим осям; стрелка — по
+ * той оси, по которой точка ушла от угла.
+ *
+ * @param source — чем сдвинули
+ * @param corner — где угол стоит, px фотографии
+ * @param point — куда его сдвинули, px фотографии
+ * @returns вид сдвига
+ */
+export const resolveCornerMove = (
+  source: MarkupMoveSource,
+  corner: SheetPoint,
+  point: SheetPoint
+): MarginCornerMove => {
+  switch (source) {
+    case 'pointer': {
+      return 'drop';
+    }
+
+    case 'keyboard': {
+      return point.y === corner.y ? 'nudgeX' : 'nudgeY';
+    }
+
+    default: {
+      throw new Error(`Неизвестный источник сдвига: ${String(source)}`);
+    }
+  }
+};
+
+/**
+ * Поля после сдвига угла по высоте: направляющая угла проходит через точку,
+ * а отпущенная — встаёт на ближайшую линию, как ручка середины края. Стрелка
+ * вдоль строк поле по высоте не трогает, стрелка поперёк — сдвигает его на
+ * пиксель мимо линий: это точная правка.
+ *
+ * @param ruling — разлиновка листа
+ * @param frame — кадр фотографии
+ * @param corner — угол
+ * @param point — точка угла, px фотографии
+ * @param move — как сдвинули
+ * @returns разлиновка; поле не двигали — та же
+ */
+export const placeCornerMargin = (
+  ruling: SheetRuling,
+  frame: SheetFrame,
+  corner: MarginCorner,
+  point: SheetPoint,
+  move: MarginCornerMove
+): SheetRuling => {
+  const { side } = CORNER_PARTS[corner];
+
+  switch (move) {
+    case 'nudgeX': {
+      return ruling;
+    }
+
+    case 'drag': {
+      return { ...ruling, margins: placeMargin(ruling, frame, side, point, false) };
+    }
+
+    case 'nudgeY': {
+      return { ...ruling, margins: placeMargin(ruling, frame, side, point, false) };
+    }
+
+    case 'drop': {
+      return { ...ruling, margins: placeMargin(ruling, frame, side, point, true) };
+    }
+
+    default: {
+      throw new Error(`Неизвестный сдвиг угла: ${String(move)}`);
+    }
+  }
+};
+
+/**
+ * Боковое поле после сдвига угла вдоль строки: конец поля у этого угла
+ * встаёт в столбец на направляющей угла, конец у другой направляющей стоит на
+ * месте.
+ *
+ * @param ruling — разлиновка листа
+ * @param frame — кадр фотографии
+ * @param corner — угол
+ * @param x — столбец угла, px фотографии
+ * @returns разлиновка
+ */
+export const placeCornerColumn = (
+  ruling: SheetRuling,
+  frame: SheetFrame,
+  corner: MarginCorner,
+  x: number
+): SheetRuling => {
+  const { side, edge } = CORNER_PARTS[corner];
+
+  return placeSideEnd(
+    ruling,
+    frame,
+    edge,
+    side,
+    toSideHandlePoint(ruling, frame, edge, side, x)
+  );
+};
+
+/**
+ * Разлиновка после сдвига угла области текста — как угол контура, в обе
+ * стороны сразу. По высоте угол двигает свою направляющую целиком: верх и
+ * низ блока лежат на линиях, и соседний угол едет по высоте вместе с ним. По
+ * горизонтали — только конец своего бокового поля: соседний угол стоит на
+ * другом поле. Порядок — сначала направляющая, потом столбец на ней: иначе
+ * конец поля встал бы в строке до прилипания к линии, и угол ушёл бы с
+ * указателя вдоль наклонного поля.
+ *
+ * @param ruling — разлиновка листа
+ * @param frame — кадр фотографии
+ * @param corner — угол
+ * @param point — точка угла, px фотографии
+ * @param move — как сдвинули
+ * @returns разлиновка
+ */
+export const placeMarginCorner = (
+  ruling: SheetRuling,
+  frame: SheetFrame,
+  corner: MarginCorner,
+  point: SheetPoint,
+  move: MarginCornerMove
+): SheetRuling => {
+  const moved = placeCornerMargin(ruling, frame, corner, point, move);
+
+  return move === 'nudgeY' ? moved : placeCornerColumn(moved, frame, corner, point.x);
 };
 
 /**

@@ -417,7 +417,7 @@ describe('точная правка: числа', () => {
 
     dragHandle(top, { x: Number(top.getAttribute('cx')), y: 147 });
 
-    const left = within(editor).getByRole('button', { name: 'Левое поле снизу' });
+    const left = within(editor).getByRole('button', { name: 'Левый нижний угол полей' });
 
     dragHandle(left, { x: 101.5, y: Number(left.getAttribute('cy')) });
 
@@ -427,14 +427,14 @@ describe('точная правка: числа', () => {
     expect(
       Number(
         within(editor)
-          .getByRole('button', { name: 'Левое поле снизу' })
+          .getByRole('button', { name: 'Левый нижний угол полей' })
           .getAttribute('cx')
       )
     ).toBe(101.5);
     expect(
       Number(
         within(editor)
-          .getByRole('button', { name: 'Левое поле сверху' })
+          .getByRole('button', { name: 'Левый верхний угол полей' })
           .getAttribute('cx')
       )
     ).toBe(RULING.margins.left);

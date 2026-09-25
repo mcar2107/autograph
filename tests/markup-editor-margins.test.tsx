@@ -29,7 +29,12 @@ import { IDBFactory } from 'fake-indexeddb';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createMonospaceMeasurerFactory } from './helpers/monospace-measurer';
-import { dragSideEdge, readHandlePoint, SIDE_HANDLE_ENDS } from './helpers/side-handles';
+import {
+  dragMarginSide,
+  dragSideEdge,
+  readHandlePoint,
+  SIDE_HANDLE_ENDS,
+} from './helpers/side-handles';
 import {
   computeSyntheticMarginLineX,
   createSyntheticSheet,
@@ -578,22 +583,28 @@ describe('инструмент «Поля»: линия поля', () => {
   });
 });
 
-describe('инструмент «Поля»: боковые поля двумя ручками', () => {
+describe('инструмент «Поля»: боковые поля двумя углами', () => {
   it('поле вдоль наклонной стороны листа — строки ниже начинаются левее и шире', async () => {
     const user = userEvent.setup();
     const editor = await openMarginsTool(user, buildRuling(null, null));
     const top = readHandlePoint(
-      within(editor).getByRole('button', { name: 'Левое поле сверху' })
+      within(editor).getByRole('button', { name: 'Левый верхний угол полей' })
     );
-    const bottom = within(editor).getByRole('button', { name: 'Левое поле снизу' });
+    const bottom = within(editor).getByRole('button', {
+      name: 'Левый нижний угол полей',
+    });
 
     dragHandle(bottom, { x: 40, y: readHandlePoint(bottom).y });
 
     expect(
-      readHandlePoint(within(editor).getByRole('button', { name: 'Левое поле сверху' }))
+      readHandlePoint(
+        within(editor).getByRole('button', { name: 'Левый верхний угол полей' })
+      )
     ).toStrictEqual(top);
     expect(
-      readHandlePoint(within(editor).getByRole('button', { name: 'Левое поле снизу' })).x
+      readHandlePoint(
+        within(editor).getByRole('button', { name: 'Левый нижний угол полей' })
+      ).x
     ).toBeCloseTo(40, 9);
     expect(readDraftRuling().sideSlant?.left).toBeLessThan(40);
 
@@ -620,6 +631,159 @@ describe('инструмент «Поля»: боковые поля двумя 
     expect(offsets.length).toBeGreaterThan(10);
     expect(offsets.at(-1)).toBeLessThan(-30);
     expect(widths.at(-1)).toBeGreaterThan((widths[0] || 0) + 30);
+  });
+});
+
+/**
+ * Ручка угла области текста.
+ *
+ * @param editor — диалог редактора
+ * @param name — подпись угла без хвоста: «Левый верхний»
+ * @returns ручка
+ */
+const getCorner = (editor: HTMLElement, name: string): HTMLElement => {
+  return within(editor).getByRole('button', { name: `${name} угол полей` });
+};
+
+/**
+ * Число шагов в истории черновика.
+ *
+ * @returns длина прошлого истории
+ */
+const readHistoryLength = (): number => {
+  return useMarkupEditorStore.getState().history.past.length;
+};
+
+describe('инструмент «Поля»: углы области текста', () => {
+  it('угол по диагонали двигает конец бокового поля и верхнее поле одним шагом истории', async () => {
+    const user = userEvent.setup();
+    const editor = await openMarginsTool(user, buildRuling(null, null));
+    const line = PHOTO.phase + 3 * PHOTO.step;
+    const leftBottom = readHandlePoint(getCorner(editor, 'Левый нижний'));
+    const rightTop = readHandlePoint(getCorner(editor, 'Правый верхний'));
+    const rightBottom = readHandlePoint(getCorner(editor, 'Правый нижний'));
+    const historyBefore = readHistoryLength();
+
+    dragHandle(getCorner(editor, 'Левый верхний'), {
+      x: 130,
+      y: line + 0.4 * PHOTO.step,
+    });
+
+    const edited = readDraftRuling();
+
+    expect(readHistoryLength()).toBe(historyBefore + 1);
+    expect(edited.margins.top).toBeCloseTo(line, 6);
+    expect(readHandlePoint(getCorner(editor, 'Левый верхний'))).toStrictEqual({
+      x: 130,
+      y: line,
+    });
+    expect(readHandlePoint(getCorner(editor, 'Левый нижний'))).toStrictEqual(leftBottom);
+    expect(edited.sideSlant?.left).toBeLessThan(130);
+
+    /**
+     * Соседний угол едет по высоте вместе с полем, а конец правого поля
+     * остаётся на месте.
+     */
+    expect(readHandlePoint(getCorner(editor, 'Правый верхний'))).toStrictEqual({
+      x: rightTop.x,
+      y: line,
+    });
+    expect(readHandlePoint(getCorner(editor, 'Правый нижний'))).toStrictEqual(
+      rightBottom
+    );
+    expect(edited.margins.right).toBe(PHOTO.margins.right);
+    expect(edited.sideSlant?.right).toBe(PHOTO.margins.right);
+
+    await user.click(within(editor).getByRole('button', { name: 'Точные значения' }));
+
+    const readField = (name: string): string => {
+      return (within(editor).getByRole('textbox', { name }) as HTMLInputElement).value;
+    };
+
+    expect(readField('Левое поле сверху, px')).toBe('130');
+    expect(readField('Верхнее поле, px')).toBe(String(line));
+
+    act(() => {
+      useMarkupEditorStore.getState().undo();
+    });
+
+    expect(readDraftRuling().margins).toStrictEqual(PHOTO.margins);
+    expect(readDraftRuling().sideSlant).toBeNull();
+  });
+
+  it('нижний угол двигает свой конец бокового поля и нижнее поле', async () => {
+    const user = userEvent.setup();
+    const editor = await openMarginsTool(user, buildRuling(null, null));
+    const line = PHOTO.phase + 15 * PHOTO.step;
+    const rightTop = readHandlePoint(getCorner(editor, 'Правый верхний'));
+
+    dragHandle(getCorner(editor, 'Правый нижний'), {
+      x: 520,
+      y: line - 0.3 * PHOTO.step,
+    });
+
+    const edited = readDraftRuling();
+
+    expect(PHOTO.height - edited.margins.bottom).toBeCloseTo(line, 6);
+    expect(edited.sideSlant?.right).toBeGreaterThan(PHOTO.width - 520);
+    expect(readHandlePoint(getCorner(editor, 'Правый нижний'))).toStrictEqual({
+      x: 520,
+      y: line,
+    });
+    expect(readHandlePoint(getCorner(editor, 'Правый верхний'))).toStrictEqual(rightTop);
+    expect(readHandlePoint(getCorner(editor, 'Левый нижний')).y).toBe(line);
+  });
+
+  it('стрелки: ←→ — конец бокового поля, ↑↓ — поле по высоте, на пиксель без магнита', async () => {
+    const user = userEvent.setup();
+    const editor = await openMarginsTool(user, buildRuling(null, null));
+    const leftTop = readHandlePoint(getCorner(editor, 'Левый верхний'));
+
+    getCorner(editor, 'Левый нижний').focus();
+    await user.keyboard('{ArrowRight}');
+
+    expect(readHandlePoint(getCorner(editor, 'Левый нижний')).x).toBeCloseTo(
+      PHOTO.margins.left + 1,
+      9
+    );
+    expect(readDraftRuling().margins.top).toBe(PHOTO.margins.top);
+    expect(readDraftRuling().margins.bottom).toBe(PHOTO.margins.bottom);
+    expect(readHandlePoint(getCorner(editor, 'Левый верхний'))).toStrictEqual(leftTop);
+
+    getCorner(editor, 'Левый нижний').focus();
+    await user.keyboard('{ArrowUp}');
+
+    expect(readDraftRuling().margins.bottom).toBeCloseTo(PHOTO.margins.bottom + 1, 9);
+    expect(readHandlePoint(getCorner(editor, 'Левый нижний')).x).toBeCloseTo(
+      PHOTO.margins.left + 1,
+      1
+    );
+    expect(readHandlePoint(getCorner(editor, 'Левый верхний'))).toStrictEqual(leftTop);
+
+    getCorner(editor, 'Правый верхний').focus();
+    await user.keyboard('{Shift>}{ArrowDown}{/Shift}');
+
+    expect(readDraftRuling().margins.top).toBeCloseTo(PHOTO.margins.top + 10, 9);
+    expect(readDraftRuling().margins.right).toBe(PHOTO.margins.right);
+  });
+
+  it('середина края двигает поле только по высоте, стрелкой — на пиксель', async () => {
+    const user = userEvent.setup();
+    const editor = await openMarginsTool(user, buildRuling(null, null));
+    const handle = within(editor).getByRole('button', { name: 'Верхнее поле' });
+
+    handle.focus();
+    await user.keyboard('{ArrowDown}');
+
+    expect(readDraftRuling().margins.top).toBeCloseTo(PHOTO.margins.top + 1, 9);
+
+    const historyBefore = readHistoryLength();
+
+    within(editor).getByRole('button', { name: 'Верхнее поле' }).focus();
+    await user.keyboard('{ArrowLeft}');
+
+    expect(readHistoryLength()).toBe(historyBefore);
+    expect(readDraftRuling().sideSlant).toBeNull();
   });
 });
 
@@ -674,8 +838,8 @@ describe('инструмент «Поля»: направляющие', () => {
     const user = userEvent.setup();
     const editor = await openMarginsTool(user, buildRuling(null, null));
 
-    dragSideEdge(editor, 'Левое поле', 133.3, dragHandle);
-    dragSideEdge(editor, 'Правое поле', 511.7, dragHandle);
+    dragMarginSide(editor, 'Левый', 133.3, dragHandle);
+    dragMarginSide(editor, 'Правый', 511.7, dragHandle);
 
     const { margins } = readDraftRuling();
 
@@ -791,7 +955,7 @@ describe('инструмент «Поля»: изгиб, перспектива 
       x: 300,
       y: PHOTO.phase + 3.4 * PHOTO.step,
     });
-    dragSideEdge(editor, 'Левое поле', 140, dragHandle);
+    dragMarginSide(editor, 'Левый', 140, dragHandle);
     await typeExactValue(user, editor, 'Правое поле сверху, px', '75');
     await typeExactValue(user, editor, 'Правое поле снизу, px', '75');
 
@@ -813,12 +977,14 @@ describe('инструмент «Поля»: изгиб, перспектива 
     };
 
     expect(edited.margins.top).not.toBe(ruling.margins.top);
-    expect(measureHandleOffset('Левое поле сверху', 140)).toBeLessThan(0.1);
-    expect(measureHandleOffset('Левое поле снизу', 140)).toBeLessThan(0.1);
-    expect(measureHandleOffset('Правое поле сверху', PHOTO.width - 75)).toBeLessThan(
-      1e-6
-    );
-    expect(measureHandleOffset('Правое поле снизу', PHOTO.width - 75)).toBeLessThan(1e-6);
+    expect(measureHandleOffset('Левый верхний угол полей', 140)).toBeLessThan(0.1);
+    expect(measureHandleOffset('Левый нижний угол полей', 140)).toBeLessThan(0.1);
+    expect(
+      measureHandleOffset('Правый верхний угол полей', PHOTO.width - 75)
+    ).toBeLessThan(1e-6);
+    expect(
+      measureHandleOffset('Правый нижний угол полей', PHOTO.width - 75)
+    ).toBeLessThan(1e-6);
     expect(edited.bend).toBe(bend);
     expect(edited.perspective).toBe(perspective);
     expect(edited.outline).toBe(outline);
