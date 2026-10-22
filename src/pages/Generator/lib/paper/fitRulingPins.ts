@@ -9,7 +9,7 @@ import type {
 } from './paper.types';
 import { resolveSheetBounds } from './resolveSheetBounds';
 import { lineCoordinateAt, lineHeightAt } from './rulingPerspective';
-import { resolveFirstLine } from './sheetRuling';
+import { resolveFirstLineIndex } from './sheetRuling';
 import { reanchorSideEdges } from './sideEdges';
 
 const DEGREES_IN_RADIAN = 180 / Math.PI;
@@ -698,7 +698,7 @@ export const deriveRulingPins = (ruling: SheetRuling, frame: SheetFrame): Ruling
   const inset = (blockRight - blockLeft) * PIN_INSET_SHARE;
   const left = blockLeft + inset;
   const right = blockRight - inset;
-  const firstIndex = Math.round((resolveFirstLine(ruling) - firstLinePhase) / step);
+  const firstIndex = resolveFirstLineIndex(ruling);
   const lastIndex = Math.max(
     Math.floor(
       (lineCoordinateAt(ruling, 0, frame.height - margins.bottom) - firstLinePhase) /

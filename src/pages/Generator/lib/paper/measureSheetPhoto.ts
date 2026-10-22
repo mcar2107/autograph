@@ -933,7 +933,10 @@ export const measureSheetPhoto = (
     measureRuling(image, crop, outline);
 
   return {
-    source: liftDetectedTopMargin({ ...source, outline }),
+    source: liftDetectedTopMargin(
+      { ...source, outline },
+      { width: image.width, height: image.height }
+    ),
     outline,
     lighting,
     textureMap,

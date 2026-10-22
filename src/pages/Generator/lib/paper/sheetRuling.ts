@@ -24,6 +24,13 @@ export const MARGIN_FALLBACK_STEPS = 1.5;
  */
 const LINE_SNAP_EPSILON = 1e-6;
 
+/**
+ * Наименьшее верхнее поле, px. Столько же принимает редактор разметки:
+ * поле у самого верха кадра, которое автомат отдал бы меньше, редактор
+ * отверг бы при наборе того же числа.
+ */
+const MIN_TOP_MARGIN = 1;
+
 const NO_MARGINS: PaperMargins = { top: 0, right: 0, bottom: 0, left: 0 };
 
 /**
@@ -71,28 +78,54 @@ export const resolveFirstLine = (ruling: SheetRuling): number => {
 };
 
 /**
+ * Номер линии первой строки в гребёнке разлиновки — от линии фазы. С него
+ * начинают инструменты редактора, которым нужна верхняя линия области: у
+ * линейки линии над первой строкой на листе может не быть.
+ *
+ * @param ruling — разлиновка листа, шаг больше нуля
+ * @returns номер линии; `firstLinePhase + номер · step` — её координата вдоль
+ *   линий
+ */
+export const resolveFirstLineIndex = (ruling: SheetRuling): number => {
+  const { step, firstLinePhase } = ruling;
+
+  return Math.round((resolveFirstLine(ruling) - firstLinePhase) / step);
+};
+
+/**
  * Верхнее поле, под которым первая строка встаёт на линию `firstLine`: поле
  * ложится на линию шагом выше. Так автомат и фолбэк отдают поле той же
  * границей области письма, какой его ставят руками в редакторе, — на линии
  * над первой строкой.
  *
- * Линия над первой может уйти за верх кадра, когда первая строка ближе шага к
- * нему, а поля за край кадра не заходят. Тогда поле встаёт посередине между
- * верхом кадра и первой линией: строго выше неё и ниже линии над ней.
+ * Линия над первой может лечь выше верха листа — на стол вокруг него или за
+ * верх кадра, — когда первая строка ближе шага к краю листа. Поле там встало
+ * бы вне бумаги, а поле меньше `MIN_TOP_MARGIN` редактор не принимает. Тогда
+ * поле встаёт посередине между верхом листа и первой линией: строго выше неё
+ * и ниже линии над ней.
  *
  * @param projection — наклон и перспектива разлиновки
  * @param step — шаг разлиновки больше нуля
  * @param firstLine — координата вдоль линий линии первой строки
+ * @param sheetTop — верх листа, px от верха кадра (`resolveSheetBounds`)
  * @returns верхнее поле, px от верха кадра у левого края
  */
 export const placeTopMarginAbove = (
   projection: RulingProjection,
   step: number,
-  firstLine: number
+  firstLine: number,
+  sheetTop: number
 ): number => {
   const above = lineHeightAt(projection, 0, firstLine - step);
+  const lowest = Math.max(MIN_TOP_MARGIN, sheetTop);
 
-  return above > 0 ? above : lineHeightAt(projection, 0, firstLine) / 2;
+  if (above >= lowest) {
+    return above;
+  }
+
+  const first = lineHeightAt(projection, 0, firstLine);
+
+  return (Math.min(lowest, first) + first) / 2;
 };
 
 /**
@@ -102,10 +135,14 @@ export const placeTopMarginAbove = (
  * кадр) отдаёт её на ту же линию, что и до перевода.
  *
  * @param source — разлиновка, как её нашёл детектор, в пикселях кадра
+ * @param frame — размер кадра фотографии
  * @returns разлиновка с верхним полем над первой строкой; ненайденное поле
  *   остаётся нулём
  */
-export const liftDetectedTopMargin = (source: SheetRulingSource): SheetRulingSource => {
+export const liftDetectedTopMargin = (
+  source: SheetRulingSource,
+  frame: SheetFrame
+): SheetRulingSource => {
   const { step, firstLinePhase, margins } = source;
 
   if (step <= 0 || !margins?.top) {
@@ -121,10 +158,18 @@ export const liftDetectedTopMargin = (source: SheetRulingSource): SheetRulingSou
     step,
     firstLinePhase
   );
+  const { top: sheetTop } = resolveSheetBounds(
+    source.outline || null,
+    frame.width,
+    frame.height
+  );
 
   return {
     ...source,
-    margins: { ...margins, top: placeTopMarginAbove(projection, step, firstLine) },
+    margins: {
+      ...margins,
+      top: placeTopMarginAbove(projection, step, firstLine, sheetTop),
+    },
   };
 };
 
@@ -202,7 +247,7 @@ export const buildSheetRuling = (
   return {
     ...ruling,
     margins: {
-      top: margins.top || placeTopMarginAbove(ruling, step, firstLine),
+      top: margins.top || placeTopMarginAbove(ruling, step, firstLine, bounds.top),
       right: margins.right || bounds.right + fallback,
       bottom: margins.bottom || bounds.bottom + fallback,
       left: margins.left || bounds.left + fallback,

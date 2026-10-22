@@ -611,6 +611,7 @@ describe('перемер контура чистого листа', () => {
       topLeft.y + fallback
     );
     expect(ruling?.margins.top).toBeGreaterThan(topLeft.y);
+    expect(ruling?.margins.top).toBeLessThan(topLeft.y + fallback);
     expect(ruling?.margins.left).toBeGreaterThanOrEqual(topLeft.x + fallback);
     expect(ruling?.margins.bottom).toBeGreaterThanOrEqual(
       FRAME.height - bottomRight.y + fallback

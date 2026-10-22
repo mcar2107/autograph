@@ -5,7 +5,9 @@ import { chromium } from 'playwright';
 import type { RulingKind } from '../src/pages/Generator/lib/paper';
 import {
   buildSheetRuling,
+  lineHeightAt,
   measureSheetPhoto,
+  resolveFirstLine,
   resolveSheetBounds,
 } from '../src/pages/Generator/lib/paper';
 
@@ -714,7 +716,14 @@ const main = async (): Promise<void> => {
       size: width + 2 * shift,
       step,
     };
-    const ruledTop = Math.max(cropTop, Math.round(margins.top));
+    /**
+     * Верх области с линиями — линия первой строки, а не верхнее поле: поле
+     * лежит на линии над ней, а у линейки этой линии на листе может не быть.
+     */
+    const ruledTop = Math.max(
+      cropTop,
+      Math.round(lineHeightAt(ruling, 0, resolveFirstLine(ruling)))
+    );
     const ruledBottom = Math.min(cropBottom, Math.round(height - margins.bottom));
     const bandStride =
       (ruledBottom - ruledTop - BAND_HEIGHT) / Math.max(1, BAND_COUNT - 1);

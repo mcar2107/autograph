@@ -26,7 +26,6 @@ import type * as PerspectiveModule from '@pages/Generator/lib/paper/detectRuling
 import { detectRulingPerspective } from '@pages/Generator/lib/paper/detectRulingPerspective';
 import type * as RectifyModule from '@pages/Generator/lib/paper/measureSheetPhotoRectify';
 import { rectifySheetImage } from '@pages/Generator/lib/paper/measureSheetPhotoRectify';
-import { liftDetectedTopMargin } from '@pages/Generator/lib/paper/sheetRuling';
 import { describe, expect, it, vi } from 'vitest';
 
 import { readFirstTextLineY } from './helpers/first-text-line';
@@ -499,6 +498,9 @@ describe('measureSheetPhoto: лист на столе', () => {
       expect(expected[side]).toBeGreaterThan(0);
       expect(Math.abs(margins[side] - expected[side])).toBeLessThanOrEqual(1);
     });
+    expect(
+      Math.abs((result.source.margins?.top || 0) - (expected.top - result.source.step))
+    ).toBeLessThanOrEqual(1);
   });
 
   it('первая строка стоит на первой линии: без поправки фазы на отступ вырезки была бы ниже', () => {
@@ -589,19 +591,18 @@ describe('measureSheetPhoto: лист без поверхности', () => {
     const lighting = extractLighting(image);
 
     expect(result.outline).toBeNull();
-    expect(result.source).toEqual(
-      liftDetectedTopMargin({
-        step: detection.step,
-        firstLinePhase: detection.firstLinePhase,
-        skewAngle: detection.skewAngle,
-        margins: detection.margins,
-        marginLineX: detection.marginLineX,
-        marginLineSide: detection.marginLineSide,
-        bend: detection.bend,
-        perspective: null,
-        outline: null,
-      })
-    );
+    expect(detection.margins.top).toBeGreaterThan(detection.step);
+    expect(result.source).toEqual({
+      step: detection.step,
+      firstLinePhase: detection.firstLinePhase,
+      skewAngle: detection.skewAngle,
+      margins: { ...detection.margins, top: detection.margins.top - detection.step },
+      marginLineX: detection.marginLineX,
+      marginLineSide: detection.marginLineSide,
+      bend: detection.bend,
+      perspective: null,
+      outline: null,
+    });
     expect(result.lighting).toEqual(lighting);
     expect(result.textureMap).toEqual(extractTexture(image, lighting));
   });

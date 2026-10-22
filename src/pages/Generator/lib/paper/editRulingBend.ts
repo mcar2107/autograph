@@ -13,7 +13,7 @@ import type {
 import type { RulingBend, SheetFrame, SheetPoint, SheetRuling } from './paper.types';
 import { lineCoordinateAt, lineHeightAt } from './rulingPerspective';
 import { sampleRulingBend } from './sampleRulingBend';
-import { resolveFirstLine } from './sheetRuling';
+import { resolveFirstLineIndex } from './sheetRuling';
 
 /**
  * Радиус по умолчанию поперёк линий — три шага: прогиб бумаги захватывает
@@ -140,7 +140,7 @@ const createBendGrid = (ruling: SheetRuling, frame: SheetFrame): RulingBend | nu
     Math.max(MIN_BEND_STRIPS, Math.round(cropWidth / (BEND_STRIP_STEPS * step)))
   );
   const columnSpacing = cropWidth / columnCount;
-  const firstLine = Math.round((resolveFirstLine(ruling) - firstLinePhase) / step);
+  const firstLine = resolveFirstLineIndex(ruling);
   const lastLine = Math.max(
     firstLine,
     Math.floor(
