@@ -12,6 +12,12 @@ export const buttonVariants = cva(
         primary: 'bg-accent text-accent-fg hover:bg-accent-hover',
         secondary: 'bg-surface-raised text-fg hover:bg-border',
         ghost: 'bg-transparent text-fg-muted hover:bg-border',
+        /**
+         * Под курсором надпись светлеет: красная на подсвеченном красным фоне
+         * поверхности диалога держала бы меньше 4,5:1.
+         */
+        danger:
+          'bg-transparent text-danger inset-ring inset-ring-danger hover:bg-danger/15 hover:text-fg',
       },
     },
     defaultVariants: {

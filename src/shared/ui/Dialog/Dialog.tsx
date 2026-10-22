@@ -16,6 +16,13 @@ export const Dialog: FC<DialogProps> = (props) => {
   const { isOpen, title, description, trigger, children, onOpenChange, className } =
     props;
 
+  /**
+   * С подзаголовком описание диалога связывает сам Radix, и любое значение
+   * `aria-describedby`, даже `undefined`, перебило бы его. Без подзаголовка
+   * пустая строка говорит Radix, что описания нет намеренно.
+   */
+  const describedByProps = description ? {} : { 'aria-describedby': '' };
+
   const handleDialogOpenChange = (isNextOpen: boolean) => {
     onOpenChange(isNextOpen);
   };
@@ -32,7 +39,7 @@ export const Dialog: FC<DialogProps> = (props) => {
         <RadixDialog.Overlay className="fixed inset-0 z-40 bg-surface/80" />
 
         <RadixDialog.Content
-          aria-describedby={description ? undefined : ''}
+          {...describedByProps}
           className={cx(
             'fixed top-1/2 left-1/2 z-50 flex max-h-[85dvh] w-[32rem] max-w-[90vw] -translate-1/2 flex-col gap-4 overflow-y-auto rounded-lg bg-surface-raised p-6 text-fg shadow-popover focus:outline-none',
             className

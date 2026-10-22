@@ -1,5 +1,6 @@
 import type {
   RulingBend,
+  RulingMirrorOverride,
   RulingPerspective,
   RulingProjection,
   SheetOutline,
@@ -40,9 +41,11 @@ const RULING: SheetRuling = {
   margins: { top: 180, right: 240, bottom: 150, left: 90 },
   marginLineX: 1360,
   marginLineSide: 'right',
+  sideSlant: null,
   bend: null,
   perspective: null,
   outline: null,
+  mirrorOverride: null,
 };
 
 /**
@@ -165,6 +168,58 @@ describe('mirrorSheetRuling', () => {
   });
 });
 
+describe('поля зеркала, заданные отдельно', () => {
+  const MIRROR_OVERRIDE: RulingMirrorOverride = {
+    marginLineX: 330,
+    marginLineSide: 'left',
+    marginLeft: 360,
+    marginRight: 70,
+    sideSlant: null,
+  };
+  const OVERRIDDEN: SheetRuling = { ...RULING, mirrorOverride: MIRROR_OVERRIDE };
+
+  it('заменяют отражённые линию поля и боковые поля', () => {
+    const mirrored = mirrorSheetRuling(OVERRIDDEN, FRAME);
+
+    expect(mirrored.marginLineX).toBe(330);
+    expect(mirrored.marginLineSide).toBe('left');
+    expect(mirrored.margins.left).toBe(360);
+    expect(mirrored.margins.right).toBe(70);
+  });
+
+  it('не трогают остальную отражённую разметку', () => {
+    const mirrored = mirrorSheetRuling(OVERRIDDEN, FRAME);
+    const reflected = mirrorSheetRuling(RULING, FRAME);
+
+    expect({
+      ...mirrored,
+      margins: { ...mirrored.margins, left: 0, right: 0 },
+      marginLineX: null,
+      marginLineSide: null,
+    }).toStrictEqual({
+      ...reflected,
+      margins: { ...reflected.margins, left: 0, right: 0 },
+      marginLineX: null,
+      marginLineSide: null,
+    });
+  });
+
+  it('у отражённой разлиновки своего зеркала нет', () => {
+    expect(mirrorSheetRuling(OVERRIDDEN, FRAME).mirrorOverride).toBeNull();
+    expect(mirrorSheetRuling(RULING, FRAME).mirrorOverride).toBeNull();
+  });
+
+  it('линия поля без стороны у зеркала считается отсутствующей', () => {
+    const mirrored = mirrorSheetRuling(
+      { ...RULING, mirrorOverride: { ...MIRROR_OVERRIDE, marginLineSide: null } },
+      FRAME
+    );
+
+    expect(mirrored.marginLineX).toBeNull();
+    expect(mirrored.marginLineSide).toBeNull();
+  });
+});
+
 /**
  * Лист, снятый на столе с руки: наклон градус, шаг по кадру дрейфует на шесть
  * процентов, контур несимметричен — стол виден с одной стороны шире.
@@ -274,9 +329,11 @@ const PERSPECTIVE_RULING: SheetRuling = {
   margins: { top: PERSPECTIVE_MARGIN_TOP, right: 240, bottom: 150, left: 90 },
   marginLineX: 1360,
   marginLineSide: 'right',
+  sideSlant: null,
   bend: PERSPECTIVE_BEND,
   perspective: PERSPECTIVE,
   outline: OUTLINE,
+  mirrorOverride: null,
 };
 
 /**

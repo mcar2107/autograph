@@ -1,14 +1,19 @@
 import type { FontMetrics } from '../measure/measure.types';
 import { FALLBACK_FONT_METRICS } from '../measure/measureFontMetrics';
-import type { RulingKind } from '../paper/paper.types';
+import type { MarginLineSide, RulingKind } from '../paper/paper.types';
 import { lineCoordinateAt } from '../paper/rulingPerspective';
 import { resolveFirstLine } from '../paper/sheetRuling';
+import { readSideEdge, resolveSideEdgeAt } from '../paper/sideEdges';
+import type { SideEdge } from '../paper/sideEdges.types';
 
 import type {
   BlockGeometry,
   GeometryBasis,
   GeometryCorrection,
+  LineEdges,
+  SheetBounds,
   SheetCalibration,
+  TextEdges,
 } from './calibrate.types';
 
 /**
@@ -56,12 +61,18 @@ const FALLBACK_RULING_STEP = 40;
 const MIN_FONT_SIZE_PX = 1;
 
 /**
+ * Больше строк края не считаются: столько на листе не встаёт, а шаг строк в
+ * доли пикселя — это ошибка разметки, и массив краёв только занял бы память.
+ */
+const MAX_LINE_BOUNDS = 2000;
+
+/**
  * Сколько шагов разлиновки приходится на одну строку текста.
  *
  * У чистого листа линий нет: шаг задаёт пользователь, и строка занимает
  * ровно его — удваивать нечего.
  *
- * @param kind — вид разлиновки семьи
+ * @param kind — вид разлиновки листа
  * @returns множитель шага
  */
 const getRowSteps = (kind: RulingKind): number => {
@@ -105,15 +116,39 @@ const resolveStep = (step: number): number => {
  * @param step — шаг разлиновки больше нуля
  * @returns края блока в пикселях кадра
  */
-const resolveBlockBounds = (
-  sheet: SheetCalibration,
-  step: number
-): Pick<GeometryBasis, 'left' | 'right'> => {
+const resolveBlockBounds = (sheet: SheetBounds, step: number): TextEdges => {
   const { ruling, width } = sheet;
   const { margins, marginLineX, marginLineSide } = ruling;
+
+  return narrowByMarginLine(
+    margins.left,
+    width - margins.right,
+    marginLineX,
+    marginLineSide,
+    step
+  );
+};
+
+/**
+ * Края блока, сужённые линией поля с её стороны: текст отступает от неё на
+ * зазор, а поля листа остаются границей — линия, лежащая внутри поля, не
+ * выводит блок за поле.
+ *
+ * @param left — левое поле, px
+ * @param right — правое поле, px от левого края кадра
+ * @param marginLineX — линия поля, px; `null` — линии нет
+ * @param marginLineSide — сторона линии поля
+ * @param step — шаг разлиновки больше нуля
+ * @returns края блока
+ */
+const narrowByMarginLine = (
+  left: number,
+  right: number,
+  marginLineX: number | null,
+  marginLineSide: MarginLineSide | null,
+  step: number
+): TextEdges => {
   const gap = step * MARGIN_LINE_GAP_SHARE;
-  const left = margins.left;
-  const right = width - margins.right;
 
   if (marginLineX === null) {
     return { left, right };
@@ -202,8 +237,7 @@ export const deriveGeometry = (
 ): BlockGeometry => {
   const { ruling, kind } = sheet;
   const step = resolveStep(ruling.step);
-
-  return buildGeometry(
+  const geometry = buildGeometry(
     {
       kind,
       step,
@@ -212,6 +246,144 @@ export const deriveGeometry = (
     },
     metrics,
     correction
+  );
+
+  if (!ruling.sideSlant) {
+    return geometry;
+  }
+
+  const { lefts, widths } = buildLineEdges(sheet, step, geometry, metrics, correction);
+  const firstLeft = lefts[0] || 0;
+
+  return {
+    ...geometry,
+    leftPadding: firstLeft + (correction.leftPadding || 0) * step,
+    blockWidth: widths[0] || 0,
+    lineBounds: {
+      offsets: lefts.map((left) => {
+        return left - firstLeft;
+      }),
+      widths,
+    },
+  };
+};
+
+/**
+ * Граница блока на линии с координатой `u` вдоль линий.
+ *
+ * @param sheet — лист страницы
+ * @param edge — какая граница
+ * @param u — координата вдоль линий
+ * @returns положение вдоль строки в системе блока; `null` — линии поля нет
+ */
+const resolveEdgeAt = (sheet: SheetBounds, edge: SideEdge, u: number): number | null => {
+  const { ruling, height } = sheet;
+  const ends = readSideEdge(ruling, sheet, edge);
+
+  return ends && resolveSideEdgeAt(ruling, ends, height, u);
+};
+
+/**
+ * Края строки на линии `u` листа, где поле или линия поля идут наклонно к
+ * строкам: пересечения границ с этой линией, сужённые линией поля.
+ *
+ * @param sheet — лист страницы
+ * @param step — шаг разлиновки больше нуля
+ * @param u — координата вдоль линий
+ * @returns края строки в системе блока
+ */
+const resolveSlantedEdges = (sheet: SheetBounds, step: number, u: number): TextEdges => {
+  return narrowByMarginLine(
+    resolveEdgeAt(sheet, 'left', u) || 0,
+    resolveEdgeAt(sheet, 'right', u) || 0,
+    resolveEdgeAt(sheet, 'marginLine', u),
+    sheet.ruling.marginLineSide,
+    step
+  );
+};
+
+/**
+ * Где начинается и кончается строка, базовая линия которой лежит на линии с
+ * координатой `u` вдоль линий, — те же края, что берёт раскладка
+ * (`deriveGeometry`), без пользовательской поправки. Нужны тем, кто
+ * показывает область письма, не раскладывая текст: поля листа, сужённые
+ * линией поля с зазором; у полей без наклона к строкам края одни на весь
+ * лист.
+ *
+ * @param sheet — разлиновка и кадр листа страницы
+ * @param u — координата вдоль линий
+ * @returns края строки в системе блока, px
+ */
+export const resolveTextEdgesAt = (sheet: SheetBounds, u: number): TextEdges => {
+  const step = resolveStep(sheet.ruling.step);
+
+  if (!sheet.ruling.sideSlant) {
+    return resolveBlockBounds(sheet, step);
+  }
+
+  return resolveSlantedEdges(sheet, step, u);
+};
+
+/**
+ * Края каждой строки на листе, где поле или линия поля идут наклонно к
+ * строкам: строка начинается и кончается там, где её базовая линия
+ * пересекает границы, — так текст стоит на одном расстоянии от края листа по
+ * всей высоте, а не оставляет у дальнего края пустой клин.
+ *
+ * Базовые линии — по той же модели строчного бокса, что у отрисовки и
+ * вместимости страницы, в координате вдоль линий; края — пересечение границы
+ * с линией разлиновки этой высоты, с перспективой. Строки считаются до низа
+ * кадра: ниже ни одна строка страницы не встанет.
+ *
+ * Ширины уже с поправкой ширины блока, как у блока без наклона.
+ *
+ * @param sheet — лист страницы
+ * @param step — шаг разлиновки больше нуля
+ * @param geometry — геометрия блока без наклона полей
+ * @param metrics — метрики шрифта в долях кегля
+ * @param correction — дельты поверх вычисленного в долях шага
+ * @returns левые края строк без поправки и их ширины
+ */
+const buildLineEdges = (
+  sheet: SheetCalibration,
+  step: number,
+  geometry: BlockGeometry,
+  metrics: FontMetrics,
+  correction: GeometryCorrection
+): LineEdges => {
+  const { ruling, width, height } = sheet;
+  const { fontSizePx, lineSpacing, topOffset } = geometry;
+  const lineHeight = metrics.lineHeight || FALLBACK_FONT_METRICS.lineHeight;
+  const fontAscent = metrics.fontAscent || FALLBACK_FONT_METRICS.fontAscent;
+  const lineStep = fontSizePx * lineHeight + lineSpacing;
+  const firstBaseline = topOffset + fontAscent * fontSizePx;
+  const lastBaseline = Math.max(
+    lineCoordinateAt(ruling, 0, height),
+    lineCoordinateAt(ruling, width, height)
+  );
+  const lineCount =
+    lineStep > 0
+      ? Math.min(
+          MAX_LINE_BOUNDS,
+          Math.max(1, Math.floor((lastBaseline - firstBaseline) / lineStep) + 1)
+        )
+      : 1;
+  const widthCorrection = (correction.blockWidth || 0) * step;
+
+  return Array.from({ length: lineCount }).reduce<LineEdges>(
+    (edges, _value, index) => {
+      const { left, right } = resolveSlantedEdges(
+        sheet,
+        step,
+        firstBaseline + index * lineStep
+      );
+
+      edges.lefts.push(left);
+      edges.widths.push(Math.max(0, right - left + widthCorrection));
+
+      return edges;
+    },
+    { lefts: [], widths: [] }
   );
 };
 

@@ -1,3 +1,4 @@
+import type { LineBounds } from '../calibrate/calibrate.types';
 import { deformGlyphPath } from '../glyph/deformGlyphPath';
 import type { GlyphPathCommand, GlyphPoint } from '../glyph/glyph.types';
 import { FALLBACK_FONT_METRICS } from '../measure/measureFontMetrics';
@@ -7,6 +8,7 @@ import { sampleRulingBend, sampleRulingBendSlope } from '../paper/sampleRulingBe
 import type { LetterDistortion } from '../randomize/randomize.types';
 
 import type {
+  LineSpan,
   PageGlyphs,
   PageRenderParams,
   RenderContext,
@@ -772,7 +774,7 @@ const drawWord = (
 
 /**
  * Рисует строку: базовая линия уже посчитана, слова кладутся слева направо
- * через пробел.
+ * через пробел от начала строки.
  *
  * Поворот и сдвиг строки применяются вокруг середины блока: строка занимает
  * всю его ширину, и от точки поворота зависит, качается она или разъезжается
@@ -781,6 +783,7 @@ const drawWord = (
 const drawLine = (
   ctx: RenderContext,
   line: RenderLine,
+  startX: number,
   baselineY: number,
   spaceWidth: number,
   glyphs: PageGlyphs | null,
@@ -799,7 +802,7 @@ const drawLine = (
   const originX = blockWidth / 2;
 
   ctx.save();
-  ctx.translate(0, baselineY);
+  ctx.translate(startX, baselineY);
   ctx.translate(originX, 0);
 
   if (rotate !== 0) {
@@ -835,6 +838,33 @@ const drawLine = (
 };
 
 /**
+ * Начало и ширина строки блока. Без краёв строк у всех строк начало блока и
+ * его ширина; строкам дальше массива краёв — края последней: так раскладка
+ * набирает их той же шириной.
+ *
+ * @param lineBounds — края строк; не заданы — строки по блоку
+ * @param index — номер строки на странице
+ * @param blockWidth — ширина блока
+ * @returns сдвиг начала строки от левого края блока и её ширина
+ */
+const resolveLineSpan = (
+  lineBounds: LineBounds | undefined,
+  index: number,
+  blockWidth: number
+): LineSpan => {
+  if (!lineBounds || lineBounds.widths.length === 0) {
+    return { offset: 0, width: blockWidth };
+  }
+
+  const position = Math.min(index, lineBounds.widths.length - 1);
+
+  return {
+    offset: lineBounds.offsets[position] || 0,
+    width: lineBounds.widths[position] || 0,
+  };
+};
+
+/**
  * Рисует перечисленные слои страницы в контекст.
  *
  * Чернила листа с изгибом или перспективой рисуются через контекст линий,
@@ -854,6 +884,7 @@ const drawPage = (
     topOffset,
     leftPadding,
     blockWidth,
+    lineBounds,
     blockRotate,
     fontMetrics,
     bend,
@@ -877,30 +908,44 @@ const drawPage = (
       ? createLineContext(ctx, bend, { skewAngle: blockRotate, perspective })
       : ctx;
 
+    /**
+     * Высоты модели строчного бокса отсчитаны в координате вдоль линий
+     * `U = y − x·tg θ`, а в системе блока, повёрнутой на θ, высота `v` лежит на
+     * `U = v / cos θ`. Поэтому высоты строк переводятся в систему блока
+     * множителем cos θ, а кегль и длины вдоль строки — нет: сжатие самих букв
+     * исказило бы почерк. Без множителя строка n уходила бы с линии на
+     * `(1/cos θ − 1)·U`: на листе с наклоном в три градуса — на пять пикселей к
+     * низу кадра. Без наклона множитель — ровно единица, и числа не меняются.
+     */
+    const lineScale = Math.cos(toRadians(blockRotate));
+
     if (blockRotate !== 0) {
       inkContext.rotate(toRadians(blockRotate));
     }
 
-    inkContext.translate(leftPadding, topOffset);
+    inkContext.translate(leftPadding, topOffset * lineScale);
 
     inkContext.fillStyle = inkColor;
     inkContext.textBaseline = 'alphabetic';
     inkContext.font = baseFont;
 
     const spaceWidth = measureSpace(inkContext, glyphs, fontSizePx);
-    const lineStep = fontSizePx * lineHeight + lineSpacing;
-    const firstBaselineY = fontAscent * fontSizePx;
+    const lineStep = (fontSizePx * lineHeight + lineSpacing) * lineScale;
+    const firstBaselineY = fontAscent * fontSizePx * lineScale;
 
     page.lines.forEach((line, index) => {
+      const span = resolveLineSpan(lineBounds, index, blockWidth);
+
       drawLine(
         inkContext,
         line,
+        span.offset,
         firstBaselineY + index * lineStep,
         spaceWidth,
         glyphs,
         fontSizePx,
         baseFont,
-        blockWidth,
+        span.width,
         isCurved
       );
     });

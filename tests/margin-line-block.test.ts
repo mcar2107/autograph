@@ -87,8 +87,15 @@ describe('IMG_1813: блок текста на левой половине ра�
    */
   it('фикстура читается разбором без потерь', () => {
     const value: unknown = JSON.parse(readFileSync(FIXTURE_PATH, 'utf8'));
+    /**
+     * Полей зеркала и концов полей у низа кадра в записи нет: разбор читает
+     * поля зеркала отражением, а боковые поля — без наклона.
+     */
+    const { mirrorOverride, sideSlant, ...stored } = ruling;
 
-    expect(value).toMatchObject({ ruling });
+    expect(mirrorOverride).toBeNull();
+    expect(sideSlant).toBeNull();
+    expect(value).toMatchObject({ ruling: stored });
     expect(ruling.perspective).not.toBeNull();
     expect(ruling.bend).not.toBeNull();
   });

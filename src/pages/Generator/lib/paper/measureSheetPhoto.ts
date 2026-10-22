@@ -22,7 +22,6 @@ import type {
 import { rectifySheetImage } from './measureSheetPhotoRectify';
 import type {
   PaperMargins,
-  RulingBend,
   RulingProjection,
   SheetFrame,
   SheetImageData,
@@ -31,16 +30,12 @@ import type {
   SheetRulingSource,
 } from './paper.types';
 import { resolveSheetBounds } from './resolveSheetBounds';
-import { lineCoordinateAt, lineHeightAt, lineHeightScaleAt } from './rulingPerspective';
+import { lineCoordinateAt, lineHeightAt } from './rulingPerspective';
 import { toTangent } from './sheetProfile';
+import { toFrameBend } from './toFrameBend';
 import { TRACE_SEARCH_SHARE } from './traceRulingLines';
 
 const DEGREES_IN_RADIAN = 180 / Math.PI;
-
-/**
- * Смещения изгиба хранятся кратными сотой пикселя, как их отдаёт детектор.
- */
-const OFFSET_PRECISION = 100;
 
 /**
  * Вырезка внутри листа и её место в кадре.
@@ -268,44 +263,10 @@ const toFrameSource = (
     margins: frameMargins,
     marginLineX: marginLineX === null ? null : marginLineX + left,
     marginLineSide,
-    bend: bend && toFrameBend(bend, transfer),
+    bend:
+      bend && toFrameBend(bend, transfer.projection, transfer.left, transfer.lineShift),
     perspective: projection.perspective,
   };
-};
-
-/**
- * Переводит сетку изгиба в кадр. Строки узлов лежат по координате вдоль линий
- * и сдвигаются вместе с ней. Смещения мерились в пикселях анализа по высоте, а
- * хранятся в пикселях фото: у выпрямленной копии пиксель по высоте — единица
- * координаты вдоль линий, и смещение домножается на местный масштаб `∂Y/∂U` в
- * своём узле.
- *
- * @param bend — изгиб в пикселях анализа
- * @param transfer — перевод в кадр
- * @returns изгиб в пикселях кадра
- */
-const toFrameBend = (bend: RulingBend, transfer: FrameTransfer): RulingBend => {
-  const { projection } = transfer;
-  const columnOrigin = bend.columnOrigin + transfer.left;
-  const rowOrigin = bend.rowOrigin + transfer.lineShift;
-
-  if (!projection.perspective) {
-    return { ...bend, columnOrigin, rowOrigin };
-  }
-
-  const offsets = bend.offsets.map((offset, index) => {
-    const column = index % bend.columnCount;
-    const row = Math.floor(index / bend.columnCount);
-    const scale = lineHeightScaleAt(
-      projection,
-      columnOrigin + column * bend.columnSpacing,
-      rowOrigin + row * bend.rowSpacing
-    );
-
-    return Math.round(offset * scale * OFFSET_PRECISION) / OFFSET_PRECISION;
-  });
-
-  return { ...bend, columnOrigin, rowOrigin, offsets };
 };
 
 /**

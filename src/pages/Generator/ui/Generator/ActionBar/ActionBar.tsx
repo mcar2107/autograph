@@ -2,11 +2,13 @@ import { Button } from '@shared/ui/Button';
 import type { FC } from 'react';
 import { useId } from 'react';
 
+import { selectIsAwaitingUserSheets } from '../../../model/paperSelectors';
 import { useBatchExport } from '../../../model/useBatchExport';
 import { useExportPage } from '../../../model/useExportPage';
 import { useGeneratorStore } from '../../../model/useGeneratorStore';
 
 import type { ActionBarProps } from './ActionBar.types';
+import { resolveExportHint } from './resolveExportHint';
 
 /**
  * Полоса главных действий: новый прогон, текущая страница файлом и вся пачка
@@ -18,13 +20,17 @@ import type { ActionBarProps } from './ActionBar.types';
  * подбора настроек.
  *
  * Без текста сохранять нечего: кнопки недоступны, и рядом написано почему —
- * недоступная кнопка без объяснения выглядит сломанной.
+ * недоступная кнопка без объяснения выглядит сломанной. Так же они ждут
+ * чтения своих листов, пока страница закреплена на ещё не прочитанном: до
+ * его конца отрисовка взяла бы подставленный лист семьи, и в файл ушла бы
+ * чужая бумага.
  */
 export const ActionBar: FC<ActionBarProps> = (props) => {
   const { plan } = props;
   const isTextEmpty = useGeneratorStore((state) => {
     return state.text.trim() === '';
   });
+  const isAwaitingUserSheets = useGeneratorStore(selectIsAwaitingUserSheets);
   const startNewRun = useGeneratorStore((state) => {
     return state.startNewRun;
   });
@@ -37,7 +43,8 @@ export const ActionBar: FC<ActionBarProps> = (props) => {
    * Подсказка связана с кнопками, а не просто стоит рядом: читалка, дойдя до
    * недоступной кнопки, иначе не узнала бы причину.
    */
-  const describedBy = isTextEmpty ? hintId : undefined;
+  const hint = resolveExportHint(isTextEmpty, isAwaitingUserSheets);
+  const describedBy = hint ? hintId : undefined;
 
   const handleRegenerateClick = () => {
     startNewRun();
@@ -62,9 +69,9 @@ export const ActionBar: FC<ActionBarProps> = (props) => {
       </Button>
 
       <div className="flex min-w-0 flex-1 items-center justify-end gap-3 text-sm">
-        {isTextEmpty ? (
+        {hint ? (
           <p id={hintId} className="text-fg-muted">
-            Введите текст, чтобы сохранить страницы
+            {hint}
           </p>
         ) : null}
 
@@ -89,7 +96,7 @@ export const ActionBar: FC<ActionBarProps> = (props) => {
 
       <Button
         variant="secondary"
-        isDisabled={isTextEmpty}
+        isDisabled={hint !== null}
         isLoading={isRunning}
         describedBy={describedBy}
         onClick={handleBatchClick}
@@ -104,7 +111,7 @@ export const ActionBar: FC<ActionBarProps> = (props) => {
        */}
       <Button
         variant="primary"
-        isDisabled={isTextEmpty}
+        isDisabled={hint !== null}
         isLoading={pageExport.isSaving}
         describedBy={describedBy}
         onClick={handleSaveClick}

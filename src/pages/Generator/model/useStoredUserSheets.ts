@@ -16,6 +16,6 @@ export const useStoredUserSheets = (): void => {
   });
 
   useEffect(() => {
-    restoreUserSheets();
+    void restoreUserSheets();
   }, [restoreUserSheets]);
 };

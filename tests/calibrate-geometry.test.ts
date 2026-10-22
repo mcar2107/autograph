@@ -25,9 +25,11 @@ const LINE_LEFT: SheetCalibration = {
     margins: { top: 80, right: 40, bottom: 60, left: 30 },
     marginLineX: 60,
     marginLineSide: 'left',
+    sideSlant: null,
     bend: null,
     perspective: null,
     outline: null,
+    mirrorOverride: null,
   },
 };
 
@@ -46,9 +48,11 @@ const LINE_RIGHT: SheetCalibration = {
     margins: { top: 128.8, right: 30, bottom: 70, left: 70 },
     marginLineX: 1450,
     marginLineSide: 'right',
+    sideSlant: null,
     bend: null,
     perspective: null,
     outline: null,
+    mirrorOverride: null,
   },
 };
 
@@ -66,9 +70,11 @@ const NO_LINE: SheetCalibration = {
     margins: { top: 75, right: 60, bottom: 50, left: 50 },
     marginLineX: null,
     marginLineSide: null,
+    sideSlant: null,
     bend: null,
     perspective: null,
     outline: null,
+    mirrorOverride: null,
   },
 };
 
@@ -87,9 +93,11 @@ const OFF_PHASE: SheetCalibration = {
     margins: { top: 100, right: 40, bottom: 60, left: 60 },
     marginLineX: null,
     marginLineSide: null,
+    sideSlant: null,
     bend: null,
     perspective: null,
     outline: null,
+    mirrorOverride: null,
   },
 };
 
@@ -109,9 +117,11 @@ const BLANK: SheetCalibration = {
     margins: { top: 96, right: 60, bottom: 60, left: 70 },
     marginLineX: null,
     marginLineSide: null,
+    sideSlant: null,
     bend: null,
     perspective: null,
     outline: null,
+    mirrorOverride: null,
   },
 };
 

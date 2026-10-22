@@ -52,13 +52,13 @@ export type RulingBendDetection = {
  * Ширина полосы в шагах разлиновки. Внутри двух шагов изогнутая линия почти
  * прямая, а узлы через два шага ещё разрешают волну бумаги в восемь шагов.
  */
-const STRIP_STEPS = 2;
+export const BEND_STRIP_STEPS = 2;
 
 /**
  * Наименьшее число полос: на узкой области узлы через два шага не опишут даже
  * прогиб.
  */
-const MIN_STRIPS = 8;
+export const MIN_BEND_STRIPS = 8;
 
 /**
  * Полуширина окна стартового поиска в долях шага: в центре кадра отход линии
@@ -120,7 +120,7 @@ const ROW_FILL_SHARE = 0.5;
  * Узлы хранятся с точностью до сотой пикселя: одно и то же число лежит в
  * памяти, в хранилище и в артефакте профилей.
  */
-const OFFSET_PRECISION = 100;
+export const BEND_OFFSET_PRECISION = 100;
 
 /**
  * Наименьшая доля найденных узлов области: при меньшей линии на большой части
@@ -531,7 +531,7 @@ const fillGaps = (grid: NodeGrid): void => {
  * @returns смещение, кратное сотой
  */
 const roundOffset = (offset: number): number => {
-  return Math.round(offset * OFFSET_PRECISION) / OFFSET_PRECISION || 0;
+  return Math.round(offset * BEND_OFFSET_PRECISION) / BEND_OFFSET_PRECISION || 0;
 };
 
 /**
@@ -641,13 +641,13 @@ export const detectRulingBend = (
    * Уже восьми пикселей полосы выродились бы в пустые, и расстояние между
    * узлами сетки стало бы нулевым.
    */
-  if (step <= 0 || cropWidth < MIN_STRIPS) {
+  if (step <= 0 || cropWidth < MIN_BEND_STRIPS) {
     return EMPTY_DETECTION;
   }
 
   const columnCount = Math.min(
     cropWidth,
-    Math.max(MIN_STRIPS, Math.round(cropWidth / (STRIP_STEPS * step)))
+    Math.max(MIN_BEND_STRIPS, Math.round(cropWidth / (BEND_STRIP_STEPS * step)))
   );
   const strips = buildStripProfiles(
     cropSheetColumns(image, cropLeft, cropWidth),

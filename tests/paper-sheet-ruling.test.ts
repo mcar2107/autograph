@@ -156,9 +156,11 @@ describe('сборка разлиновки экземпляра из резул
       margins,
       marginLineX: 1400,
       marginLineSide: 'right',
+      sideSlant: null,
       bend: null,
       perspective: null,
       outline: null,
+      mirrorOverride: null,
     });
   });
 

@@ -1,4 +1,4 @@
-import type { PaperFamily, PaperSheet } from '../lib/paper/paper.types';
+import type { PaperFamily, PaperSheet, RulingKind } from '../lib/paper/paper.types';
 
 import type { GeneratorState } from './generator.types';
 import type { UserSheetRecord } from './userSheetsStorage.types';
@@ -22,15 +22,22 @@ export const mergeFamilySheets = (
   userSheets: UserSheetRecord[]
 ): PaperFamily[] => {
   return presetFamilies.reduce<PaperFamily[]>((acc, family) => {
-    const own = userSheets.reduce<PaperSheet[]>((sheetAcc, record) => {
-      if (record.familyId === family.id) {
-        sheetAcc.push(record.sheet);
-      }
+    /**
+     * Свой лист несёт в семью и свой вид: число шагов на строку у него своё.
+     */
+    acc.push(
+      userSheets.reduce<PaperFamily>((merged, { familyId, sheet, kind }) => {
+        if (familyId !== family.id) {
+          return merged;
+        }
 
-      return sheetAcc;
-    }, []);
-
-    acc.push(own.length > 0 ? { ...family, sheets: [...family.sheets, ...own] } : family);
+        return {
+          ...merged,
+          sheets: [...merged.sheets, sheet],
+          sheetKinds: { ...merged.sheetKinds, [sheet.id]: kind },
+        };
+      }, family)
+    );
 
     return acc;
   }, []);
@@ -53,6 +60,48 @@ export const findFamily = (
       return family.id === familyId;
     }) || families[0]
   );
+};
+
+/**
+ * Семья своего листа по его виду: предпочтённая, если её вид совпадает, иначе
+ * первая семья этого вида. Чистому листу своей семьи нет, он остаётся в
+ * предпочтённой. Вид берётся у листа, а не у семьи, поэтому лист в клетку,
+ * добавленный при выбранной линейке, уходит к клетке.
+ *
+ * @param families — доступные семьи
+ * @param preferredFamilyId — выбранная семья или семья, где лист лежит сейчас
+ * @param kind — вид разлиновки листа
+ * @returns семья; `undefined` — семей нет вовсе
+ */
+export const findKindFamily = (
+  families: PaperFamily[],
+  preferredFamilyId: string,
+  kind: RulingKind
+): PaperFamily | undefined => {
+  const preferred = findFamily(families, preferredFamilyId);
+
+  if (kind === 'blank' || preferred?.kind === kind) {
+    return preferred;
+  }
+
+  return (
+    families.find((family) => {
+      return family.kind === kind;
+    }) || preferred
+  );
+};
+
+/**
+ * Вид разлиновки листа семьи: у своего листа — его собственный, у пресета —
+ * семейный. Одно правило на геометрию страницы и отпечаток кэша раскладки:
+ * разойдись они, раскладка не пересчиталась бы при смене вида листа.
+ *
+ * @param family — семья листов
+ * @param sheetId — идентификатор листа
+ * @returns вид разлиновки листа
+ */
+export const resolveSheetKind = (family: PaperFamily, sheetId: string): RulingKind => {
+  return family.sheetKinds?.[sheetId] || family.kind;
 };
 
 /**
@@ -121,5 +170,26 @@ export const selectActiveSheet = (state: GeneratorState): PaperSheet | undefined
 export const selectPendingUserSheets = (state: GeneratorState): UserSheetRecord[] => {
   return state.userSheets.filter((record) => {
     return !record.isAnalyzed;
+  });
+};
+
+/**
+ * Страница стоит на своём листе, которого ещё нет: закреплённый лист сессии не
+ * найден, а свои листы ещё читаются. Пока это так, область листа показывает
+ * ожидание, а не подставленную бумагу: иначе на время чтения мелькнула бы
+ * чужая страница.
+ *
+ * @param state — состояние генератора
+ * @returns ждёт ли страница чтения своих листов
+ */
+export const selectIsAwaitingUserSheets = (state: GeneratorState): boolean => {
+  if (state.hasRestoredUserSheets || !state.isSheetPinned) {
+    return false;
+  }
+
+  return !selectPaperFamilies(state).some((family) => {
+    return family.sheets.some((sheet) => {
+      return sheet.id === state.sheetId;
+    });
   });
 };

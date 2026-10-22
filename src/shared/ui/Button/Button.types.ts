@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { ReactNode, Ref } from 'react';
 
 export type ButtonProps = {
   /**
@@ -13,9 +13,10 @@ export type ButtonProps = {
 
   /**
    * Оформление: `primary` — главное действие экрана, `secondary` — обычное,
-   * `ghost` — без заливки.
+   * `ghost` — без заливки, `danger` — разрушительное: то, что теряет данные
+   * без возможности отмены.
    */
-  variant?: 'primary' | 'secondary' | 'ghost';
+  variant?: 'primary' | 'secondary' | 'ghost' | 'danger';
 
   /**
    * Кнопка недоступна.
@@ -38,4 +39,9 @@ export type ButtonProps = {
    * Дополнительные классы.
    */
   className?: string;
+
+  /**
+   * Ссылка на элемент кнопки: например, чтобы вернуть на неё фокус.
+   */
+  ref?: Ref<HTMLButtonElement>;
 };

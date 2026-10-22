@@ -1,3 +1,4 @@
+import { deriveRulingPins } from '../lib/paper/fitRulingPins';
 import type {
   LightingField,
   MarginLineSide,
@@ -5,7 +6,11 @@ import type {
   PaperSheet,
   PaperTexture,
   RulingBend,
+  RulingKind,
+  RulingMirrorOverride,
   RulingPerspective,
+  RulingPin,
+  RulingSideSlant,
   SheetFrame,
   SheetOutline,
   SheetPoint,
@@ -13,6 +18,8 @@ import type {
 } from '../lib/paper/paper.types';
 import { lineCoordinateAt } from '../lib/paper/rulingPerspective';
 import { buildSheetRuling } from '../lib/paper/sheetRuling';
+
+import type { StoredSheetTexture, StoredUserSheet } from './userSheetsStorage.types';
 
 const DEGREES_IN_HALF_TURN = 180;
 
@@ -263,6 +270,60 @@ const parseSheetOutline = (value: unknown): SheetOutline | null => {
 };
 
 /**
+ * Концы полей и линии поля у низа кадра из JSON. Нечитаемое боковое поле
+ * снимает наклон целиком: поля ложатся без наклона к строкам, как у записи,
+ * где концов у низа нет вовсе. Линия поля без конца у низа идёт без наклона.
+ *
+ * @param value — разобранное значение
+ * @returns концы у низа кадра; `null` — наклона нет
+ */
+const parseSideSlant = (value: unknown): RulingSideSlant | null => {
+  if (
+    !isJsonRecord(value) ||
+    !isPositiveNumber(value.left) ||
+    !isPositiveNumber(value.right)
+  ) {
+    return null;
+  }
+
+  return {
+    left: value.left,
+    right: value.right,
+    marginLineX: toFiniteNumber(value.marginLineX, 0) || null,
+  };
+};
+
+/**
+ * Отдельно заданные поля зеркальной страницы из JSON. Нечитаемое боковое поле
+ * снимает всю замену, а не одно поле: половина замены с отражённой второй
+ * половиной дала бы блок, которого пользователь не задавал.
+ *
+ * @param value — разобранное значение
+ * @returns замена полей зеркала; `null` — зеркало берёт их отражением
+ */
+const parseMirrorOverride = (value: unknown): RulingMirrorOverride | null => {
+  if (
+    !isJsonRecord(value) ||
+    !isPositiveNumber(value.marginLeft) ||
+    !isPositiveNumber(value.marginRight)
+  ) {
+    return null;
+  }
+
+  const marginLineX = toFiniteNumber(value.marginLineX, 0) || null;
+  const marginLineSide = parseMarginLineSide(value.marginLineSide);
+  const hasMarginLine = marginLineX !== null && marginLineSide !== null;
+
+  return {
+    marginLineX: hasMarginLine ? marginLineX : null,
+    marginLineSide: hasMarginLine ? marginLineSide : null,
+    marginLeft: value.marginLeft,
+    marginRight: value.marginRight,
+    sideSlant: parseSideSlant(value.sideSlant),
+  };
+};
+
+/**
  * Лежит ли перспектива по эту сторону горизонта во всём кадре: и вес `w`
  * координаты вдоль линий, и знаменатель `1 − a·q` высоты линии положительны.
  * Оба дробно-линейны по кадру, поэтому хватает его углов. Один знаменатель
@@ -372,9 +433,11 @@ const parseSheetRuling = (
       margins: parseMargins(ruling.margins),
       marginLineX: toFiniteNumber(ruling.marginLineX, 0) || null,
       marginLineSide: parseMarginLineSide(ruling.marginLineSide),
+      sideSlant: parseSideSlant(ruling.sideSlant),
       bend: parseRulingBend(ruling.bend),
       perspective: parseRulingPerspective(ruling.perspective, skewAngle, frame),
       outline: parseSheetOutline(ruling.outline),
+      mirrorOverride: parseMirrorOverride(ruling.mirrorOverride),
     },
     frame
   );
@@ -416,5 +479,155 @@ export const parsePaperSheet = (value: unknown): PaperSheet | null => {
     ruling: parseSheetRuling(value, frame),
     lighting: parseLighting(value.lighting),
     texture: parseTexture(value.texture),
+  };
+};
+
+/**
+ * Наименьшее число булавок, через которое проводится гребёнка.
+ */
+const MIN_PIN_COUNT = 2;
+
+/**
+ * Виды разлиновки, которые знает запись листа.
+ */
+const RULING_KINDS: RulingKind[] = ['grid', 'lined', 'blank'];
+
+/**
+ * Вид разлиновки из JSON.
+ *
+ * @param value — разобранное значение
+ * @returns вид; `null` — вида нет или он нечитаем
+ */
+const parseRulingKind = (value: unknown): RulingKind | null => {
+  return (
+    RULING_KINDS.find((kind) => {
+      return kind === value;
+    }) || null
+  );
+};
+
+/**
+ * Булавка из JSON.
+ *
+ * @param value — разобранное значение
+ * @returns булавка; `null` — номер не целый или у конца нет координаты
+ */
+const parseRulingPin = (value: unknown): RulingPin | null => {
+  if (!isJsonRecord(value) || !Number.isInteger(value.index)) {
+    return null;
+  }
+
+  const left = parseSheetPoint(value.left);
+  const right = parseSheetPoint(value.right);
+
+  if (!left || !right) {
+    return null;
+  }
+
+  return { index: toFiniteNumber(value.index, 0), left, right };
+};
+
+/**
+ * Булавки из JSON. Испорченная булавка снимает все, а не одну: гребёнка через
+ * оставшиеся прошла бы не там, где её закрепил пользователь. Без булавок лист
+ * получает выведенные из его разлиновки — они проходят по тем же линиям.
+ *
+ * @param value — разобранное значение
+ * @param ruling — разлиновка записи
+ * @param frame — кадр фотографии записи
+ * @returns булавки
+ */
+const parseRulingPins = (
+  value: unknown,
+  ruling: SheetRuling,
+  frame: SheetFrame
+): RulingPin[] => {
+  const items: unknown[] = Array.isArray(value) ? value : [];
+  const pins = items.reduce<RulingPin[]>((acc, item) => {
+    const pin = parseRulingPin(item);
+
+    if (pin) {
+      acc.push(pin);
+    }
+
+    return acc;
+  }, []);
+
+  return pins.length === items.length && pins.length >= MIN_PIN_COUNT
+    ? pins
+    : deriveRulingPins(ruling, frame);
+};
+
+/**
+ * Карта текстуры записи своего листа. Без картинки файлом карты нет.
+ *
+ * @param value — разобранное значение
+ * @returns карта; `null` — карты нет или в ней нет картинки
+ */
+const parseStoredTexture = (value: unknown): StoredSheetTexture | null => {
+  if (!isJsonRecord(value) || !(value.image instanceof Blob)) {
+    return null;
+  }
+
+  return {
+    image: value.image,
+    width: toFiniteNumber(value.width, 0),
+    height: toFiniteNumber(value.height, 0),
+    amplitude: toFiniteNumber(value.amplitude, 0),
+  };
+};
+
+/**
+ * Запись своего листа из IndexedDB. Обязательны идентификатор и фотография
+ * файлом: без них лист нечем показать. Разлиновка разбирается тем же путём, что
+ * у `parsePaperSheet`, с теми же фолбэками. Недостающие поля новой формы
+ * получают дефолты: вид — чистый лист, если запись помечена `isBlank`, иначе
+ * вид семьи; найденная разметка — сохранённая; булавки — выведенные из
+ * разлиновки; замена полей зеркала — нет.
+ *
+ * @param value — прочитанная запись
+ * @param resolveFamilyKind — вид семьи по её идентификатору
+ * @returns запись листа или `null`, если его нечем показать
+ */
+export const parseStoredUserSheet = (
+  value: unknown,
+  resolveFamilyKind: (familyId: string) => RulingKind
+): StoredUserSheet | null => {
+  if (!isJsonRecord(value) || !(value.source instanceof Blob)) {
+    return null;
+  }
+
+  const id = toText(value.id);
+
+  if (!id) {
+    return null;
+  }
+
+  const familyId = toText(value.familyId);
+  const frame = {
+    width: toFiniteNumber(value.width, 0),
+    height: toFiniteNumber(value.height, 0),
+  };
+  const ruling = parseSheetRuling(value, frame);
+  const measuredRuling = isJsonRecord(value.measuredRuling)
+    ? parseSheetRuling({ ruling: value.measuredRuling }, frame)
+    : ruling;
+  const legacyKind = value.isBlank === true ? 'blank' : resolveFamilyKind(familyId);
+  const kind = parseRulingKind(value.kind) || legacyKind;
+
+  return {
+    id,
+    familyId,
+    kind,
+    label: toText(value.label) || id,
+    width: frame.width,
+    height: frame.height,
+    ruling,
+    measuredRuling,
+    measuredKind: parseRulingKind(value.measuredKind) || kind,
+    pins: parseRulingPins(value.pins, ruling, frame),
+    lighting: parseLighting(value.lighting),
+    source: value.source,
+    texture: parseStoredTexture(value.texture),
   };
 };

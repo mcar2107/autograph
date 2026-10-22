@@ -998,9 +998,10 @@ const measureRasterRuling = (raster: PageRaster, band: RasterBand): RasterRuling
  * перспективы и изгиба.
  *
  * Считаются по той же модели строчного бокса, которой рисует рендерер:
- * текст стоит на базовой линии `topOffset + fontAscent × кегль + n × шаг
- * строк`. Блок повёрнут вокруг левого верхнего угла страницы, поэтому
- * базовая линия пересекает столбец x на высоте `b / cos θ + x × tg θ`.
+ * базовая линия строки n — `b = topOffset + fontAscent × кегль + n × шаг
+ * строк` в координате вдоль линий. Блок повёрнут вокруг левого верхнего угла
+ * страницы, а высота в его системе — `b × cos θ`, поэтому базовая линия
+ * пересекает столбец x на высоте `b + x × tg θ`.
  *
  * @param params — параметры отрисовки страницы
  * @param column — столбец страницы в пикселях
@@ -1010,14 +1011,12 @@ const buildBaselines = (params: PageRenderParams, column: number): number[] => {
   const { geometry, page } = params;
   const { fontSizePx, lineSpacing, topOffset, fontMetrics, blockRotate } = geometry;
   const lineStep = fontSizePx * fontMetrics.lineHeight + lineSpacing;
-  const radians = toRadians(blockRotate);
-  const stretch = 1 / Math.cos(radians);
-  const rise = column * Math.tan(radians);
+  const rise = column * Math.tan(toRadians(blockRotate));
 
   return page.lines.map((_, index) => {
     const baseline = topOffset + fontMetrics.fontAscent * fontSizePx + index * lineStep;
 
-    return baseline * stretch + rise;
+    return baseline + rise;
   });
 };
 
@@ -1134,8 +1133,8 @@ const buildStrips = (probe: RasterProbe): StripSet => {
   const sin = Math.sin(radians);
   const firstBaseline = topOffset + fontMetrics.fontAscent * fontSizePx;
   const lastBaseline = firstBaseline + Math.max(0, page.lines.length - 1) * lineStep;
-  const firstShift = firstBaseline * sin;
-  const lastShift = lastBaseline * sin;
+  const firstShift = firstBaseline * cos * sin;
+  const lastShift = lastBaseline * cos * sin;
   const width = Math.round(STRIP_STEPS * step);
   const left = Math.ceil(leftPadding * cos - Math.min(firstShift, lastShift));
   const right = Math.floor(

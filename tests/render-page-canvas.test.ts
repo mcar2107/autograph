@@ -374,15 +374,20 @@ describe('renderPageToCanvas', () => {
   });
 
   it('поворачивает блок вокруг угла листа до отступов', () => {
+    const angle = (2 * Math.PI) / 180;
     const calls = render({ geometry: buildGeometry({ blockRotate: 2 }) });
     const start = calls.findIndex((call) => {
       return call.name === 'drawImage';
     });
 
+    /**
+     * Верхний отступ задан в координате вдоль линий, а в повёрнутой системе
+     * блока та же высота короче в cos θ раз.
+     */
     expect(calls.slice(start + 1, start + 4)).toEqual([
       { name: 'save', args: [] },
-      { name: 'rotate', args: [(2 * Math.PI) / 180] },
-      { name: 'translate', args: [LEFT_PADDING, TOP_OFFSET] },
+      { name: 'rotate', args: [angle] },
+      { name: 'translate', args: [LEFT_PADDING, TOP_OFFSET * Math.cos(angle)] },
     ]);
   });
 

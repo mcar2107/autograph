@@ -12,6 +12,7 @@ import {
   DEFAULT_GENERATOR_STATE,
   useGeneratorStore,
 } from '@pages/Generator/model/useGeneratorStore';
+import { useMarkupEditorStore } from '@pages/Generator/model/useMarkupEditorStore';
 import { usePageLayout } from '@pages/Generator/model/usePageLayout';
 import { usePageRender } from '@pages/Generator/model/usePageRender';
 import { useRunRender } from '@pages/Generator/model/useRunRender';
@@ -171,6 +172,7 @@ const getLastSavedTask = (): PageRenderTask => {
 };
 
 beforeEach(() => {
+  useMarkupEditorStore.getState().close();
   clearLayoutCache();
   globalThis.localStorage?.clear();
   useGeneratorStore.setState(DEFAULT_GENERATOR_STATE);
@@ -332,7 +334,7 @@ describe('сохранение страницы', () => {
 });
 
 describe('колонка оформления', () => {
-  it('неудачный импорт открывает ровно один диалог листа', async () => {
+  it('неудачный импорт открывает ровно один редактор листа', async () => {
     const user = userEvent.setup();
 
     decodeSheetImage.mockResolvedValue(
@@ -359,7 +361,7 @@ describe('колонка оформления', () => {
     });
   });
 
-  it('кнопка настройки плитки открывает диалог своего листа', async () => {
+  it('кнопка настройки плитки открывает редактор своего листа', async () => {
     const user = userEvent.setup();
 
     decodeSheetImage.mockResolvedValue(createSyntheticSheet(RULED_PHOTO));
@@ -367,9 +369,17 @@ describe('колонка оформления', () => {
     renderSettingsPane();
     await uploadUserPhoto(user);
 
+    /**
+     * Импорт открывает редактор сам, и с разлиновкой тоже: кнопка настройки
+     * проверяется после его закрытия.
+     */
+    expect(screen.getAllByRole('dialog').length).toBe(1);
+
+    await user.click(screen.getByRole('button', { name: 'Отмена' }));
+
     expect(screen.queryByRole('dialog')).toBeNull();
 
-    await user.click(await screen.findByRole('button', { name: /^Настроить «/ }));
+    await user.click(await screen.findByRole('button', { name: /^Разметка листа «/ }));
 
     expect(screen.getAllByRole('dialog').length).toBe(1);
   });

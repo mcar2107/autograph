@@ -1,6 +1,6 @@
 {
   "name": "autograph",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "type": "module",
   "description": "генератор рукописного текста",
   "license": "MIT",
@@ -54,6 +54,7 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-simple-import-sort": "12.1.1",
     "eslint-plugin-unicorn": "65.0.0",
+    "fake-indexeddb": "^6.2.5",
     "globals": "17.4.0",
     "http-server": "^14.1.1",
     "husky": "9.1.7",

@@ -1,0 +1,978 @@
+/**
+ * @vitest-environment jsdom
+ */
+import { FALLBACK_FONT_METRICS } from '@pages/Generator/lib/measure/measureFontMetrics';
+import {
+  buildSheetRuling,
+  lineHeightAt,
+  type MarginLineSide,
+  type PaperSheet,
+  type RulingMirrorOverride,
+  sampleRulingBend,
+  type SheetImageData,
+  type SheetPoint,
+  type SheetRuling,
+} from '@pages/Generator/lib/paper';
+import {
+  getPageRuling,
+  selectBlockGeometry,
+} from '@pages/Generator/model/geometrySelectors';
+import { clearLayoutCache } from '@pages/Generator/model/measureLayout';
+import {
+  DEFAULT_GENERATOR_STATE,
+  useGeneratorStore,
+} from '@pages/Generator/model/useGeneratorStore';
+import {
+  selectHasMarkupEdits,
+  useMarkupEditorStore,
+} from '@pages/Generator/model/useMarkupEditorStore';
+import { readUserSheets } from '@pages/Generator/model/userSheetsStorage';
+import { SheetMarkupEditor } from '@pages/Generator/ui/Generator/SettingsPane/SheetMarkupEditor';
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { IDBFactory } from 'fake-indexeddb';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { readHandlePoint, SIDE_HANDLE_ENDS } from './helpers/side-handles';
+import { createSyntheticSheet } from './helpers/synthetic-sheet';
+import { RULED_PHOTO } from './helpers/user-sheet-photo';
+import { buildUserSheetRecord } from './helpers/user-sheet-record';
+
+type User = ReturnType<typeof userEvent.setup>;
+
+/**
+ * Подменяется только съём пикселей для перемера контура: канвы в jsdom нет.
+ */
+const { decodeSheetImage } = vi.hoisted(() => {
+  return { decodeSheetImage: vi.fn() };
+});
+
+vi.mock(
+  '@pages/Generator/ui/Generator/SettingsPane/useSheetImport/decodeSheetImage',
+  () => {
+    return { decodeSheetImage };
+  }
+);
+
+/**
+ * Лист в линейку 600×800: шаг 40 px, поля слева 90 и справа 60, черта поля
+ * снимка — в столбце 120.
+ */
+const PHOTO = {
+  ...RULED_PHOTO,
+  width: 600,
+  height: 800,
+  step: 40,
+  phase: 20,
+  margins: { top: 60, right: 60, bottom: 60, left: 90 },
+  marginLineX: 120,
+};
+
+const FRAME = { width: PHOTO.width, height: PHOTO.height };
+
+const { width: WIDTH, height: HEIGHT } = FRAME;
+
+const SHEET_LABEL = 'Тетрадь в линейку';
+
+/**
+ * Зазор блока от линии поля — пятая часть шага, как у найденной автоматом.
+ */
+const MARGIN_LINE_GAP = PHOTO.step / 5;
+
+/**
+ * Разлиновка листа с заданной линией поля.
+ *
+ * @param marginLineX — столбец линии поля; `null` — её нет
+ * @param marginLineSide — сторона линии поля
+ * @returns разлиновка
+ */
+const buildRuling = (
+  marginLineX: number | null,
+  marginLineSide: MarginLineSide | null
+): SheetRuling => {
+  return buildSheetRuling(
+    {
+      step: PHOTO.step,
+      firstLinePhase: PHOTO.phase,
+      skewAngle: 0,
+      margins: PHOTO.margins,
+      marginLineX,
+      marginLineSide,
+    },
+    FRAME
+  );
+};
+
+const SHEET: PaperSheet = {
+  id: 'user-mirror',
+  label: SHEET_LABEL,
+  src: 'data:image/jpeg;base64,0123456789',
+  ...FRAME,
+  ruling: buildRuling(null, null),
+  lighting: null,
+  texture: null,
+};
+
+/**
+ * Кладёт лист в стор, закрепляет его за всеми страницами, открывает редактор
+ * на вкладке зеркальной страницы и выбирает инструмент.
+ *
+ * @param user — сессия `userEvent`
+ * @param ruling — разлиновка листа
+ * @param tool — подпись инструмента
+ * @param image — каналы фотографии; `null` — ещё не сняты
+ * @returns диалог редактора
+ */
+const openMirror = async (
+  user: User,
+  ruling: SheetRuling,
+  tool: string,
+  image: SheetImageData | null = null
+): Promise<HTMLElement> => {
+  const record = buildUserSheetRecord({
+    familyId: 'lined',
+    sheet: { ...SHEET, ruling },
+  });
+
+  useGeneratorStore.getState().addUserSheet(record);
+  useGeneratorStore.setState({
+    familyId: 'lined',
+    sheetId: SHEET.id,
+    isSheetPinned: true,
+  });
+  useMarkupEditorStore.getState().open(record, image);
+  render(<SheetMarkupEditor />);
+
+  const editor = await screen.findByRole('dialog', {
+    name: `Разметка листа «${SHEET_LABEL}»`,
+  });
+
+  await user.click(within(editor).getByRole('radio', { name: 'Зеркальная страница' }));
+  await user.click(within(editor).getByRole('radio', { name: tool }));
+
+  return editor;
+};
+
+/**
+ * Разлиновка черновика.
+ *
+ * @returns разлиновка листа в редакторе
+ */
+const readDraftRuling = (): SheetRuling => {
+  const ruling = useMarkupEditorStore.getState().draft?.ruling;
+
+  if (!ruling) {
+    throw new Error('Редактор закрыт');
+  }
+
+  return ruling;
+};
+
+/**
+ * Даёт SVG оверлея единичную экранную матрицу: пиксели окна совпадают с
+ * пикселями отражённого кадра, который видно на вкладке зеркала.
+ *
+ * @param editor — диалог редактора
+ */
+const mockScreenMatrix = (editor: HTMLElement) => {
+  const svg = editor.querySelector<SVGSVGElement>('svg[aria-label="Разметка листа"]');
+
+  if (!svg) {
+    throw new Error('Нет оверлея');
+  }
+
+  Object.defineProperty(svg, 'getScreenCTM', {
+    configurable: true,
+    value: () => {
+      return {
+        inverse: () => {
+          return { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
+        },
+      };
+    },
+  });
+};
+
+/**
+ * Перетаскивает ручку в точку экрана — в пиксели отражённого кадра.
+ *
+ * @param editor — диалог редактора
+ * @param handle — ручка
+ * @param point — куда отпустить, px отражённого кадра
+ */
+const dragHandle = (editor: HTMLElement, handle: HTMLElement, point: SheetPoint) => {
+  mockScreenMatrix(editor);
+
+  const pointer = { pointerId: 1, clientX: point.x, clientY: point.y };
+
+  fireEvent.pointerDown(handle, { ...pointer, clientX: 0, clientY: 0 });
+  fireEvent.pointerMove(handle, pointer);
+  fireEvent.pointerUp(handle, pointer);
+};
+
+/**
+ * Ручка угла области текста.
+ *
+ * @param editor — диалог редактора
+ * @param name — видимый угол без хвоста: «Левый верхний»
+ * @returns ручка
+ */
+const getCorner = (editor: HTMLElement, name: string): HTMLElement => {
+  return within(editor).getByRole('button', { name: `${name} угол полей` });
+};
+
+/**
+ * Где стоит угол области текста.
+ *
+ * @param editor — диалог редактора
+ * @param name — видимый угол без хвоста: «Левый верхний»
+ * @returns точка угла, px листа
+ */
+const readCorner = (editor: HTMLElement, name: string): SheetPoint => {
+  return readHandlePoint(getCorner(editor, name));
+};
+
+/**
+ * Число шагов в истории черновика.
+ *
+ * @returns длина прошлого истории
+ */
+const readHistoryLength = (): number => {
+  return useMarkupEditorStore.getState().history.past.length;
+};
+
+/**
+ * Края блока текста, px кадра страницы.
+ */
+type BlockEdges = {
+  /**
+   * Левый край.
+   */
+  left: number;
+
+  /**
+   * Правый край.
+   */
+  right: number;
+};
+
+/**
+ * Края блока текста страницы по листу в сторе генератора.
+ *
+ * @param pageIndex — номер страницы: нечётная — зеркальная
+ * @returns левый и правый края, px кадра страницы
+ */
+const readBlockEdges = (pageIndex: number): BlockEdges => {
+  const geometry = selectBlockGeometry(
+    useGeneratorStore.getState(),
+    pageIndex,
+    FALLBACK_FONT_METRICS
+  );
+
+  if (!geometry) {
+    throw new Error('Геометрии страницы нет');
+  }
+
+  return {
+    left: geometry.leftPadding,
+    right: geometry.leftPadding + geometry.blockWidth,
+  };
+};
+
+/**
+ * Сохраняет разметку и сбрасывает кэш раскладки.
+ *
+ * @param user — сессия `userEvent`
+ * @param editor — диалог редактора
+ */
+const save = async (user: User, editor: HTMLElement) => {
+  await user.click(within(editor).getByRole('button', { name: 'Сохранить' }));
+  clearLayoutCache();
+};
+
+/**
+ * Разлиновка зеркальной страницы сохранённого листа — тем же селектором, что
+ * у раскладки и отрисовки.
+ *
+ * @returns разлиновка страницы 1
+ */
+const readSavedMirrorRuling = (): SheetRuling => {
+  const saved = useGeneratorStore.getState().userSheets.find(({ sheet }) => {
+    return sheet.id === SHEET.id;
+  });
+
+  if (!saved) {
+    throw new Error('Листа нет');
+  }
+
+  return getPageRuling(saved.sheet, 1);
+};
+
+beforeEach(() => {
+  clearLayoutCache();
+  useGeneratorStore.setState(DEFAULT_GENERATOR_STATE);
+  useMarkupEditorStore.getState().close();
+  globalThis.indexedDB = new IDBFactory();
+  globalThis.localStorage?.clear();
+  decodeSheetImage.mockReset();
+});
+
+afterEach(() => {
+  cleanup();
+});
+
+describe('вкладка зеркальной страницы: общая разметка', () => {
+  it('фотография и слой ручек отражены, булавки — концами по порядку', async () => {
+    const user = userEvent.setup();
+    const editor = await openMirror(user, buildRuling(null, null), 'Контур');
+    const photo = within(editor).getByRole('img', { name: /отражённая$/ });
+    const layer = editor.querySelector('[data-layer="handles"]');
+    const [pin] = useMarkupEditorStore.getState().draft?.pins || [];
+    const line = editor.querySelector('[data-layer="pins"] line');
+
+    expect(photo.className).toMatch(/-scale-x-100/);
+    expect(layer?.getAttribute('transform')).toBe(`matrix(-1 0 0 1 ${WIDTH} 0)`);
+
+    /**
+     * Левый конец булавки на зеркале — отражённый правый конец листа.
+     */
+    expect(Number(line?.getAttribute('x1'))).toBeCloseTo(WIDTH - (pin?.right.x || 0), 9);
+    expect(Number(line?.getAttribute('x2'))).toBeCloseTo(WIDTH - (pin?.left.x || 0), 9);
+    expect(Number(line?.getAttribute('x1'))).toBeLessThan(
+      Number(line?.getAttribute('x2'))
+    );
+  });
+
+  it('угол на зеркале меняет оригинал', async () => {
+    const user = userEvent.setup();
+
+    decodeSheetImage.mockResolvedValue(createSyntheticSheet(PHOTO));
+
+    const editor = await openMirror(user, buildRuling(null, null), 'Контур');
+
+    /**
+     * Левый верхний угол листа на зеркале стоит справа: ручка названа тем
+     * углом, который видно, и стоит в пикселях листа внутри отражённого слоя.
+     */
+    const corner = within(editor).getByRole('button', {
+      name: 'Правый верхний угол листа',
+    });
+
+    expect(corner.getAttribute('cx')).toBe('0');
+
+    dragHandle(editor, corner, { x: WIDTH - 20, y: 30 });
+
+    await waitFor(() => {
+      expect(readDraftRuling().outline).toStrictEqual({
+        topLeft: { x: 20, y: 30 },
+        topRight: { x: WIDTH, y: 0 },
+        bottomRight: { x: WIDTH, y: HEIGHT },
+        bottomLeft: { x: 0, y: HEIGHT },
+      });
+    });
+
+    expect(
+      getPageRuling({ ...SHEET, ruling: readDraftRuling() }, 1).outline?.topRight
+    ).toStrictEqual({
+      x: WIDTH - 20,
+      y: 30,
+    });
+  });
+
+  it('стрелка на зеркале двигает конец булавки туда, куда видно', async () => {
+    const user = userEvent.setup();
+    const editor = await openMirror(user, buildRuling(null, null), 'Линии');
+    const [pin] = useMarkupEditorStore.getState().draft?.pins || [];
+
+    if (!pin) {
+      throw new Error('Булавок нет');
+    }
+
+    /**
+     * Левый конец булавки листа на зеркале стоит справа.
+     */
+    within(editor)
+      .getByRole('button', { name: 'Закреплённая линия 1, правый конец' })
+      .focus();
+    await user.keyboard('{ArrowLeft}');
+
+    expect(useMarkupEditorStore.getState().draft?.pins[0]?.left.x).toBeCloseTo(
+      pin.left.x + 1,
+      9
+    );
+
+    await user.keyboard('{Shift>}{ArrowRight}{/Shift}');
+
+    expect(useMarkupEditorStore.getState().draft?.pins[0]?.left.x).toBeCloseTo(
+      pin.left.x - 9,
+      9
+    );
+  });
+
+  it('изгиб на зеркале правит линию листа в отражённом столбце', async () => {
+    const user = userEvent.setup();
+    const ruling = buildRuling(null, null);
+    const editor = await openMirror(user, ruling, 'Изгиб');
+    const index = 8;
+    const sheetX = 180;
+    const grabbed = lineHeightAt(
+      ruling,
+      sheetX,
+      ruling.firstLinePhase + index * ruling.step
+    );
+    const line = editor.querySelector(`[data-bend-line-index="${index}"]`);
+
+    if (!line) {
+      throw new Error('Линии нет');
+    }
+
+    mockScreenMatrix(editor);
+
+    const pointer = { pointerId: 1, clientX: WIDTH - sheetX };
+
+    fireEvent.pointerDown(line, { ...pointer, clientY: grabbed });
+    fireEvent.pointerMove(line, { ...pointer, clientY: grabbed + 10 });
+    fireEvent.pointerUp(line, { ...pointer, clientY: grabbed + 10 });
+
+    const edited = readDraftRuling();
+
+    /**
+     * Сдвиг — в столбце листа 180, а не в столбце экрана 420.
+     */
+    expect(edited.bend).not.toBeNull();
+
+    const pages = getPageRuling({ ...SHEET, ruling: edited }, 1);
+
+    expect(pages.bend).not.toBeNull();
+
+    const bend = edited.bend;
+
+    if (!bend) {
+      throw new Error('Изгиба нет');
+    }
+
+    expect(sampleRulingBend(bend, edited, sheetX, grabbed)).toBeCloseTo(10, 0);
+    expect(
+      Math.abs(sampleRulingBend(bend, edited, WIDTH - sheetX, grabbed))
+    ).toBeLessThan(Math.abs(sampleRulingBend(bend, edited, sheetX, grabbed)));
+  });
+
+  it('на зеркале с отражёнными полями углы двигают только общие верхнее и нижнее поля', async () => {
+    const user = userEvent.setup();
+    const editor = await openMirror(user, buildRuling(120, 'left'), 'Поля');
+
+    expect(
+      within(editor).queryByRole('button', { name: 'Линия поля сверху' })
+    ).toBeNull();
+
+    const corner = readCorner(editor, 'Левый верхний');
+
+    /**
+     * Видимый левый угол зеркала — отражённое правое поле листа.
+     */
+    expect(WIDTH - corner.x).toBeCloseTo(PHOTO.margins.right, 6);
+
+    const historyBefore = readHistoryLength();
+
+    dragHandle(editor, getCorner(editor, 'Левый верхний'), { x: 150, y: 142 });
+
+    /**
+     * Верхнее поле встаёт на ближайшую линию — у листа и у зеркала оно одно, —
+     * а боковые поля не трогаются: у зеркала они отражены из листа.
+     */
+    const edited = readDraftRuling();
+
+    expect(readHistoryLength()).toBe(historyBefore + 1);
+    expect(edited.margins).toStrictEqual({ ...PHOTO.margins, top: 140 });
+    expect(edited.sideSlant).toBeNull();
+    expect(edited.mirrorOverride).toBeNull();
+    expect(readCorner(editor, 'Левый верхний')).toStrictEqual({ x: corner.x, y: 140 });
+
+    getCorner(editor, 'Левый верхний').focus();
+    await user.keyboard('{ArrowRight}');
+
+    expect(readHistoryLength()).toBe(historyBefore + 1);
+
+    dragHandle(editor, within(editor).getByRole('button', { name: 'Верхнее поле' }), {
+      x: 300,
+      y: 182,
+    });
+
+    expect(readDraftRuling().margins.top).toBeCloseTo(180, 6);
+  });
+});
+
+describe('вкладка зеркальной страницы: углы области текста', () => {
+  it('угол зеркала по диагонали: по высоте — общее поле, вдоль строки — поле зеркала', async () => {
+    const user = userEvent.setup();
+    const editor = await openMirror(user, buildRuling(null, null), 'Поля');
+
+    await user.click(within(editor).getByRole('radio', { name: 'Задать отдельно' }));
+
+    const rightBottom = readCorner(editor, 'Правый нижний');
+    const rightTop = readCorner(editor, 'Правый верхний');
+    const historyBefore = readHistoryLength();
+
+    /**
+     * Видимый левый верхний угол зеркала тянут вправо-вниз: к столбцу 100
+     * отражённого кадра и между второй и третьей линиями.
+     */
+    dragHandle(editor, getCorner(editor, 'Левый верхний'), { x: 100, y: 105 });
+
+    const edited = readDraftRuling();
+
+    expect(readHistoryLength()).toBe(historyBefore + 1);
+    expect(edited.margins).toStrictEqual({ ...PHOTO.margins, top: 100 });
+    expect(edited.sideSlant).toBeNull();
+    expect(edited.mirrorOverride?.marginLeft).toBeGreaterThan(100);
+    expect(readCorner(editor, 'Левый верхний')).toStrictEqual({ x: WIDTH - 100, y: 100 });
+    expect(readCorner(editor, 'Правый верхний')).toStrictEqual({ x: rightTop.x, y: 100 });
+    expect(readCorner(editor, 'Правый нижний')).toStrictEqual(rightBottom);
+
+    expect(
+      (
+        within(editor).getByRole('textbox', {
+          name: 'Левое поле зеркала сверху, px',
+        }) as HTMLInputElement
+      ).value
+    ).toBe('100');
+
+    getCorner(editor, 'Левый верхний').focus();
+    await user.keyboard('{ArrowRight}');
+
+    /**
+     * Стрелка вправо двигает видимый угол вправо — на пиксель отражённого
+     * кадра.
+     */
+    expect(WIDTH - readCorner(editor, 'Левый верхний').x).toBeCloseTo(101, 6);
+    expect(readDraftRuling().margins.top).toBe(100);
+  });
+});
+
+/**
+ * Нижнее поле не на линии: направляющая в строке 750, между линиями 740 и
+ * 780.
+ */
+const OFF_LINE_MARGINS = { ...PHOTO.margins, bottom: 50 };
+
+/**
+ * Строка нижней направляющей листа с полем не на линии.
+ */
+const OFF_LINE_BOTTOM = HEIGHT - OFF_LINE_MARGINS.bottom;
+
+/**
+ * Разлиновка с нижним полем не на линии.
+ *
+ * @returns разлиновка
+ */
+const buildOffLineRuling = (): SheetRuling => {
+  return buildSheetRuling(
+    {
+      step: PHOTO.step,
+      firstLinePhase: PHOTO.phase,
+      skewAngle: 0,
+      margins: OFF_LINE_MARGINS,
+      marginLineX: null,
+      marginLineSide: null,
+    },
+    FRAME
+  );
+};
+
+/**
+ * Перетаскивает ручку указателем вбок в строке `y`: нажатие в столбце
+ * `fromX`, движение и отпускание в столбце `toX`. Экранная матрица
+ * единичная — точки в пикселях экрана, до отражения.
+ *
+ * @param editor — диалог редактора
+ * @param handle — ручка
+ * @param y — строка указателя, px
+ * @param fromX — столбец нажатия, px экрана
+ * @param toX — столбец отпускания, px экрана
+ */
+const dragHandleSideways = (
+  editor: HTMLElement,
+  handle: HTMLElement,
+  y: number,
+  fromX: number,
+  toX: number
+) => {
+  mockScreenMatrix(editor);
+  fireEvent.pointerDown(handle, { pointerId: 1, clientX: fromX, clientY: y });
+  fireEvent.pointerMove(handle, { pointerId: 1, clientX: toX, clientY: y });
+  fireEvent.pointerUp(handle, { pointerId: 1, clientX: toX, clientY: y });
+};
+
+describe('вкладка зеркальной страницы: место полей зеркала', () => {
+  it('поля зеркала стоят там, где у листа «Точные значения»: под выбором инструмента, над инструментом', async () => {
+    const user = userEvent.setup();
+    const editor = await openMirror(user, buildRuling(null, null), 'Поля');
+    const toolPicker = within(editor).getByRole('radiogroup', { name: 'Инструмент' });
+    const mirrorPicker = within(editor).getByRole('radiogroup', {
+      name: 'Линия поля и боковые поля зеркала',
+    });
+    const tool = within(editor).getByRole('region', { name: 'Поля листа' });
+    const layers = within(editor).getByRole('group', { name: 'Слои' });
+
+    expect(within(editor).queryByRole('button', { name: 'Точные значения' })).toBeNull();
+    expect(
+      toolPicker.compareDocumentPosition(mirrorPicker) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(
+      mirrorPicker.compareDocumentPosition(tool) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(
+      mirrorPicker.compareDocumentPosition(layers) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+
+    await user.click(within(editor).getByRole('radio', { name: 'Страница' }));
+
+    const exact = within(editor).getByRole('button', { name: 'Точные значения' });
+
+    expect(
+      toolPicker.compareDocumentPosition(exact) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(
+      exact.compareDocumentPosition(
+        within(editor).getByRole('region', { name: 'Поля листа' })
+      ) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+  });
+});
+
+describe('вкладка зеркальной страницы: порог высоты у угла', () => {
+  it('угол зеркала вбок: поле по высоте то же до бита, меняется только поле зеркала', async () => {
+    const user = userEvent.setup();
+    const editor = await openMirror(user, buildOffLineRuling(), 'Поля');
+
+    await user.click(within(editor).getByRole('radio', { name: 'Задать отдельно' }));
+
+    const override = readDraftRuling().mirrorOverride;
+    const corner = readCorner(editor, 'Левый нижний');
+    const historyBefore = readHistoryLength();
+
+    expect(corner.y).toBe(OFF_LINE_BOTTOM);
+
+    /**
+     * Видимый левый нижний угол зеркала тянут вправо на 40 px экрана.
+     */
+    dragHandleSideways(
+      editor,
+      getCorner(editor, 'Левый нижний'),
+      OFF_LINE_BOTTOM,
+      WIDTH - corner.x,
+      WIDTH - corner.x + 40
+    );
+
+    const edited = readDraftRuling();
+
+    expect(readHistoryLength()).toBe(historyBefore + 1);
+    expect(edited.margins).toStrictEqual(OFF_LINE_MARGINS);
+    expect(edited.sideSlant).toBeNull();
+    expect(edited.mirrorOverride).not.toStrictEqual(override);
+    expect(readCorner(editor, 'Левый нижний')).toStrictEqual({
+      x: corner.x - 40,
+      y: OFF_LINE_BOTTOM,
+    });
+  });
+
+  it('угол зеркала с отражёнными полями вбок разметку не меняет и правкой не становится', async () => {
+    const user = userEvent.setup();
+    const editor = await openMirror(user, buildOffLineRuling(), 'Поля');
+    const before = readDraftRuling();
+    const corner = readCorner(editor, 'Левый нижний');
+
+    dragHandleSideways(
+      editor,
+      getCorner(editor, 'Левый нижний'),
+      OFF_LINE_BOTTOM,
+      WIDTH - corner.x,
+      WIDTH - corner.x + 40
+    );
+
+    expect(readDraftRuling()).toBe(before);
+    expect(selectHasMarkupEdits(useMarkupEditorStore.getState())).toBe(false);
+  });
+});
+
+describe('вкладка зеркальной страницы: линия поля и боковые поля', () => {
+  it('линия поля справа на обеих страницах', async () => {
+    const user = userEvent.setup();
+    const lineX = WIDTH - 100;
+    const editor = await openMirror(user, buildRuling(lineX, 'right'), 'Поля');
+
+    /**
+     * Без отдельной правки у зеркала линия поля отражена влево.
+     */
+    expect(readBlockEdges(1).left).toBeCloseTo(100 + MARGIN_LINE_GAP, 6);
+
+    await user.click(within(editor).getByRole('radio', { name: 'Задать отдельно' }));
+    await user.click(within(editor).getByRole('radio', { name: 'Справа' }));
+
+    expect(readDraftRuling().mirrorOverride).toStrictEqual({
+      marginLineX: lineX,
+      marginLineSide: 'right',
+      marginLeft: PHOTO.margins.right,
+      marginRight: PHOTO.margins.left,
+      sideSlant: null,
+    });
+
+    await save(user, editor);
+
+    const page = readBlockEdges(0);
+    const mirror = readBlockEdges(1);
+
+    expect(page.left).toBeCloseTo(PHOTO.margins.left, 6);
+    expect(page.right).toBeCloseTo(lineX - MARGIN_LINE_GAP, 6);
+    expect(mirror.left).toBeCloseTo(PHOTO.margins.right, 6);
+    expect(mirror.right).toBeCloseTo(lineX - MARGIN_LINE_GAP, 6);
+    expect(readSavedMirrorRuling().marginLineSide).toBe('right');
+
+    const [stored] = await readUserSheets();
+
+    expect(stored?.sheet.ruling.mirrorOverride).toStrictEqual({
+      marginLineX: lineX,
+      marginLineSide: 'right',
+      marginLeft: PHOTO.margins.right,
+      marginRight: PHOTO.margins.left,
+      sideSlant: null,
+    });
+  });
+
+  it('линию поля можно убрать только на зеркале', async () => {
+    const user = userEvent.setup();
+    const editor = await openMirror(user, buildRuling(120, 'left'), 'Поля');
+
+    await user.click(within(editor).getByRole('radio', { name: 'Задать отдельно' }));
+    await user.click(within(editor).getByRole('radio', { name: 'Нет' }));
+    await save(user, editor);
+
+    expect(readBlockEdges(0).left).toBeCloseTo(120 + MARGIN_LINE_GAP, 6);
+    expect(readBlockEdges(1).right).toBeCloseTo(WIDTH - PHOTO.margins.left, 6);
+  });
+
+  it('возврат к отражению', async () => {
+    const user = userEvent.setup();
+    const override: RulingMirrorOverride = {
+      marginLineX: WIDTH - 120,
+      marginLineSide: 'right',
+      marginLeft: 70,
+      marginRight: 80,
+      sideSlant: null,
+    };
+    const editor = await openMirror(
+      user,
+      { ...buildRuling(120, 'left'), mirrorOverride: override },
+      'Поля'
+    );
+
+    expect(
+      within(editor)
+        .getByRole('radio', { name: 'Задать отдельно' })
+        .getAttribute('aria-checked')
+    ).toBe('true');
+
+    await user.click(
+      within(editor).getByRole('radio', { name: 'Как у оригинала, отражённо' })
+    );
+
+    expect(readDraftRuling().mirrorOverride).toBeNull();
+
+    await save(user, editor);
+
+    const mirror = readSavedMirrorRuling();
+
+    expect(mirror.marginLineX).toBe(WIDTH - 120);
+    expect(mirror.marginLineSide).toBe('right');
+    expect(mirror.margins.left).toBe(PHOTO.margins.right);
+    expect(mirror.margins.right).toBe(PHOTO.margins.left);
+
+    const [stored] = await readUserSheets();
+
+    expect(stored?.sheet.ruling.mirrorOverride).toBeNull();
+  });
+
+  it('боковое поле зеркала ставится двумя углами вдоль наклонной стороны', async () => {
+    const user = userEvent.setup();
+    const editor = await openMirror(user, buildRuling(null, null), 'Поля');
+
+    await user.click(within(editor).getByRole('radio', { name: 'Задать отдельно' }));
+
+    const bottom = getCorner(editor, 'Левый нижний');
+    const mirroredX = WIDTH - readHandlePoint(bottom).x;
+
+    dragHandle(editor, bottom, { x: mirroredX - 40, y: readHandlePoint(bottom).y });
+
+    expect(readDraftRuling().mirrorOverride?.sideSlant).not.toBeNull();
+    expect(readDraftRuling().sideSlant).toBeNull();
+    expect(
+      (
+        within(editor).getByRole('textbox', {
+          name: 'Левое поле зеркала снизу, px',
+        }) as HTMLInputElement
+      ).value
+    ).toBe(String(mirroredX - 40));
+
+    await save(user, editor);
+
+    const [page, mirror] = [0, 1].map((pageIndex) => {
+      return selectBlockGeometry(
+        useGeneratorStore.getState(),
+        pageIndex,
+        FALLBACK_FONT_METRICS
+      );
+    });
+
+    expect(page?.lineBounds).toBeUndefined();
+    expect(mirror?.lineBounds?.offsets.at(-1)).toBeLessThan(-30);
+  });
+
+  it('боковое поле зеркала не опускается до нуля: число — с причиной, ручка — упирается', async () => {
+    const user = userEvent.setup();
+    const editor = await openMirror(user, buildRuling(null, null), 'Поля');
+
+    await user.click(within(editor).getByRole('radio', { name: 'Задать отдельно' }));
+
+    const field = within(editor).getByRole('textbox', {
+      name: 'Левое поле зеркала сверху, px',
+    });
+    const before = readDraftRuling();
+    const historyBefore = readHistoryLength();
+
+    await user.clear(field);
+    await user.type(field, '-5{Enter}');
+
+    expect(readDraftRuling()).toBe(before);
+    expect(readHistoryLength()).toBe(historyBefore);
+    expect((field as HTMLInputElement).value).toBe('-5');
+    expect(field.getAttribute('aria-invalid')).toBe('true');
+    expect(
+      within(editor)
+        .getAllByRole('alert')
+        .map((alert) => {
+          return alert.textContent;
+        })
+        .join('')
+    ).toMatch(/Можно от\u00A05,8 до\u00A0510/);
+
+    dragHandle(editor, getCorner(editor, 'Правый верхний'), {
+      x: WIDTH + 50,
+      y: readCorner(editor, 'Правый верхний').y,
+    });
+
+    expect(readDraftRuling().mirrorOverride?.marginRight).toBe(1);
+  });
+
+  it('линия поля зеркала притягивается к отражённой черте, стрелкой — нет', async () => {
+    const user = userEvent.setup();
+    const editor = await openMirror(
+      user,
+      buildRuling(PHOTO.marginLineX, 'left'),
+      'Поля',
+      createSyntheticSheet(PHOTO)
+    );
+
+    await user.click(within(editor).getByRole('radio', { name: 'Задать отдельно' }));
+
+    const mirroredLine = WIDTH - PHOTO.marginLineX;
+
+    for (const end of SIDE_HANDLE_ENDS) {
+      const handle = within(editor).getByRole('button', {
+        name: `Линия поля зеркала ${end}`,
+      });
+
+      dragHandle(editor, handle, {
+        x: mirroredLine + 9,
+        y: readHandlePoint(handle).y,
+      });
+    }
+
+    const { mirrorOverride } = readDraftRuling();
+
+    expect(Math.abs((mirrorOverride?.marginLineX || 0) - mirroredLine)).toBeLessThan(1);
+    expect(
+      Math.abs((mirrorOverride?.sideSlant?.marginLineX || mirroredLine) - mirroredLine)
+    ).toBeLessThan(1);
+
+    const snapped = mirrorOverride?.marginLineX || 0;
+
+    for (const end of SIDE_HANDLE_ENDS) {
+      within(editor)
+        .getByRole('button', { name: `Линия поля зеркала ${end}` })
+        .focus();
+      await user.keyboard('{ArrowRight}');
+    }
+
+    expect(readDraftRuling().mirrorOverride?.marginLineX).toBeCloseTo(snapped + 1, 6);
+  });
+});
+
+describe('вкладки страниц над окном просмотра', () => {
+  it('стоят над окном, а не в панели, и переключают показанную страницу', async () => {
+    const user = userEvent.setup();
+    const editor = await openMirror(user, buildRuling(null, null), 'Контур');
+    const pages = within(editor).getByRole('radiogroup', { name: 'Страница разворота' });
+    const panel = within(editor).getByRole('complementary', {
+      name: 'Настройка разметки',
+    });
+    const viewport = within(editor).getByTestId('markup-viewport');
+
+    expect(panel.contains(pages)).toBe(false);
+    expect(pages.compareDocumentPosition(viewport)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    );
+    expect(within(editor).getByRole('img', { name: /отражённая$/ })).toBeTruthy();
+
+    await user.click(within(pages).getByRole('radio', { name: 'Страница' }));
+
+    expect(within(editor).queryByRole('img', { name: /отражённая$/ })).toBeNull();
+    expect(
+      within(editor).getByRole('img', { name: `Фотография листа «${SHEET_LABEL}»` })
+    ).toBeTruthy();
+  });
+
+  it('переключаются с клавиатуры', async () => {
+    const user = userEvent.setup();
+    const editor = await openMirror(user, buildRuling(null, null), 'Контур');
+    const pages = within(editor).getByRole('radiogroup', { name: 'Страница разворота' });
+
+    within(pages).getByRole('radio', { name: 'Зеркальная страница' }).focus();
+    await user.keyboard('{ArrowLeft}');
+
+    expect(document.activeElement).toBe(
+      within(pages).getByRole('radio', { name: 'Страница' })
+    );
+
+    await user.keyboard(' ');
+
+    expect(within(editor).queryByRole('img', { name: /отражённая$/ })).toBeNull();
+  });
+
+  it('плашка «Зеркальная страница» лежит на фото только на зеркале', async () => {
+    const user = userEvent.setup();
+    const editor = await openMirror(user, buildRuling(null, null), 'Контур');
+    const viewport = within(editor).getByTestId('markup-viewport');
+    const stage = within(editor).getByTestId('markup-stage');
+    const badge = within(viewport).getByTestId('markup-mirror-badge');
+
+    expect(badge.textContent).toBe('Зеркальная страница');
+
+    /**
+     * Плашка — вне сцены: она не отражается и не масштабируется вместе со
+     * снимком и не перехватывает сдвиг окна.
+     */
+    expect(stage.contains(badge)).toBe(false);
+    expect(badge.className).toMatch(/pointer-events-none/);
+
+    await user.click(within(editor).getByRole('radio', { name: 'Страница' }));
+
+    expect(within(editor).queryByTestId('markup-mirror-badge')).toBeNull();
+  });
+});

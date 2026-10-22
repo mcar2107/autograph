@@ -17,7 +17,8 @@ export const WRAP_WIDTH_SLACK = 0.01;
 /**
  * Раскладывает текст по страницам последовательно: каждая страница набирается
  * под лист, доставшийся ей, — своей шириной блока, своим кеглем и своей
- * вместимостью, — а остаток текста переходит на следующую страницу. Строки
+ * вместимостью, а остаток текста переходит на следующую страницу. На листе с
+ * наклонными полями у каждой строки своя ширина — по её месту на листе. Строки
  * всех страниц по порядку складываются в исходный текст без потерь и повторов.
  *
  * Страница, на которую по формуле не помещается ни одной строки, всё равно
@@ -44,6 +45,11 @@ export const paginate = (text: string, options: PaginateOptions): LayoutPage[] =
     const capacity = countPageLines(calibration, geometry, metrics, bottomMargin) || 0;
     const { lines, end } = splitParagraphs(text, {
       width: geometry.blockWidth * (1 - WRAP_WIDTH_SLACK),
+      ...(geometry.lineBounds && {
+        lineWidths: geometry.lineBounds.widths.map((width) => {
+          return width * (1 - WRAP_WIDTH_SLACK);
+        }),
+      }),
       fontSizePx: geometry.fontSizePx,
       measure,
       start: position,

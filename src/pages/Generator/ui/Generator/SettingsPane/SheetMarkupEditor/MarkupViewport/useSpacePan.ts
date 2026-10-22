@@ -1,0 +1,92 @@
+import type { RefObject } from 'react';
+import { useEffect, useState } from 'react';
+
+import { isTypingTarget } from './isTypingTarget';
+
+const SPACE_CODE = 'Space';
+
+/**
+ * Режим сдвига по зажатому пробелу: пока он включён, перетаскивание двигает
+ * фотографию и поверх ручек и линий разметки.
+ *
+ * Включается, только пока указатель над окном просмотра. Иначе пробел,
+ * отнятый у кнопок панели, сломал бы их нажатие с клавиатуры, а без мыши
+ * сдвигать нечем. С Ctrl, Cmd или Alt это чужое сочетание — смена раскладки,
+ * поиск системы, — а не сдвиг, и его пробел не отнимается. Нажатие и
+ * отпускание пробела в этом режиме отменяются: кнопка в фокусе (при открытии
+ * это «Закрыть») иначе сработала бы на отпускание.
+ *
+ * @param viewportRef — узел окна просмотра
+ * @returns зажат ли пробел для сдвига
+ */
+export const useSpacePan = (viewportRef: RefObject<HTMLElement | null>): boolean => {
+  const [isSpacePan, setSpacePan] = useState(false);
+
+  useEffect(() => {
+    const viewport = viewportRef.current;
+
+    if (!viewport) {
+      return;
+    }
+
+    let isPointerInside = false;
+    let isHeld = false;
+
+    const release = () => {
+      isHeld = false;
+      setSpacePan(false);
+    };
+
+    const handleViewportPointerEnter = () => {
+      isPointerInside = true;
+    };
+
+    const handleViewportPointerLeave = () => {
+      isPointerInside = false;
+    };
+
+    const handleDocumentKeyDown = (event: KeyboardEvent) => {
+      const { code, ctrlKey, metaKey, altKey, target } = event;
+
+      if (code !== SPACE_CODE) {
+        return;
+      }
+
+      if (
+        !isHeld &&
+        (!isPointerInside || ctrlKey || metaKey || altKey || isTypingTarget(target))
+      ) {
+        return;
+      }
+
+      event.preventDefault();
+      isHeld = true;
+      setSpacePan(true);
+    };
+
+    const handleDocumentKeyUp = (event: KeyboardEvent) => {
+      if (event.code !== SPACE_CODE || !isHeld) {
+        return;
+      }
+
+      event.preventDefault();
+      release();
+    };
+
+    viewport.addEventListener('pointerenter', handleViewportPointerEnter);
+    viewport.addEventListener('pointerleave', handleViewportPointerLeave);
+    document.addEventListener('keydown', handleDocumentKeyDown);
+    document.addEventListener('keyup', handleDocumentKeyUp);
+    window.addEventListener('blur', release);
+
+    return () => {
+      viewport.removeEventListener('pointerenter', handleViewportPointerEnter);
+      viewport.removeEventListener('pointerleave', handleViewportPointerLeave);
+      document.removeEventListener('keydown', handleDocumentKeyDown);
+      document.removeEventListener('keyup', handleDocumentKeyUp);
+      window.removeEventListener('blur', release);
+    };
+  }, [viewportRef]);
+
+  return isSpacePan;
+};

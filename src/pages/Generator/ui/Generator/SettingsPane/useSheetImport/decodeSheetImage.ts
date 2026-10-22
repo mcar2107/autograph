@@ -1,18 +1,10 @@
 import type { SheetImageData } from '../../../../lib/paper';
+import { toSheetImageData } from '../../../../model/measureSheetImage';
 
 /**
- * Веса каналов при переводе цвета в яркость: та же свёртка, что у sRGB-яркости.
- * Разлиновка печатается серым или синим, и по одному зелёному каналу синяя
- * линия почти не видна — поэтому берутся все три.
- */
-const RED_WEIGHT = 0.2126;
-const GREEN_WEIGHT = 0.7152;
-const BLUE_WEIGHT = 0.0722;
-
-/**
- * Загружает картинку из data URL.
+ * Загружает картинку по адресу фотографии листа.
  *
- * @param src — фотография листа как data URL
+ * @param src — адрес фотографии листа: object URL или data URL
  * @returns загруженная картинка; `null` — браузер её не разобрал
  */
 const loadImage = (src: string): Promise<HTMLImageElement | null> => {
@@ -39,7 +31,7 @@ const loadImage = (src: string): Promise<HTMLImageElement | null> => {
  * разобраться, а канвы для съёма пикселей может не быть вовсе. Экземпляр в
  * этом случае всё равно добавляется, только разлиновку к нему задают руками.
  *
- * @param src — фотография листа как data URL
+ * @param src — адрес фотографии листа: object URL или data URL
  * @returns выжимка; `null` — снять её не удалось
  */
 export const decodeSheetImage = async (src: string): Promise<SheetImageData | null> => {
@@ -69,19 +61,6 @@ export const decodeSheetImage = async (src: string): Promise<SheetImageData | nu
   context.drawImage(image, 0, 0);
 
   const { data } = context.getImageData(0, 0, width, height);
-  const luminance = new Float32Array(width * height);
-  const redMinusGreen = new Int16Array(width * height);
 
-  for (let index = 0; index < luminance.length; index += 1) {
-    const offset = index * 4;
-    const red = data[offset] || 0;
-    const green = data[offset + 1] || 0;
-
-    luminance[index] =
-      (red * RED_WEIGHT + green * GREEN_WEIGHT + (data[offset + 2] || 0) * BLUE_WEIGHT) /
-      255;
-    redMinusGreen[index] = red - green;
-  }
-
-  return { width, height, luminance, redMinusGreen };
+  return toSheetImageData(data, width, height);
 };

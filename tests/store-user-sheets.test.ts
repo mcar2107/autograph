@@ -2,6 +2,11 @@
 
 import type { PaperSheet, RulingBend } from '@pages/Generator/lib/paper';
 import {
+  getAllRecords,
+  openDatabase,
+  SHEETS_STORE,
+} from '@pages/Generator/model/indexedDb';
+import {
   selectPaperFamilies,
   selectPendingUserSheets,
 } from '@pages/Generator/model/paperSelectors';
@@ -10,7 +15,10 @@ import {
   useGeneratorStore,
 } from '@pages/Generator/model/useGeneratorStore';
 import type { UserSheetRecord } from '@pages/Generator/model/userSheetsStorage.types';
+import { IDBFactory } from 'fake-indexeddb';
 import { beforeEach, describe, expect, it } from 'vitest';
+
+import { buildUserSheetRecord } from './helpers/user-sheet-record';
 
 /**
  * Стор объявлен вне React, поэтому проверяется вызовами напрямую.
@@ -44,9 +52,11 @@ const buildMeasuredSheet = (id: string): PaperSheet => {
       margins: { top: 137.5, right: 90, bottom: 110, left: 120 },
       marginLineX: 1080,
       marginLineSide: 'right',
+      sideSlant: null,
       bend: null,
       perspective: null,
       outline: null,
+      mirrorOverride: null,
     },
     lighting: {
       gridWidth: 2,
@@ -65,7 +75,11 @@ const buildMeasuredSheet = (id: string): PaperSheet => {
 };
 
 const buildRecord = (id: string, isAnalyzed = true): UserSheetRecord => {
-  return { familyId: 'grid', sheet: buildMeasuredSheet(id), isAnalyzed, isBlank: false };
+  return buildUserSheetRecord({
+    familyId: 'grid',
+    sheet: buildMeasuredSheet(id),
+    isAnalyzed,
+  });
 };
 
 /**
@@ -75,7 +89,34 @@ const reload = () => {
   useGeneratorStore.setState(DEFAULT_GENERATOR_STATE);
 };
 
+/**
+ * Лист без адресов файлов: после перезагрузки фотография и карта текстуры
+ * приходят новыми object URL, а характеристики — теми же.
+ *
+ * @param sheet — лист
+ * @returns характеристики листа без адресов
+ */
+const withoutUrls = ({ src: _src, texture, ...rest }: PaperSheet) => {
+  return { ...rest, texture: texture && { ...texture, src: '' } };
+};
+
+/**
+ * Записи базы как есть.
+ *
+ * @returns записи хранилища листов
+ */
+const readRawRecords = async (): Promise<unknown[]> => {
+  const database = await openDatabase();
+
+  try {
+    return await getAllRecords(database, SHEETS_STORE);
+  } finally {
+    database.close();
+  }
+};
+
 beforeEach(() => {
+  globalThis.indexedDB = new IDBFactory();
   globalThis.localStorage.clear();
   useGeneratorStore.setState(DEFAULT_GENERATOR_STATE);
 });
@@ -105,22 +146,10 @@ describe('пользовательские листы в сторе', () => {
       })
     ).toBe(false);
   });
-
-  it('хранит исходный файл отдельно от списка характеристик', () => {
-    store().addUserSheet(buildRecord('user-1'));
-
-    const index = globalThis.localStorage.getItem('autograph.paper.user-sheets') || '';
-
-    expect(globalThis.localStorage.getItem('autograph.paper.source.user-1')).toBe(
-      PHOTO_SRC
-    );
-    expect(index).not.toContain(PHOTO_SRC);
-    expect(index).toContain('user-1');
-  });
 });
 
 describe('переживание перезагрузки', () => {
-  it('возвращает лист с теми же характеристиками', () => {
+  it('возвращает лист с теми же характеристиками', async () => {
     const record = buildRecord('user-1');
 
     store().addUserSheet(record);
@@ -128,12 +157,18 @@ describe('переживание перезагрузки', () => {
 
     expect(store().userSheets).toHaveLength(0);
 
-    store().restoreUserSheets();
+    await store().restoreUserSheets();
 
-    expect(store().userSheets).toEqual([record]);
+    const [restored] = store().userSheets;
+
+    expect(store().userSheets).toHaveLength(1);
+    expect(restored && { ...restored, sheet: withoutUrls(restored.sheet) }).toEqual({
+      ...record,
+      sheet: withoutUrls(record.sheet),
+    });
   });
 
-  it('возвращает изгиб линий строго равным исходному', () => {
+  it('возвращает изгиб линий строго равным исходному', async () => {
     const record = buildRecord('user-1');
     const { sheet } = record;
     const bend: RulingBend = {
@@ -151,15 +186,15 @@ describe('переживание перезагрузки', () => {
       sheet: { ...sheet, ruling: { ...sheet.ruling, bend } },
     });
     reload();
-    store().restoreUserSheets();
+    await store().restoreUserSheets();
 
     expect(store().userSheets[0]?.sheet.ruling.bend).toStrictEqual(bend);
   });
 
-  it('не запускает повторный анализ восстановленного листа', () => {
+  it('не запускает повторный анализ восстановленного листа', async () => {
     store().addUserSheet(buildRecord('user-1'));
     reload();
-    store().restoreUserSheets();
+    await store().restoreUserSheets();
 
     expect(selectPendingUserSheets(store())).toHaveLength(0);
   });
@@ -190,27 +225,18 @@ const seedStorage = (entry: Record<string, unknown>) => {
 };
 
 describe('форма записи в хранилище', () => {
-  it('пишет разлиновку целиком и ничего, что повторяло бы её вне разлиновки', () => {
+  it('пишет разлиновку целиком одной записью листа', async () => {
     const record = buildRecord('user-1');
 
     store().addUserSheet(record);
+    await store().restoreUserSheets();
 
-    const [entry] = JSON.parse(globalThis.localStorage.getItem(INDEX_KEY) || '[]');
+    const [entry] = await readRawRecords();
 
-    expect(entry.ruling).toEqual(record.sheet.ruling);
-    expect(Object.keys(entry).sort()).toEqual([
-      'familyId',
-      'height',
-      'id',
-      'isAnalyzed',
-      'isBlank',
-      'label',
-      'ruling',
-      'width',
-    ]);
+    expect(entry).toMatchObject({ id: 'user-1', ruling: record.sheet.ruling });
   });
 
-  it('читает разлиновку записи новой формы целиком', () => {
+  it('читает разлиновку записи новой формы целиком', async () => {
     const ruling = {
       step: 58,
       firstLinePhase: 21,
@@ -229,19 +255,21 @@ describe('форма записи в хранилище', () => {
       height: 1600,
       ruling,
     });
-    store().restoreUserSheets();
+    await store().restoreUserSheets();
 
     const [restored] = store().userSheets;
 
     expect(restored?.sheet.ruling).toEqual({
       ...ruling,
+      sideSlant: null,
       bend: null,
       perspective: null,
       outline: null,
+      mirrorOverride: null,
     });
   });
 
-  it('оставляет в списке запись прежней формы с приблизительной разлиновкой', () => {
+  it('оставляет в списке запись прежней формы с приблизительной разлиновкой', async () => {
     seedStorage({
       familyId: 'grid',
       isAnalyzed: true,
@@ -253,7 +281,7 @@ describe('форма записи в хранилище', () => {
       measuredStep: 48,
       firstLinePhase: 30,
     });
-    store().restoreUserSheets();
+    await store().restoreUserSheets();
 
     const family = selectPaperFamilies(store()).find((item) => {
       return item.id === 'grid';
@@ -270,34 +298,13 @@ describe('форма записи в хранилище', () => {
       margins: { top: 78, right: 72, bottom: 72, left: 72 },
       marginLineX: null,
       marginLineSide: null,
+      sideSlant: null,
       bend: null,
       perspective: null,
       outline: null,
+      mirrorOverride: null,
     });
     expect(family?.sheets.at(-1)?.id).toBe('user-legacy');
-  });
-});
-
-describe('записи под прежним именем приложения', () => {
-  it('переносит лист из старых ключей и удаляет их', () => {
-    store().addUserSheet(buildRecord('user-1'));
-
-    const storage = globalThis.localStorage;
-
-    for (const key of Object.keys(storage)) {
-      storage.setItem(
-        key.replace('autograph.', 'handwriting.'),
-        storage.getItem(key) || ''
-      );
-      storage.removeItem(key);
-    }
-
-    reload();
-    store().restoreUserSheets();
-
-    expect(store().userSheets[0]?.sheet.id).toBe('user-1');
-    expect(storage.getItem('autograph.paper.source.user-1')).toBe(PHOTO_SRC);
-    expect(storage.getItem('handwriting.paper.user-sheets')).toBeNull();
   });
 });
 
@@ -310,23 +317,22 @@ describe('удаление пользовательского листа', () =>
     expect(store().sheetId).toBe('grid-1');
   });
 
-  it('убирает лист из хранилища вместе с файлом и производными', () => {
+  it('убирает лист из хранилища вместе с файлом и производными', async () => {
     store().addUserSheet(buildRecord('user-1'));
     store().removeUserSheet('user-1');
     reload();
-    store().restoreUserSheets();
+    await store().restoreUserSheets();
 
     expect(store().userSheets).toHaveLength(0);
-    expect(globalThis.localStorage.getItem('autograph.paper.source.user-1')).toBeNull();
-    expect(globalThis.localStorage.getItem('autograph.paper.derived.user-1')).toBeNull();
+    expect(await readRawRecords()).toEqual([]);
   });
 
-  it('не трогает соседний лист', () => {
+  it('не трогает соседний лист', async () => {
     store().addUserSheet(buildRecord('user-1'));
     store().addUserSheet(buildRecord('user-2'));
     store().removeUserSheet('user-1');
     reload();
-    store().restoreUserSheets();
+    await store().restoreUserSheets();
 
     expect(
       store().userSheets.map((record) => {

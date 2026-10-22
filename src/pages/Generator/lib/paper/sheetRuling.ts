@@ -6,6 +6,7 @@ import type {
 } from './paper.types';
 import { resolveSheetBounds } from './resolveSheetBounds';
 import { lineCoordinateAt, lineHeightAt } from './rulingPerspective';
+import { normalizeSideSlant } from './sideEdges';
 
 /**
  * На сколько шагов разлиновки блок отступает от края кадра с той стороны, где
@@ -65,7 +66,8 @@ export const resolveFirstLine = (ruling: SheetRuling): number => {
  * Собирает разлиновку экземпляра из результата детектора или из записи
  * прежней формы. Каждая ненайденная сторона — нулевое поле — получает отступ в
  * полтора шага от стороны листа, верхнее поле при этом опускается до ближайшей
- * линии. Линия поля без стороны считается отсутствующей.
+ * линии. Линия поля без стороны считается отсутствующей, а концы полей у низа
+ * кадра, совпавшие с верхними, — отсутствием наклона.
  *
  * Готовую разлиновку функция не меняет, поэтому её можно звать и на
  * перечитанном из хранилища листе.
@@ -92,6 +94,11 @@ export const buildSheetRuling = (
     margins,
     marginLineX: hasMarginLine ? marginLineX : null,
     marginLineSide: hasMarginLine ? marginLineSide : null,
+    sideSlant: normalizeSideSlant(
+      source.sideSlant || null,
+      margins,
+      hasMarginLine ? marginLineX : null
+    ),
     /**
      * Чистый лист и ручной ввод без шага не несут ни сетку изгиба, ни
      * перспективу: обе описывают гребёнку, которой у такого листа нет.
@@ -99,6 +106,7 @@ export const buildSheetRuling = (
     bend: step > 0 ? source.bend || null : null,
     perspective: step > 0 ? source.perspective || null : null,
     outline: source.outline || null,
+    mirrorOverride: source.mirrorOverride || null,
   };
 
   /**

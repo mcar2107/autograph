@@ -20,8 +20,12 @@ import {
 import type { PaperFamily } from '../lib/paper/paper.types';
 import { DEFAULT_INK_TONE_ID } from '../lib/recipe';
 
-import type { GeneratorRealism, GeneratorState } from './generator.types';
-import { selectPaperFamilies } from './paperSelectors';
+import type {
+  GeneratorDocument,
+  GeneratorRealism,
+  GeneratorState,
+} from './generator.types';
+import { findKindFamily, selectPaperFamilies } from './paperSelectors';
 import { SESSION_VERSION, toSession } from './sessionSchema';
 import { createSessionStorage } from './sessionStorage';
 import {
@@ -41,6 +45,7 @@ import type {
   PaperSelection,
 } from './useGeneratorStore.types';
 import { deleteUserSheet, readUserSheets, writeUserSheet } from './userSheetsStorage';
+import type { UserSheetRecord } from './userSheetsStorage.types';
 
 /**
  * Текст, с которым открывается генератор: экран не должен встречать пустым
@@ -113,6 +118,9 @@ const DEFAULT_STATE: GeneratorStateWithHistory = {
   zoom: 'fit',
   presetFamilies: PRESET_PAPER_FAMILIES,
   userSheets: [],
+  unsavedUserSheetIds: [],
+  undeletedUserSheetIds: [],
+  hasRestoredUserSheets: false,
   customFontFamily: null,
   customSceneSrc: null,
   isBackgroundHidden: false,
@@ -158,13 +166,19 @@ const resolveSelection = (
  * держать выбор в его семье пользователь не просил. Неизвестная семья
  * заменяется первой, пропавший незакреплённый экземпляр — первым в семье.
  *
+ * Пока свои листы не прочитаны, ненайденный экземпляр известной семьи
+ * пропавшим не считается: это может быть свой лист, который ещё читается.
+ * Проверка повторяется, когда чтение закончится.
+ *
  * @param families — доступные семьи листов
  * @param refs — семья, экземпляр и закрепление из сессии или снимка
+ * @param hasRestoredUserSheets — свои листы уже прочитаны
  * @returns существующие семья и экземпляр с закреплением
  */
 const resolveSheetRefs = (
   families: PaperFamily[],
-  refs: Pick<GeneratorState, 'familyId' | 'sheetId' | 'isSheetPinned'>
+  refs: Pick<GeneratorState, 'familyId' | 'sheetId' | 'isSheetPinned'>,
+  hasRestoredUserSheets: boolean
 ): Pick<GeneratorState, 'familyId' | 'sheetId' | 'isSheetPinned'> => {
   const { familyId, sheetId, isSheetPinned } = refs;
   const family = families.find((item) => {
@@ -176,7 +190,7 @@ const resolveSheetRefs = (
     })
   );
 
-  if (family && hasSheet) {
+  if (family && (hasSheet || !hasRestoredUserSheets)) {
     return { familyId, sheetId, isSheetPinned };
   }
 
@@ -205,7 +219,11 @@ const applyHistoryStep = (
 
   return {
     ...document,
-    ...resolveSheetRefs(selectPaperFamilies(state), document),
+    ...resolveSheetRefs(
+      selectPaperFamilies(state),
+      document,
+      state.hasRestoredUserSheets
+    ),
     history,
   };
 };
@@ -234,6 +252,37 @@ const toCustomRealism = (
 };
 
 /**
+ * Просьба не вытеснять данные сайта уже прозвучала в этой сессии. Флаг модуля,
+ * а не поле стора: сброс стора к умолчаниям не делает браузер забывчивым.
+ */
+let hasRequestedPersistentStorage = false;
+
+/**
+ * Просит браузер не вытеснять данные сайта при нехватке места — раз за
+ * сессию, при первом сохранении своего листа: Firefox может спросить
+ * разрешение, и вопрос уместен, только когда пользователь что-то сохраняет.
+ * Отказ или отсутствие API ничего не ломают — лист просто остаётся
+ * вытесняемым.
+ */
+const requestPersistentStorage = (): void => {
+  if (hasRequestedPersistentStorage) {
+    return;
+  }
+
+  hasRequestedPersistentStorage = true;
+
+  const storage = globalThis.navigator?.storage;
+
+  if (!storage?.persist) {
+    return;
+  }
+
+  storage.persist().catch(() => {
+    return false;
+  });
+};
+
+/**
  * Ключ сессии в локальном хранилище.
  */
 const SESSION_KEY = 'autograph.session';
@@ -257,7 +306,7 @@ const partializeSession = (state: GeneratorStoreWithHistory): GeneratorSession =
 
 export const useGeneratorStore = create<GeneratorStoreWithHistory>()(
   persist(
-    (set) => {
+    (set, get) => {
       /**
        * Правка документа шагом истории. Время берётся здесь, а не в
        * `recordCommit`, чтобы склейку можно было проверить без часов.
@@ -266,6 +315,55 @@ export const useGeneratorStore = create<GeneratorStoreWithHistory>()(
         set((state) => {
           return recordCommit(state, update, options, Date.now());
         });
+      };
+
+      /**
+       * Сохраняет свой лист и отмечает в сторе, принят ли он хранилищем. Отказ
+       * записи удалённого за это время листа не помечается: сообщать о листе,
+       * которого уже нет в списке, незачем.
+       *
+       * @param record — лист стора
+       */
+      const saveUserSheet = async (record: UserSheetRecord): Promise<void> => {
+        const { id } = record.sheet;
+
+        requestPersistentStorage();
+
+        const isSaved = await writeUserSheet(record);
+
+        set((state) => {
+          const rest = state.unsavedUserSheetIds.filter((sheetId) => {
+            return sheetId !== id;
+          });
+          const isListed = state.userSheets.some(({ sheet }) => {
+            return sheet.id === id;
+          });
+
+          return { unsavedUserSheetIds: isSaved || !isListed ? rest : [...rest, id] };
+        });
+      };
+
+      /**
+       * Удаляет свой лист из хранилища и отмечает в сторе, если хранилище его
+       * не удалило.
+       *
+       * @param sheetId — идентификатор экземпляра
+       */
+      const forgetUserSheet = async (sheetId: string): Promise<void> => {
+        const isDeleted = await deleteUserSheet(sheetId);
+
+        if (!isDeleted) {
+          set((state) => {
+            return {
+              undeletedUserSheetIds: [
+                ...state.undeletedUserSheetIds.filter((id) => {
+                  return id !== sheetId;
+                }),
+                sheetId,
+              ],
+            };
+          });
+        }
       };
 
       return {
@@ -388,11 +486,13 @@ export const useGeneratorStore = create<GeneratorStoreWithHistory>()(
             const families = selectPaperFamilies({ ...state, presetFamilies });
 
             /**
-             * Профили грузятся после восстановления своих листов (чтение
-             * листов синхронно, профили — по сети), поэтому закреплённый свой
-             * лист здесь уже на месте и пропавшим не считается.
+             * Профили и свои листы приходят в любом порядке: закреплённый
+             * свой лист, который ещё читается, здесь пропавшим не считается.
              */
-            return { presetFamilies, ...resolveSheetRefs(families, state) };
+            return {
+              presetFamilies,
+              ...resolveSheetRefs(families, state, state.hasRestoredUserSheets),
+            };
           });
         },
         selectFamily: (familyId) => {
@@ -413,7 +513,7 @@ export const useGeneratorStore = create<GeneratorStoreWithHistory>()(
           return commit({ sheetId, isSheetPinned: true });
         },
         addUserSheet: (record) => {
-          writeUserSheet(record);
+          void saveUserSheet(record);
 
           return set((state) => {
             const rest = state.userSheets.filter((item) => {
@@ -433,8 +533,74 @@ export const useGeneratorStore = create<GeneratorStoreWithHistory>()(
             };
           });
         },
+        saveSheetMarkup: (sheetId, markup) => {
+          const { ruling, pins, kind, remeasure } = markup;
+          const { userSheets, presetFamilies } = get();
+          const record = userSheets.find(({ sheet }) => {
+            return sheet.id === sheetId;
+          });
+
+          if (!record) {
+            return;
+          }
+
+          const familyId =
+            findKindFamily(presetFamilies, record.familyId, kind)?.id || record.familyId;
+          const saved: UserSheetRecord = remeasure
+            ? {
+                ...record,
+                familyId,
+                kind,
+                pins,
+                measuredRuling: remeasure.measuredRuling,
+                measuredKind: remeasure.measuredKind,
+                sheet: {
+                  ...record.sheet,
+                  ruling,
+                  lighting: remeasure.lighting,
+                  texture: remeasure.texture,
+                },
+              }
+            : { ...record, familyId, kind, pins, sheet: { ...record.sheet, ruling } };
+
+          /**
+           * Переезд листа в семью другого вида — правка ресурса, а не
+           * документа: шага истории он не ставит, а снимки, выбравшие этот лист
+           * в прежней семье, переезжают вместе с ним. Иначе отмена правки
+           * текста вернула бы выбор в семью, где листа уже нет, и починка
+           * ссылок сбросила бы его на чужой лист.
+           */
+          const relocate = (document: GeneratorDocument): GeneratorDocument => {
+            return document.sheetId === sheetId && document.familyId === record.familyId
+              ? { ...document, familyId }
+              : document;
+          };
+
+          set((state) => {
+            const next = state.userSheets.map((item) => {
+              return item.sheet.id === sheetId ? saved : item;
+            });
+            const { history } = state;
+            const relocated =
+              familyId === record.familyId
+                ? {}
+                : {
+                    history: {
+                      ...history,
+                      past: history.past.map(relocate),
+                      future: history.future.map(relocate),
+                      previewBase: history.previewBase && relocate(history.previewBase),
+                    },
+                  };
+
+            return state.sheetId === sheetId
+              ? { userSheets: next, familyId, ...relocated }
+              : { userSheets: next, ...relocated };
+          });
+          void saveUserSheet(saved);
+        },
         removeUserSheet: (sheetId) => {
-          deleteUserSheet(sheetId);
+          void forgetUserSheet(sheetId);
 
           return set((state) => {
             const userSheets = state.userSheets.filter((item) => {
@@ -449,18 +615,46 @@ export const useGeneratorStore = create<GeneratorStoreWithHistory>()(
              */
             return {
               userSheets,
+              unsavedUserSheetIds: state.unsavedUserSheetIds.filter((id) => {
+                return id !== sheetId;
+              }),
               ...selection,
               isSheetPinned: state.isSheetPinned && selection.sheetId === state.sheetId,
             };
           });
         },
-        restoreUserSheets: () => {
-          const userSheets = readUserSheets();
+        restoreUserSheets: async () => {
+          /**
+           * Чтение, упавшее целиком, не должно оставить страницу ждать вечно:
+           * листов тогда нет, и ссылки на них проверяются как на пропавшие.
+           */
+          const restored = await readUserSheets().catch(() => {
+            return [];
+          });
 
-          return set((state) => {
+          set((state) => {
+            const restoredIds = new Set(
+              restored.map(({ sheet }) => {
+                return sheet.id;
+              })
+            );
+            /**
+             * Лист, добавленный, пока шло чтение, остаётся: чтение его ещё не
+             * видело, а затирать его прочитанным списком значит потерять.
+             */
+            const userSheets = [
+              ...restored,
+              ...state.userSheets.filter(({ sheet }) => {
+                return !restoredIds.has(sheet.id);
+              }),
+            ];
             const families = selectPaperFamilies({ ...state, userSheets });
 
-            return { userSheets, ...resolveSheetRefs(families, state) };
+            return {
+              userSheets,
+              hasRestoredUserSheets: true,
+              ...resolveSheetRefs(families, state, true),
+            };
           });
         },
         setGeometryCorrection: (patch) => {

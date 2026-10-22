@@ -79,8 +79,10 @@ describe('разбор артефакта профилей', () => {
 
     expect(profiles.grid?.[0]?.ruling).toEqual({
       ...PROFILE_RULING,
+      sideSlant: null,
       perspective: null,
       outline: null,
+      mirrorOverride: null,
     });
   });
 
@@ -183,8 +185,10 @@ describe('сборка предустановленных семей', () => {
     expect(grid?.sheets[0]?.id).toBe('1');
     expect(grid?.sheets[0]?.ruling).toEqual({
       ...PROFILE_RULING,
+      sideSlant: null,
       perspective: null,
       outline: null,
+      mirrorOverride: null,
     });
     expect(lined?.sheets).toHaveLength(4);
   });

@@ -37,10 +37,11 @@ const countParagraphBreaks = (text: string, position: number): number => {
 
 /**
  * Разбивает текст на строки: абзацы — по переводам строк, каждый абзац — жадно
- * по ширине блока. Слово добавляется в строку, пока она помещается; слово,
- * которое не помещается целиком, занимает отдельную строку — переносов внутри
- * слова генератор не делает. Пустой абзац даёт пустую строку, чтобы отбивка
- * между абзацами сохранилась в отрисовке.
+ * по ширине блока, а если заданы ширины строк — по ширине своей строки. Слово
+ * добавляется в строку, пока она помещается; слово, которое не помещается
+ * целиком, занимает отдельную строку — переносов внутри слова генератор не
+ * делает. Пустой абзац даёт пустую строку, чтобы отбивка между абзацами
+ * сохранилась в отрисовке.
  *
  * Разбивку можно продолжать: вызов набирает не больше `maxLines` строк с
  * позиции `start` и отдаёт позицию, где остановился. Правило на разрыве одно:
@@ -63,12 +64,28 @@ export const splitParagraphs = (
 ): SplitParagraphsResult => {
   const {
     width,
+    lineWidths,
     fontSizePx,
     measure,
     start = 0,
     maxLines = Number.POSITIVE_INFINITY,
   } = options;
   const lines: Line[] = [];
+
+  /**
+   * Ширина строки, которая набирается сейчас. `??`, а не `||`: нулевая ширина
+   * у строки, где поля сошлись, — настоящая ширина, а не её отсутствие.
+   *
+   * @returns ширина, px
+   */
+  const readLineWidth = (): number => {
+    if (!lineWidths || lineWidths.length === 0) {
+      return width;
+    }
+
+    return lineWidths[Math.min(lines.length, lineWidths.length - 1)] ?? width;
+  };
+
   let position = start;
   let paragraphIndex = countParagraphBreaks(text, start);
 
@@ -82,7 +99,7 @@ export const splitParagraphs = (
       const [word] = match;
       const candidate = current ? `${current} ${word}` : word;
 
-      if (!current || measure.measureWidth(candidate) * fontSizePx <= width) {
+      if (!current || measure.measureWidth(candidate) * fontSizePx <= readLineWidth()) {
         current = candidate;
 
         continue;

@@ -5,7 +5,7 @@ import type { PaperSheet } from '../lib/paper/paper.types';
 
 import { getPageCalibration } from './geometrySelectors';
 import type { LayoutParams, MeasurerFactory } from './measureLayout.types';
-import { findSheet } from './paperSelectors';
+import { findSheet, resolveSheetKind } from './paperSelectors';
 import { buildPageSheetSequence } from './recipeSelectors';
 
 /**
@@ -38,7 +38,9 @@ const toSheetFingerprint = (sheet: PaperSheet): unknown[] => {
     margins,
     marginLineX,
     marginLineSide,
+    sideSlant,
     perspective,
+    mirrorOverride,
   } = ruling;
 
   return [
@@ -55,6 +57,11 @@ const toSheetFingerprint = (sheet: PaperSheet): unknown[] => {
     marginLineX,
     marginLineSide,
     /**
+     * Концы полей у низа кадра меняют ширину каждой строки, а с ней и
+     * переносы.
+     */
+    sideSlant && [sideSlant.left, sideSlant.right, sideSlant.marginLineX],
+    /**
      * Перспектива входит четырьмя числами: от неё зависят первая линия и
      * вместимость страницы. Изгиб и контур не входят — изгиб на разбивку не
      * влияет вовсе, а контур влияет только через поля, и они уже здесь.
@@ -65,6 +72,21 @@ const toSheetFingerprint = (sheet: PaperSheet): unknown[] => {
       perspective.convergenceX,
       perspective.convergenceY,
     ],
+    /**
+     * Поля зеркала меняют блок правой страницы разворота, а идентификатор
+     * листа при их правке прежний.
+     */
+    mirrorOverride && [
+      mirrorOverride.marginLineX,
+      mirrorOverride.marginLineSide,
+      mirrorOverride.marginLeft,
+      mirrorOverride.marginRight,
+      mirrorOverride.sideSlant && [
+        mirrorOverride.sideSlant.left,
+        mirrorOverride.sideSlant.right,
+        mirrorOverride.sideSlant.marginLineX,
+      ],
+    ],
   ];
 };
 
@@ -72,8 +94,10 @@ const toSheetFingerprint = (sheet: PaperSheet): unknown[] => {
  * Ключ раскладки. Раскладка зависит от всей раздачи листов, поэтому в ключ
  * идут seed прогона и отпечаток каждого листа семьи: свой лист, подмешанный в
  * семью, сдвигает раздачу, а правка разлиновки листа не меняет его
- * идентификатор. Закреплённый лист входит только закреплённым — иначе выбор в
- * панели на раздачу не влияет.
+ * идентификатор. Вид листа входит отдельно от семейного: смена вида своего
+ * листа меняет число шагов на строку, не трогая ни семью, ни разлиновку.
+ * Закреплённый лист входит только закреплённым — иначе выбор в панели на
+ * раздачу не влияет.
  *
  * Поправка и метрики перечислены поимённо, а не сериализованы объектами:
  * порядок ключей объекта от истории правок не зависит, и отсутствующая дельта
@@ -111,6 +135,9 @@ const buildKey = (params: LayoutParams): string => {
     family.id,
     family.kind,
     family.sheets.map(toSheetFingerprint),
+    family.sheets.map(({ id }) => {
+      return resolveSheetKind(family, id);
+    }),
     isSheetPinned ? sheetId : null,
   ]);
 };

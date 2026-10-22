@@ -32,6 +32,7 @@ import {
   buildSheet,
   RENDER_SHEET_RULING,
 } from './helpers/paper-family';
+import { buildUserSheetRecord } from './helpers/user-sheet-record';
 
 /**
  * Повторяет сборку экрана генератора, но с измерителем-моделью: настоящих
@@ -346,12 +347,7 @@ describe('кэш разбивки', () => {
     act(() => {
       useGeneratorStore.setState({
         userSheets: [
-          {
-            familyId: FAMILY.id,
-            sheet: buildSheet('user-1'),
-            isAnalyzed: true,
-            isBlank: false,
-          },
+          buildUserSheetRecord({ familyId: FAMILY.id, sheet: buildSheet('user-1') }),
         ],
       });
     });

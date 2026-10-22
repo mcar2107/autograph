@@ -193,6 +193,27 @@ describe('полоса действий', () => {
     expect(getButton('Скачать все').disabled).toBe(true);
     expect(screen.getByText('Введите текст, чтобы сохранить страницы')).toBeDefined();
   });
+
+  it('пока свои листы читаются, не сохраняет страницу на подставленной бумаге', () => {
+    useGeneratorStore.setState({
+      sheetId: 'user-not-read-yet',
+      isSheetPinned: true,
+      hasRestoredUserSheets: false,
+    });
+
+    render(<ActionBar plan={PLAN} />);
+
+    expect(getButton('Сохранить страницу').disabled).toBe(true);
+    expect(getButton('Скачать все').disabled).toBe(true);
+    expect(screen.getByText('Загружаем свои листы…')).toBeDefined();
+
+    act(() => {
+      useGeneratorStore.setState({ hasRestoredUserSheets: true });
+    });
+
+    expect(getButton('Сохранить страницу').disabled).toBe(false);
+    expect(getButton('Скачать все').disabled).toBe(false);
+  });
 });
 
 describe('перегенерация', () => {
