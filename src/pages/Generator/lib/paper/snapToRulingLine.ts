@@ -1,7 +1,12 @@
 import type { SheetImageData, SheetPoint } from './paper.types';
 import { computeQuantile } from './quantile';
-import { detrendProfile, refinePeakOffset, smoothProfile } from './sheetProfile';
-import { TRACE_SEARCH_SHARE } from './traceRulingLines';
+import { detrendProfile, smoothProfile } from './sheetProfile';
+import {
+  findSnapPeak,
+  refineSnapPeak,
+  resolveSnapProfileWindow,
+} from './snapProfileWindow';
+import type { SnapProfileWindow } from './snapProfileWindow.types';
 
 /**
  * Направление поиска: `rows` — поперёк горизонтальной линии разлиновки, по
@@ -9,20 +14,6 @@ import { TRACE_SEARCH_SHARE } from './traceRulingLines';
  * строки.
  */
 type SnapAxis = 'rows' | 'columns';
-
-/**
- * Полудлина профиля поперёк линии в шагах. Шаг в обе стороны — чтобы фон,
- * вычитаемый из профиля, мерился по бумаге между линиями, а не по склону
- * искомой.
- */
-const PROFILE_REACH_STEPS = 1;
-
-/**
- * Полудлина полосы вдоль линии, по которой усредняется яркость, в шагах.
- * Четверть шага гасит шум бумаги, а наклон линии в пару градусов уводит её на
- * этой длине меньше чем на сотую шага.
- */
-const ALONG_REACH_SHARE = 1 / 4;
 
 /**
  * Окно сглаживания профиля в отсчётах: три — симметричное и не сдвигает
@@ -61,28 +52,19 @@ const MIN_DEPTH = 0.01;
  *
  * @param image — изображение листа
  * @param axis — направление поиска
- * @param across — первый отсчёт профиля поперёк линии
- * @param count — число отсчётов профиля
- * @param along — центр полосы вдоль линии
- * @param alongReach — полудлина полосы вдоль линии
+ * @param window — профиль и полоса вдоль линии
  * @returns профиль яркости
  */
 const buildSnapProfile = (
   image: SheetImageData,
   axis: SnapAxis,
-  across: number,
-  count: number,
-  along: number,
-  alongReach: number
+  { from, count, alongFrom, alongTo }: SnapProfileWindow
 ): Float64Array => {
-  const { width, height, luminance } = image;
-  const alongSize = axis === 'rows' ? width : height;
-  const alongFrom = Math.max(0, along - alongReach);
-  const alongTo = Math.min(alongSize - 1, along + alongReach);
+  const { width, luminance } = image;
   const profile = new Float64Array(count);
 
   for (let index = 0; index < count; index += 1) {
-    const position = across + index;
+    const position = from + index;
     let sum = 0;
 
     for (let cursor = alongFrom; cursor <= alongTo; cursor += 1) {
@@ -118,58 +100,25 @@ const findSnapCoordinate = (
   point: SheetPoint,
   step: number
 ): number | null => {
-  const acrossValue = axis === 'rows' ? point.y : point.x;
-  const alongValue = axis === 'rows' ? point.x : point.y;
-  const acrossSize = axis === 'rows' ? image.height : image.width;
-  const alongSize = axis === 'rows' ? image.width : image.height;
+  const snapWindow =
+    axis === 'rows'
+      ? resolveSnapProfileWindow(point.y, point.x, image.height, image.width, step)
+      : resolveSnapProfileWindow(point.x, point.y, image.width, image.height, step);
 
-  if (
-    !Number.isFinite(step) ||
-    step <= 0 ||
-    !Number.isFinite(acrossValue) ||
-    !Number.isFinite(alongValue) ||
-    acrossValue < 0 ||
-    acrossValue > acrossSize - 1 ||
-    alongValue < 0 ||
-    alongValue > alongSize - 1
-  ) {
+  if (!snapWindow) {
     return null;
   }
 
-  const reach = Math.ceil(PROFILE_REACH_STEPS * step);
-  const center = Math.round(acrossValue);
-  const from = Math.max(0, center - reach);
-  const to = Math.min(acrossSize - 1, center + reach);
-  const count = to - from + 1;
-  const alongReach = Math.max(1, Math.round(ALONG_REACH_SHARE * step));
-  const profile = smoothProfile(
-    buildSnapProfile(image, axis, from, count, Math.round(alongValue), alongReach),
-    SMOOTH_WINDOW
-  );
+  const profile = smoothProfile(buildSnapProfile(image, axis, snapWindow), SMOOTH_WINDOW);
   const detrended = detrendProfile(profile, Math.round(BACKGROUND_WINDOW_STEPS * step));
-  const searchReach = TRACE_SEARCH_SHARE * step;
-  const windowFrom = Math.max(1, Math.ceil(acrossValue - searchReach) - from);
-  const windowTo = Math.min(count - 2, Math.floor(acrossValue + searchReach) - from);
-  let peak = -1;
-  let depth = 0;
 
-  for (let bin = windowFrom; bin <= windowTo; bin += 1) {
-    const binDepth = -(detrended[bin] || 0);
+  const depthAt = (bin: number): number => {
+    return -(detrended[bin] || 0);
+  };
 
-    if (binDepth > depth) {
-      peak = bin;
-      depth = binDepth;
-    }
-  }
+  const peak = findSnapPeak(snapWindow, depthAt, 0);
 
-  if (peak < 0) {
-    return null;
-  }
-
-  const previous = -(detrended[peak - 1] || 0);
-  const next = -(detrended[peak + 1] || 0);
-
-  if (previous > depth || next > depth) {
+  if (!peak) {
     return null;
   }
 
@@ -178,11 +127,11 @@ const findSnapCoordinate = (
   });
   const noise = MEDIAN_TO_SIGMA * computeQuantile(deviations, 0.5);
 
-  if (depth < Math.max(MIN_DEPTH, NOISE_FACTOR * noise)) {
+  if (peak.score < Math.max(MIN_DEPTH, NOISE_FACTOR * noise)) {
     return null;
   }
 
-  return from + peak + refinePeakOffset(previous, depth, next);
+  return refineSnapPeak(snapWindow, depthAt, peak.bin, peak.score);
 };
 
 /**

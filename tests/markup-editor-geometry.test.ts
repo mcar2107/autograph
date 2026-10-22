@@ -10,7 +10,7 @@ import { findLinePoint } from '@pages/Generator/ui/Generator/SettingsPane/SheetM
 import {
   buildRulingLines,
   toOutlineBox,
-} from '@pages/Generator/ui/Generator/SettingsPane/SheetMarkupEditor/MarkupOverlay/markupGeometry';
+} from '@pages/Generator/ui/Generator/SettingsPane/SheetMarkupEditor/markupGeometry';
 import { describe, expect, it } from 'vitest';
 
 const FRAME = { width: 900, height: 1200 };

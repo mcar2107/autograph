@@ -3,22 +3,15 @@ import { RadioGroup } from '@shared/ui/RadioGroup';
 import type { SegmentedControlOption } from '@shared/ui/SegmentedControl';
 import { SegmentedControl } from '@shared/ui/SegmentedControl';
 import type { FC } from 'react';
-import { useMemo } from 'react';
 import { createPortal } from 'react-dom';
 
 import type { MarginLineSide, SheetPoint, SideEdge } from '../../../../../../lib/paper';
 import { mirrorSheetRuling } from '../../../../../../lib/paper';
 import { useMarkupEditorStore } from '../../../../../../model/useMarkupEditorStore';
-import { ExactValueField } from '../../ExactValues/ExactValueField';
-import {
-  EXACT_VALUES_LEGEND,
-  SIDE_REFERENCES,
-} from '../../ExactValues/exactValuesReferences';
-import {
-  readSideHandleValue,
-  resolveMarginHandles,
-} from '../../MarginsTool/marginsGeometry';
-import type { SideHandleEnd } from '../../MarginsTool/marginsGeometry.types';
+import { ExactValueField } from '../../ExactValueField';
+import { EXACT_VALUES_LEGEND, SIDE_REFERENCES } from '../../exactValuesReferences';
+import { readSideHandleValue, resolveMarginHandles } from '../../marginsGeometry';
+import type { SideHandleEnd } from '../../marginsGeometry.types';
 import type { MarkupMoveSource } from '../../MarkupHandle';
 import { MarkupHandle } from '../../MarkupHandle';
 import { mirrorMarkupPoint } from '../../MarkupViewport';
@@ -95,9 +88,7 @@ export const MirrorOverride: FC<MirrorOverrideProps> = (props) => {
   const ruling = useMarkupEditorStore((state) => {
     return state.draft?.ruling || null;
   });
-  const frame = useMemo(() => {
-    return { width, height };
-  }, [width, height]);
+  const frame = { width, height };
   const { separate, reflect, moveSideEnd, setSideEnd, setSideValue, setMarginLineSide } =
     useMirrorOverrideEdit(frame);
 

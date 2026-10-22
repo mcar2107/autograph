@@ -2,13 +2,13 @@ import { cx } from '@shared/lib/styles';
 import { IconButton } from '@shared/ui/IconButton';
 import { Tooltip } from '@shared/ui/Tooltip';
 import type { FC } from 'react';
-import { Fragment } from 'react';
 
 import { PAPER_TILE_CLASS_NAME } from '../paperTileClassName';
 import { renderSheetPreview } from '../renderSheetPreview';
 
+import { interleaveLabelBreaks } from './interleaveLabelBreaks';
 import type { OwnSheetTileProps } from './OwnSheetTile.types';
-import { splitLabelBreaks } from './splitLabelBreaks';
+import { LABEL_CLAMP_CLASS_NAME } from './tileLabelLines';
 import { useFittedLabel } from './useFittedLabel';
 
 /**
@@ -23,6 +23,9 @@ import { useFittedLabel } from './useFittedLabel';
  *
  * Видимая подпись входит в доступное имя плитки: голосом выбирают то, что
  * видно.
+ *
+ * Плитка сама держит отсчёт для кнопки в углу: кнопка стоит поверх превью при
+ * любом контейнере вокруг плитки.
  */
 export const OwnSheetTile: FC<OwnSheetTileProps> = (props) => {
   const { sheet, isSelected, isMarkupDisabled, onSelect, onMarkupOpen } = props;
@@ -39,7 +42,7 @@ export const OwnSheetTile: FC<OwnSheetTileProps> = (props) => {
   };
 
   return (
-    <>
+    <div className="relative">
       <Tooltip content={label}>
         <button
           type="button"
@@ -55,14 +58,9 @@ export const OwnSheetTile: FC<OwnSheetTileProps> = (props) => {
             {renderSheetPreview(sheet)}
           </span>
 
-          <span ref={ref} className="line-clamp-2 w-full wrap-anywhere">
-            {splitLabelBreaks(text).map((segment, index) => {
-              return (
-                <Fragment key={index}>
-                  {index > 0 ? <wbr /> : null}
-                  {segment}
-                </Fragment>
-              );
+          <span ref={ref} className={cx(LABEL_CLAMP_CLASS_NAME, 'w-full wrap-anywhere')}>
+            {interleaveLabelBreaks(text, (index) => {
+              return <wbr key={index} />;
             })}
           </span>
         </button>
@@ -94,6 +92,6 @@ export const OwnSheetTile: FC<OwnSheetTileProps> = (props) => {
           <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
         </svg>
       </IconButton>
-    </>
+    </div>
   );
 };

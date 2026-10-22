@@ -271,6 +271,36 @@ describe('стор редактора разметки', () => {
     expect(store().image).toBe(IMAGE);
   });
 
+  it('правки, отменённые глубже истории, остаются несохранёнными', () => {
+    store().open(buildEditedRecord());
+
+    for (let step = 1; step <= 101; step += 1) {
+      const { draft } = store();
+
+      if (draft) {
+        store().commit({ ruling: { ...draft.ruling, step: 40 + step } });
+      }
+    }
+
+    while (store().history.past.length > 0) {
+      store().undo();
+    }
+
+    expect(store().draft?.ruling.step).toBe(41);
+    expect(selectHasMarkupEdits(store())).toBe(true);
+  });
+
+  it('правка, вернувшая разлиновку к листу новым объектом, правкой не считается', () => {
+    const record = buildEditedRecord();
+
+    store().open(record);
+    store().commit({ ruling: { ...record.sheet.ruling, step: 55 } });
+    store().commit({ ruling: { ...record.sheet.ruling } });
+
+    expect(store().history.past.length).toBe(2);
+    expect(selectHasMarkupEdits(store())).toBe(false);
+  });
+
   it('перемер контура и поиск линий не снимают ожидание друг друга', () => {
     store().open(buildEditedRecord());
 

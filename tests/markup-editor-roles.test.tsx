@@ -9,6 +9,7 @@ import {
   type SheetPoint,
   type SheetRuling,
 } from '@pages/Generator/lib/paper';
+import { buildWritingZone } from '@pages/Generator/ui/Generator/SettingsPane/SheetMarkupEditor/markupGeometry';
 import {
   MarkupHandle,
   type MarkupHandleKind,
@@ -17,7 +18,6 @@ import {
   type MarkupLayerId,
   MarkupOverlay,
 } from '@pages/Generator/ui/Generator/SettingsPane/SheetMarkupEditor/MarkupOverlay';
-import { buildWritingZone } from '@pages/Generator/ui/Generator/SettingsPane/SheetMarkupEditor/MarkupOverlay/markupGeometry';
 import { MarkupScaleContext } from '@pages/Generator/ui/Generator/SettingsPane/SheetMarkupEditor/MarkupViewport';
 import type { MarkupToolId } from '@pages/Generator/ui/Generator/SettingsPane/SheetMarkupEditor/SheetMarkupEditor.types';
 import { cleanup, render, screen } from '@testing-library/react';

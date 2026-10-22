@@ -8,9 +8,10 @@ import type {
 } from '../../../../../lib/paper';
 import { editRulingBend } from '../../../../../lib/paper';
 import { useMarkupEditorStore } from '../../../../../model/useMarkupEditorStore';
+import { toPhotoPoint } from '../markupPointer';
 import { mirrorMarkupPoint, useMarkupMirrorWidth } from '../MarkupViewport';
 
-import { findLinePoint, toPhotoPoint } from './bendGeometry';
+import { findLinePoint } from './bendGeometry';
 import type { BendDrag, BendDragState } from './useBendDrag.types';
 
 /**

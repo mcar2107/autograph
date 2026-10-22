@@ -1,11 +1,8 @@
-import { cx } from '@shared/lib/styles';
-import { Label } from '@shared/ui/Label';
-import type { ChangeEvent, FC, KeyboardEvent } from 'react';
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 
-import { roundTo } from '../../../../../../lib/format/formatNumber';
+import { roundTo } from '../../../../../lib/format/formatNumber';
 
-import type { ExactValueFieldProps } from './ExactValueField.types';
+import type { ExactValueDraft, ExactValueDraftOptions } from './useExactValueDraft.types';
 
 /**
  * Знаков после запятой в показанном числе: десятая пикселя фотографии —
@@ -40,21 +37,18 @@ const parseFieldValue = (text: string): number | null => {
 };
 
 /**
- * Поле «Точных значений»: число в пикселях фотографии и подпись, от чего оно
- * отсчитано. Применяется по Enter или уходу фокуса. Число, которое разметка не
- * принимает, и не число остаются в поле с ошибкой рядом — молчаливый откат к
- * прежнему значению выглядел бы как принятая правка. Esc отменяет набор и
- * ошибку.
+ * Набор числа в поле «Точных значений». Число, которое разметка не принимает,
+ * и не число остаются в поле с ошибкой — молчаливый откат к прежнему значению
+ * выглядел бы как принятая правка.
  *
  * Набор и ошибка держатся, пока значение то же: сдвинутая ручкой или отменой
  * разметка показывает новое число, а не устаревший набор.
+ *
+ * @param options — значение, поле и колбэк применения
+ * @returns текст поля, ошибка и методы набора
  */
-export const ExactValueField: FC<ExactValueFieldProps> = (props) => {
-  const { label, reference, value, onValueCommit } = props;
-  const id = useId();
-  const inputRef = useRef<HTMLInputElement>(null);
-  const referenceId = `${id}-reference`;
-  const errorId = `${id}-error`;
+export const useExactValueDraft = (options: ExactValueDraftOptions): ExactValueDraft => {
+  const { value, inputRef, onValueCommit } = options;
   /**
    * Набранный, но ещё не применённый текст. `null` — поле показывает
    * значение.
@@ -85,7 +79,7 @@ export const ExactValueField: FC<ExactValueFieldProps> = (props) => {
       return;
     }
 
-    const handleWindowKeyDown = (event: globalThis.KeyboardEvent) => {
+    const handleWindowKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape' && event.target === inputRef.current) {
         event.preventDefault();
       }
@@ -96,9 +90,14 @@ export const ExactValueField: FC<ExactValueFieldProps> = (props) => {
     return () => {
       window.removeEventListener('keydown', handleWindowKeyDown, { capture: true });
     };
-  }, [isEditing]);
+  }, [isEditing, inputRef]);
 
-  const commitDraft = () => {
+  const change = (text: string) => {
+    setDraft(text);
+    setError(null);
+  };
+
+  const commit = () => {
     if (draft === null) {
       return;
     }
@@ -116,70 +115,16 @@ export const ExactValueField: FC<ExactValueFieldProps> = (props) => {
     setError(null);
   };
 
-  const handleInputChange = (event: ChangeEvent<HTMLInputElement>) => {
-    setDraft(event.currentTarget.value);
+  const cancel = () => {
+    setDraft(null);
     setError(null);
   };
 
-  const handleInputKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    switch (event.key) {
-      case 'Enter': {
-        commitDraft();
-        break;
-      }
+  /**
+   * `??`, а не `||`: стёртое поле — пустая строка, и `||` вернул бы в него
+   * число посреди набора.
+   */
+  const text = draft ?? formatFieldValue(value);
 
-      case 'Escape': {
-        setDraft(null);
-        setError(null);
-        break;
-      }
-
-      default: {
-        break;
-      }
-    }
-  };
-
-  const handleInputBlur = () => {
-    commitDraft();
-  };
-
-  return (
-    <div className="flex flex-col gap-1">
-      <Label htmlFor={id} className="text-xs">
-        {label}
-      </Label>
-
-      {/**
-       * `??`, а не `||`: стёртое поле — пустая строка, и `||` вернул бы в него
-       * число посреди набора.
-       */}
-      <input
-        ref={inputRef}
-        id={id}
-        inputMode="decimal"
-        autoComplete="off"
-        aria-invalid={error ? true : undefined}
-        aria-describedby={error ? `${referenceId} ${errorId}` : referenceId}
-        value={draft ?? formatFieldValue(value)}
-        className={cx(
-          'h-8 w-full rounded-md border border-border bg-surface px-2 text-sm text-fg tabular-nums focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus',
-          error && 'border-danger'
-        )}
-        onChange={handleInputChange}
-        onKeyDown={handleInputKeyDown}
-        onBlur={handleInputBlur}
-      />
-
-      <p id={referenceId} className="text-xs text-fg-muted">
-        {reference}
-      </p>
-
-      {error ? (
-        <p id={errorId} role="alert" className="text-xs text-danger">
-          {error}
-        </p>
-      ) : null}
-    </div>
-  );
+  return { text, error, change, commit, cancel };
 };

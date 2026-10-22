@@ -6,7 +6,7 @@ import type { PaperFamily, PaperSheet, SheetRuling } from '../lib/paper/paper.ty
 
 import { isMirroredPage } from './buildPageRenderParams';
 import type { GeneratorState } from './generator.types';
-import { findSheet, selectActiveFamily } from './paperSelectors';
+import { findSheet, resolveSheetKind, selectActiveFamily } from './paperSelectors';
 import { selectPageSheetId } from './recipeSelectors';
 
 /**
@@ -44,7 +44,7 @@ export const getPageCalibration = (
 ): SheetCalibration => {
   return {
     ruling: getPageRuling(sheet, pageIndex),
-    kind: family.sheetKinds?.[sheet.id] || family.kind,
+    kind: resolveSheetKind(family, sheet.id),
     width: sheet.width,
     height: sheet.height,
   };

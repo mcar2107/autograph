@@ -27,7 +27,7 @@ export const TrialText: FC<TrialTextProps> = (props) => {
   const height = useMarkupEditorStore((state) => {
     return state.record?.sheet.height || 0;
   });
-  const { url, isPending } = useTrialText({ isEnabled, pageIndex, scale });
+  const { url, isPending, isFailed } = useTrialText({ isEnabled, pageIndex, scale });
 
   const handleTrialChange = (isChecked: boolean) => {
     onEnabledChange(isChecked);
@@ -41,11 +41,24 @@ export const TrialText: FC<TrialTextProps> = (props) => {
         onChange={handleTrialChange}
       />
 
-      {isEnabled && isPending ? (
-        <p role="status" className="text-xs text-fg-muted">
-          Пробный текст перекладывается по разметке…
-        </p>
-      ) : null}
+      {/*
+       * Область стоит на месте и меняется только текст: область, появившаяся
+       * вместе с ним, читалкой часто не объявляется. Пустая выведена из
+       * потока, иначе занимала бы промежуток под флажком.
+       */}
+      <div role="status" aria-atomic="true" className="empty:absolute">
+        {isPending ? (
+          <p className="text-xs text-fg-muted">
+            Пробный текст перекладывается по разметке…
+          </p>
+        ) : null}
+
+        {isFailed ? (
+          <p className="text-xs text-danger">
+            Пробный текст не&nbsp;нарисовался. Он&nbsp;появится после следующей правки.
+          </p>
+        ) : null}
+      </div>
 
       {url && layer
         ? createPortal(

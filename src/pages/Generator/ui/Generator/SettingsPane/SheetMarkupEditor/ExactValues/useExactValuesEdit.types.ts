@@ -1,8 +1,5 @@
 import type { SideEdge } from '../../../../../lib/paper';
-import type {
-  GuideMarginSide,
-  SideHandleEnd,
-} from '../MarginsTool/marginsGeometry.types';
+import type { GuideMarginSide, SideHandleEnd } from '../marginsGeometry.types';
 
 /**
  * Правка разметки числами.

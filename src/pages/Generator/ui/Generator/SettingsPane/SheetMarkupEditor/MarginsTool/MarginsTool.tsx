@@ -6,24 +6,24 @@ import { createPortal } from 'react-dom';
 import type { MarginLineSide, SheetPoint } from '../../../../../lib/paper';
 import { mirrorSheetRuling } from '../../../../../lib/paper';
 import { useMarkupEditorStore } from '../../../../../model/useMarkupEditorStore';
-import type { MarkupMoveSource } from '../MarkupHandle';
-import { MarkupHandle } from '../MarkupHandle';
-import { MARKUP_MUTED_OPACITY } from '../MarkupOverlay';
-import { toPointsAttribute } from '../MarkupOverlay/markupGeometry';
-import { MarkupStroke } from '../MarkupStroke';
-import { mirrorMarkupPoint } from '../MarkupViewport';
-import type { MarkupToolProps } from '../SheetMarkupEditor.types';
-
 import {
   MARGIN_CORNERS,
   readMarginCorner,
   resolveMarginHandles,
-} from './marginsGeometry';
+} from '../marginsGeometry';
 import type {
   GuideMarginSide,
   MarginCorner,
   SideHandleEnd,
-} from './marginsGeometry.types';
+} from '../marginsGeometry.types';
+import { toPointsAttribute } from '../markupGeometry';
+import type { MarkupMoveSource } from '../MarkupHandle';
+import { MarkupHandle } from '../MarkupHandle';
+import { MARKUP_MUTED_OPACITY } from '../MarkupOverlay';
+import { MarkupStroke } from '../MarkupStroke';
+import { mirrorMarkupPoint } from '../MarkupViewport';
+import type { MarkupToolProps } from '../SheetMarkupEditor.types';
+
 import { useMarginsEdit } from './useMarginsEdit';
 
 /**

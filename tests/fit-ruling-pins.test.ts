@@ -11,6 +11,7 @@ import {
   lineHeightAt,
   mirrorSheetRuling,
   readSideEdge,
+  resolveFirstLine,
   sideEdgePointAtHeight,
 } from '@pages/Generator/lib/paper';
 import { describe, expect, it } from 'vitest';
@@ -347,7 +348,6 @@ describe('негодная расстановка', () => {
 describe('начальные булавки', () => {
   it('ровный лист — две булавки на крайних линиях области с линиями', () => {
     const pins = deriveRulingPins(BASE_RULING, FRAME);
-    const center = (180 + FRAME.width - 120) / 2;
     const [first, last] = pins;
 
     /**
@@ -359,12 +359,12 @@ describe('начальные булавки', () => {
     expect(first?.right.x).toBeCloseTo(1350, 9);
     expect(last?.left.x).toBeCloseTo(310, 9);
     expect(last?.right.x).toBeCloseTo(1350, 9);
-    expect(getLineY(BASE_RULING, first?.index || 0, center)).toBeGreaterThanOrEqual(160);
-    expect(getLineY(BASE_RULING, (first?.index || 0) - 1, center)).toBeLessThan(160);
-    expect(getLineY(BASE_RULING, last?.index || 0, center)).toBeLessThanOrEqual(
+    expect(getLineY(BASE_RULING, first?.index || 0, 0)).toBeGreaterThanOrEqual(160);
+    expect(getLineY(BASE_RULING, (first?.index || 0) - 1, 0)).toBeLessThan(160);
+    expect(getLineY(BASE_RULING, last?.index || 0, 0)).toBeLessThanOrEqual(
       FRAME.height - 140
     );
-    expect(getLineY(BASE_RULING, (last?.index || 0) + 1, center)).toBeGreaterThan(
+    expect(getLineY(BASE_RULING, (last?.index || 0) + 1, 0)).toBeGreaterThan(
       FRAME.height - 140
     );
 
@@ -373,6 +373,33 @@ describe('начальные булавки', () => {
     expect(ruling.step).toBeCloseTo(BASE_RULING.step, 9);
     expect(ruling.firstLinePhase).toBeCloseTo(BASE_RULING.firstLinePhase, 6);
     expect(ruling.skewAngle).toBeCloseTo(BASE_RULING.skewAngle, 9);
+  });
+
+  it('наклонный лист — крайние булавки на первой и последней строках раскладки', () => {
+    /**
+     * Наклон в три градуса сдвигает линию на 1600 px ширины кадра больше чем на
+     * полтора шага: в другом столбце верхнее и нижнее поля пришлись бы на
+     * другие линии.
+     */
+    const ruling = { ...BASE_RULING, skewAngle: 3 };
+    const [first, last] = deriveRulingPins(ruling, FRAME);
+    const firstLine = resolveFirstLine(ruling);
+    const lastLine =
+      firstLine +
+      Math.floor(
+        (lineCoordinateAt(ruling, 0, FRAME.height - ruling.margins.bottom) - firstLine) /
+          ruling.step
+      ) *
+        ruling.step;
+
+    expect(ruling.firstLinePhase + (first?.index || 0) * ruling.step).toBeCloseTo(
+      firstLine,
+      9
+    );
+    expect(ruling.firstLinePhase + (last?.index || 0) * ruling.step).toBeCloseTo(
+      lastLine,
+      9
+    );
   });
 
   it('лист с перспективой — три булавки, подгонка по ним возвращает те же линии', () => {

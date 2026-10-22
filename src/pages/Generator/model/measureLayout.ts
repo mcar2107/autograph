@@ -5,7 +5,7 @@ import type { PaperSheet } from '../lib/paper/paper.types';
 
 import { getPageCalibration } from './geometrySelectors';
 import type { LayoutParams, MeasurerFactory } from './measureLayout.types';
-import { findSheet } from './paperSelectors';
+import { findSheet, resolveSheetKind } from './paperSelectors';
 import { buildPageSheetSequence } from './recipeSelectors';
 
 /**
@@ -136,7 +136,7 @@ const buildKey = (params: LayoutParams): string => {
     family.kind,
     family.sheets.map(toSheetFingerprint),
     family.sheets.map(({ id }) => {
-      return family.sheetKinds?.[id] || family.kind;
+      return resolveSheetKind(family, id);
     }),
     isSheetPinned ? sheetId : null,
   ]);

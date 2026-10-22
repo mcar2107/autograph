@@ -1,38 +1,18 @@
-import type {
-  PaperTexture,
-  SheetImageData,
-  SheetPhotoOptions,
-  TextureMap,
-} from '../../../../lib/paper';
-import { encodeTextureMap, measureSheetPhoto } from '../../../../lib/paper';
+import type { SheetImageData, SheetPhotoOptions } from '../../../../lib/paper';
 import {
   decodeSheetInWorker,
   hasMeasureSheetWorker,
   measureSheetInWorker,
 } from '../../../../model/createMeasureSheetClient';
+import { analyzeSheetImage } from '../../../../model/measureSheetRequest';
 import type { SheetPhotoAnalysis } from '../../../../model/measureSheetWorker.types';
 
 import type { SheetPhotoInput } from './analyzeSheetPhoto.types';
 import { decodeSheetImage } from './decodeSheetImage';
 
 /**
- * Кодирует карту текстуры. Там, где канвы нет, лист остаётся без текстуры: она
- * украшает чернила, но не влияет на раскладку.
- *
- * @param textureMap — карта текстуры листа
- * @returns карта текстуры; `null` — закодировать не удалось
- */
-const encodeTexture = async (textureMap: TextureMap): Promise<PaperTexture | null> => {
-  try {
-    return await encodeTextureMap(textureMap);
-  } catch {
-    return null;
-  }
-};
-
-/**
- * Файл фотографии для воркера. У импорта он уже есть, у перемера фотография
- * хранится data URL-ом, и файл собирается из него.
+ * Файл фотографии для воркера. У импорта он уже есть, у перемера и открытия с
+ * плитки он берётся по адресу фотографии листа.
  *
  * @param photo — фотография листа
  * @returns файл фотографии
@@ -74,10 +54,7 @@ export const analyzeSheetPhoto = async (
     return null;
   }
 
-  const measurement = measureSheetPhoto(image, options);
-  const texture = await encodeTexture(measurement.textureMap);
-
-  return { image, measurement, texture };
+  return await analyzeSheetImage(image, options);
 };
 
 /**

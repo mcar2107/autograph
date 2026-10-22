@@ -1,5 +1,10 @@
 import { fitTileLabel } from '@pages/Generator/ui/Generator/SettingsPane/PaperPicker/OwnSheetTile/fitTileLabel';
+import { interleaveLabelBreaks } from '@pages/Generator/ui/Generator/SettingsPane/PaperPicker/OwnSheetTile/interleaveLabelBreaks';
 import { splitLabelBreaks } from '@pages/Generator/ui/Generator/SettingsPane/PaperPicker/OwnSheetTile/splitLabelBreaks';
+import {
+  LABEL_CLAMP_CLASS_NAME,
+  MAX_LABEL_LINES,
+} from '@pages/Generator/ui/Generator/SettingsPane/PaperPicker/OwnSheetTile/tileLabelLines';
 import { truncateMiddle } from '@pages/Generator/ui/Generator/SettingsPane/PaperPicker/OwnSheetTile/truncateMiddle';
 import { describe, expect, it } from 'vitest';
 
@@ -20,6 +25,23 @@ describe('точки переноса подписи плитки', () => {
     const label = 'IMG_20250925_143012';
 
     expect(splitLabelBreaks(label).join('')).toBe(label);
+  });
+
+  it('точка переноса стоит только между кусками, с номером следующего куска', () => {
+    expect(
+      interleaveLabelBreaks('IMG_20250925_143012', (index) => {
+        return index;
+      })
+    ).toStrictEqual(['IMG_', 1, '20250925_', 2, '143012']);
+    expect(
+      interleaveLabelBreaks('2024', (index) => {
+        return index;
+      })
+    ).toStrictEqual(['2024']);
+  });
+
+  it('CSS срезает подпись на столько же строк, под сколько подбирается обрезка', () => {
+    expect(LABEL_CLAMP_CLASS_NAME).toBe(`line-clamp-${String(MAX_LABEL_LINES)}`);
   });
 });
 

@@ -3,7 +3,8 @@
  */
 export type SheetPhotoInput = {
   /**
-   * Фотография как data URL — так она хранится в записи листа.
+   * Адрес фотографии — тот, что лежит в `src` листа: object URL файла или
+   * data URL.
    */
   src: string;
 

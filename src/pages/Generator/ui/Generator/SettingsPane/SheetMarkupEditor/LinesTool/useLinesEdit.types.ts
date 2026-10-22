@@ -1,7 +1,6 @@
-import type { SheetPoint } from '../../../../../lib/paper';
+import type { RulingPinsFit, SheetPoint } from '../../../../../lib/paper';
+import type { PinEnd } from '../linesPins.types';
 import type { MarkupMoveSource } from '../MarkupHandle';
-
-import type { PinEnd } from './linesPins';
 
 /**
  * Правка закреплённых линий черновика.
@@ -12,6 +11,12 @@ export type LinesEdit = {
    * которая разлиновку не задаёт. `null` — булавки ещё не правили.
    */
   lastEditedOrder: number | null;
+
+  /**
+   * Подгонка через булавки на последнем движении перетаскивания — та же, по
+   * которой показана промежуточная гребёнка. `null` — конец не тянут.
+   */
+  dragFit: RulingPinsFit | null;
 
   /**
    * Промежуточная точка перетаскивания конца: гребёнка следует за ним без

@@ -1,9 +1,4 @@
-import type { SheetPoint, SheetRuling } from '../../../../../lib/paper';
-
-/**
- * Поле листа, которое правится направляющей.
- */
-export type MarginSide = 'top' | 'bottom' | 'left' | 'right';
+import type { SheetPoint, SheetRuling } from '../../../../lib/paper';
 
 /**
  * Поле, которое правится одной направляющей вдоль линий: верхнее или нижнее.

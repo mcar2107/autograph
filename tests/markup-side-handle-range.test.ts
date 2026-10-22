@@ -3,19 +3,19 @@ import {
   type SheetRuling,
   type SideEdge,
 } from '@pages/Generator/lib/paper';
-import { formatRangeRejection } from '@pages/Generator/ui/Generator/SettingsPane/SheetMarkupEditor/ExactValues/exactValuesReferences';
+import { formatRangeRejection } from '@pages/Generator/ui/Generator/SettingsPane/SheetMarkupEditor/exactValuesReferences';
 import {
   placeExactSideHandleValue,
   readSideHandleRange,
-} from '@pages/Generator/ui/Generator/SettingsPane/SheetMarkupEditor/MarginsTool/marginsGeometry';
+} from '@pages/Generator/ui/Generator/SettingsPane/SheetMarkupEditor/marginsGeometry';
 import type {
   SideHandleEnd,
   ValueRange,
-} from '@pages/Generator/ui/Generator/SettingsPane/SheetMarkupEditor/MarginsTool/marginsGeometry.types';
+} from '@pages/Generator/ui/Generator/SettingsPane/SheetMarkupEditor/marginsGeometry.types';
 import {
   placeMirrorSideValue,
   readMirrorSideRange,
-} from '@pages/Generator/ui/Generator/SettingsPane/SheetMarkupEditor/MirrorTab/MirrorOverride/mirrorOverrideMarkup';
+} from '@pages/Generator/ui/Generator/SettingsPane/SheetMarkupEditor/mirrorOverrideMarkup';
 import { mulberry32 } from '@shared/lib/random';
 import { describe, expect, it } from 'vitest';
 

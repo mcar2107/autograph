@@ -92,6 +92,19 @@ export const findKindFamily = (
 };
 
 /**
+ * Вид разлиновки листа семьи: у своего листа — его собственный, у пресета —
+ * семейный. Одно правило на геометрию страницы и отпечаток кэша раскладки:
+ * разойдись они, раскладка не пересчиталась бы при смене вида листа.
+ *
+ * @param family — семья листов
+ * @param sheetId — идентификатор листа
+ * @returns вид разлиновки листа
+ */
+export const resolveSheetKind = (family: PaperFamily, sheetId: string): RulingKind => {
+  return family.sheetKinds?.[sheetId] || family.kind;
+};
+
+/**
  * Экземпляр листа по идентификатору. Если такого нет — первый в семье.
  *
  * @param family — семья листов

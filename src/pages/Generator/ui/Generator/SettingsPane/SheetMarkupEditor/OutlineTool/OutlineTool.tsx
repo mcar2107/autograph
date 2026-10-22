@@ -6,6 +6,7 @@ import { createPortal } from 'react-dom';
 
 import type { SheetOutline, SheetPoint } from '../../../../../lib/paper';
 import { useMarkupEditorStore } from '../../../../../model/useMarkupEditorStore';
+import { clampToFrame } from '../markupGeometry';
 import { MarkupHandle } from '../MarkupHandle';
 import { MarkupLiveRegion } from '../MarkupLiveRegion';
 import { MarkupStroke } from '../MarkupStroke';
@@ -14,14 +15,12 @@ import type { MarkupToolProps } from '../SheetMarkupEditor.types';
 
 import {
   checkOutline,
-  clampToFrame,
   isSameOutline,
   OUTLINE_CORNERS,
-  type OutlineCorner,
   resolveOutline,
 } from './outlineGeometry';
-import type { OutlineNotice } from './OutlineTool.types';
-import { remeasureOutline } from './remeasureOutline';
+import type { OutlineCorner, OutlineNotice } from './OutlineTool.types';
+import { cancelOutlineRemeasure, remeasureOutline } from './remeasureOutline';
 
 const CORNER_LABELS: Record<OutlineCorner, string> = {
   topLeft: 'Левый верхний угол листа',
@@ -167,6 +166,7 @@ export const OutlineTool: FC<MarkupToolProps> = (props) => {
    */
   const applyOutline = async (next: SheetOutline) => {
     if (isSameOutline(next, current)) {
+      cancelOutlineRemeasure();
       setPending(null);
 
       return;
@@ -178,6 +178,7 @@ export const OutlineTool: FC<MarkupToolProps> = (props) => {
 
     switch (verdict) {
       case 'inverted': {
+        cancelOutlineRemeasure();
         setPending(null);
         setMessage(INVERTED_MESSAGE);
 
@@ -185,6 +186,7 @@ export const OutlineTool: FC<MarkupToolProps> = (props) => {
       }
 
       case 'narrow': {
+        cancelOutlineRemeasure();
         setPending(null);
         setMessage(NARROW_MESSAGE);
 
@@ -248,6 +250,10 @@ export const OutlineTool: FC<MarkupToolProps> = (props) => {
       void applyOutline(moveCorner(corner, point));
     };
 
+    const handleCornerMoveCancel = () => {
+      setPending(null);
+    };
+
     return (
       <MarkupHandle
         key={corner}
@@ -258,6 +264,7 @@ export const OutlineTool: FC<MarkupToolProps> = (props) => {
         className="in-data-pan-mode:pointer-events-none"
         onMove={handleCornerMove}
         onMoveEnd={handleCornerMoveEnd}
+        onMoveCancel={handleCornerMoveCancel}
       />
     );
   });

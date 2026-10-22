@@ -3,7 +3,8 @@ import type { FC } from 'react';
 import { useRef } from 'react';
 
 import { useMarkupEditorStore } from '../../../../../model/useMarkupEditorStore';
-import { useFocusOnShow } from '../useFocusOnShow';
+
+import { useCloseConfirmFocus } from './useCloseConfirmFocus';
 
 /**
  * Подтверждение закрытия редактора с несохранёнными правками. Показывается,
@@ -12,7 +13,8 @@ import { useFocusOnShow } from '../useFocusOnShow';
  *
  * Фокус при появлении встаёт на саму группу: после Esc или «Закрыть» он
  * остался бы там, откуда вопрос не виден, а с группы вопрос зачитывается и
- * первый Tab ведёт к ответам.
+ * первый Tab ведёт к ответам. «Продолжить правку» возвращает его туда, откуда
+ * попросили закрыть: иначе он пропал бы вместе с вопросом.
  */
 export const MarkupCloseConfirm: FC = () => {
   const isCloseConfirming = useMarkupEditorStore((state) => {
@@ -26,13 +28,14 @@ export const MarkupCloseConfirm: FC = () => {
   });
   const groupRef = useRef<HTMLDivElement>(null);
 
-  useFocusOnShow(groupRef, isCloseConfirming);
+  const restoreFocus = useCloseConfirmFocus(groupRef, isCloseConfirming);
 
   const handleDiscardClick = () => {
     close();
   };
 
   const handleKeepClick = () => {
+    restoreFocus();
     dismissClose();
   };
 

@@ -3,11 +3,6 @@ import { useEffect, useRef, useState } from 'react';
 import type { SheetFrame, SheetPoint, SheetRuling } from '../../../../../lib/paper';
 import { useMarkupEditorStore } from '../../../../../model/useMarkupEditorStore';
 import type { MarkupDraft } from '../../../../../model/useMarkupEditorStore.types';
-import { toPhotoPoint } from '../BendTool/bendGeometry';
-import type { MarkupMoveSource } from '../MarkupHandle';
-import { useMarkupScale } from '../MarkupViewport';
-import { placeMirrorCorner } from '../MirrorTab/MirrorOverride/mirrorOverrideMarkup';
-
 import {
   isCornerDragVertical,
   placeMargin,
@@ -18,13 +13,18 @@ import {
   resolveAddedMarginLinePoint,
   resolveCornerMove,
   snapMarginLineX,
-} from './marginsGeometry';
+} from '../marginsGeometry';
 import type {
   GuideMarginSide,
   MarginCorner,
   MarginCornerMove,
   SideHandleEnd,
-} from './marginsGeometry.types';
+} from '../marginsGeometry.types';
+import type { MarkupMoveSource } from '../MarkupHandle';
+import { toPhotoPoint } from '../markupPointer';
+import { useMarkupScale } from '../MarkupViewport';
+import { placeMirrorCorner } from '../mirrorOverrideMarkup';
+
 import type { CornerDrag, MarginsEdit } from './useMarginsEdit.types';
 
 /**
@@ -44,29 +44,46 @@ const previewMarginLine = (frame: SheetFrame, point: SheetPoint) => {
 };
 
 /**
- * Ставит добавленную линию поля без наклона в столбец точки, притянув её к
- * черте фотографии, — шаг истории. Каналы фотографии для магнита берутся из стора в момент вызова:
- * при открытии с плитки они приходят позже редактора, и до них магнита нет.
- * У листа без разлиновки магнита нет вовсе — притягивать не к чему.
+ * Точка линии поля, притянутая к черте фотографии в своей строке. Каналы
+ * фотографии для магнита берутся из стора в момент вызова: при открытии с
+ * плитки они приходят позже редактора, и до них магнита нет. У листа без
+ * разлиновки магнита нет вовсе — притягивать не к чему.
  *
- * @param frame — кадр фотографии
+ * @param draft — черновик
  * @param point — точка, px фотографии
  * @param shouldSnap — притягивать ли к черте: сдвиг стрелкой — точная правка
  *   на пиксель, и магнит вернул бы линию на место
+ * @returns точка на черте или та же точка
  */
-const commitMarginLine = (frame: SheetFrame, point: SheetPoint, shouldSnap = true) => {
-  const { draft, image, commit } = useMarkupEditorStore.getState();
+const snapMarginLinePoint = (
+  draft: MarkupDraft,
+  point: SheetPoint,
+  shouldSnap: boolean
+): SheetPoint => {
+  const { image } = useMarkupEditorStore.getState();
+
+  return shouldSnap && image && draft.kind !== 'blank'
+    ? { x: snapMarginLineX(image, draft.ruling, point), y: point.y }
+    : point;
+};
+
+/**
+ * Ставит добавленную линию поля без наклона в столбец точки, притянув её к
+ * черте фотографии, — шаг истории.
+ *
+ * @param frame — кадр фотографии
+ * @param point — точка, px фотографии
+ */
+const commitMarginLine = (frame: SheetFrame, point: SheetPoint) => {
+  const { draft, commit } = useMarkupEditorStore.getState();
 
   if (!draft) {
     return;
   }
 
-  const x =
-    shouldSnap && image && draft.kind !== 'blank'
-      ? snapMarginLineX(image, draft.ruling, point)
-      : point.x;
-
-  commit({ ruling: placeMarginLine(draft.ruling, frame, { x, y: point.y }) });
+  commit({
+    ruling: placeMarginLine(draft.ruling, frame, snapMarginLinePoint(draft, point, true)),
+  });
 };
 
 /**
@@ -213,11 +230,23 @@ export const useMarginsEdit = (
       stop();
     };
 
+    /**
+     * Правка черновика мимо фотографии — «Убрать линию поля», отмена, число в
+     * точных значениях — ведение прекращает сразу: иначе подсказка ведения
+     * висела бы до первого движения над фотографией.
+     */
+    const unsubscribe = useMarkupEditorStore.subscribe(() => {
+      if (!readAdded()) {
+        stop();
+      }
+    });
+
     svg.addEventListener('pointermove', handlePointerMove);
     svg.addEventListener('pointerleave', handlePointerLeave);
     svg.addEventListener('pointerdown', handlePointerDown);
 
     return () => {
+      unsubscribe();
       svg.removeEventListener('pointermove', handlePointerMove);
       svg.removeEventListener('pointerleave', handlePointerLeave);
       svg.removeEventListener('pointerdown', handlePointerDown);
@@ -384,16 +413,13 @@ export const useMarginsEdit = (
     point: SheetPoint,
     shouldSnap: boolean
   ) => {
-    const { draft, image, commit } = useMarkupEditorStore.getState();
+    const { draft, commit } = useMarkupEditorStore.getState();
 
     if (!draft) {
       return;
     }
 
-    const target =
-      shouldSnap && image && draft.kind !== 'blank'
-        ? { x: snapMarginLineX(image, draft.ruling, point), y: point.y }
-        : point;
+    const target = snapMarginLinePoint(draft, point, shouldSnap);
 
     commit({ ruling: placeSideEnd(draft.ruling, frame, 'marginLine', end, target) });
   };

@@ -2,9 +2,9 @@ import type { SheetImageData } from '../../../../lib/paper';
 import { toSheetImageData } from '../../../../model/measureSheetImage';
 
 /**
- * Загружает картинку из data URL.
+ * Загружает картинку по адресу фотографии листа.
  *
- * @param src — фотография листа как data URL
+ * @param src — адрес фотографии листа: object URL или data URL
  * @returns загруженная картинка; `null` — браузер её не разобрал
  */
 const loadImage = (src: string): Promise<HTMLImageElement | null> => {
@@ -31,7 +31,7 @@ const loadImage = (src: string): Promise<HTMLImageElement | null> => {
  * разобраться, а канвы для съёма пикселей может не быть вовсе. Экземпляр в
  * этом случае всё равно добавляется, только разлиновку к нему задают руками.
  *
- * @param src — фотография листа как data URL
+ * @param src — адрес фотографии листа: object URL или data URL
  * @returns выжимка; `null` — снять её не удалось
  */
 export const decodeSheetImage = async (src: string): Promise<SheetImageData | null> => {

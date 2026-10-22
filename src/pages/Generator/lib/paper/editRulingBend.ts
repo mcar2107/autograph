@@ -1,4 +1,10 @@
-import type { RulingBendRegion } from './detectRulingBend';
+import { bentLineHeightAt } from './bentLineHeightAt';
+import {
+  BEND_OFFSET_PRECISION,
+  BEND_STRIP_STEPS,
+  MIN_BEND_STRIPS,
+  type RulingBendRegion,
+} from './detectRulingBend';
 import type {
   ColumnTargets,
   RulingBendEdit,
@@ -7,22 +13,6 @@ import type {
 import type { RulingBend, SheetFrame, SheetPoint, SheetRuling } from './paper.types';
 import { lineCoordinateAt, lineHeightAt } from './rulingPerspective';
 import { sampleRulingBend } from './sampleRulingBend';
-
-/**
- * Ширина полосы сетки в шагах разлиновки и наименьшее число полос — те же, что
- * у поиска изгиба (`detectRulingBend.ts`): заведённая руками сетка и найденная
- * по фото одной плотности, и подгонка по фото после ручной правки не меняет
- * разрешение волны.
- */
-const STRIP_STEPS = 2;
-
-const MIN_STRIPS = 8;
-
-/**
- * Узлы хранятся с точностью до сотой пикселя, как у найденного изгиба: то же
- * число лежит в памяти и в записи листа.
- */
-const OFFSET_PRECISION = 100;
 
 /**
  * Радиус по умолчанию поперёк линий — три шага: прогиб бумаги захватывает
@@ -126,6 +116,10 @@ export const resolveBendRadius = (
  * полос области с линиями шириной около двух шагов, строки — линии гребёнки
  * между верхним и нижним полями.
  *
+ * Плотность узлов берётся у поиска изгиба (`detectRulingBend.ts`): заведённая
+ * руками сетка и найденная по фото одной плотности, и подгонка по фото после
+ * ручной правки не меняет разрешение волны.
+ *
  * @param ruling — разлиновка листа, шаг больше нуля
  * @param frame — кадр фотографии
  * @returns сетка; `null` — область уже восьми пикселей
@@ -136,13 +130,13 @@ const createBendGrid = (ruling: SheetRuling, frame: SheetFrame): RulingBend | nu
   const cropLeft = Math.max(0, Math.ceil(region.left));
   const cropWidth = Math.min(frame.width, Math.floor(region.right)) - cropLeft;
 
-  if (cropWidth < MIN_STRIPS) {
+  if (cropWidth < MIN_BEND_STRIPS) {
     return null;
   }
 
   const columnCount = Math.min(
     cropWidth,
-    Math.max(MIN_STRIPS, Math.round(cropWidth / (STRIP_STEPS * step)))
+    Math.max(MIN_BEND_STRIPS, Math.round(cropWidth / (BEND_STRIP_STEPS * step)))
   );
   const columnSpacing = cropWidth / columnCount;
   const firstLine = Math.ceil(
@@ -318,27 +312,6 @@ const resolveColumnTargets = (
 };
 
 /**
- * Высота линии с координатой `u` в столбце `x` вместе с изгибом — та же модель,
- * что у отрисовки и оверлея.
- *
- * @param ruling — разлиновка листа
- * @param bend — сетка изгиба
- * @param x — столбец кадра
- * @param u — координата линии вдоль линий
- * @returns высота линии, px
- */
-const toBentLineY = (
-  ruling: SheetRuling,
-  bend: RulingBend,
-  x: number,
-  u: number
-): number => {
-  const straight = lineHeightAt(ruling, x, u);
-
-  return straight + sampleRulingBend(bend, ruling, x, straight);
-};
-
-/**
  * Координата вдоль линий той линии гребёнки, которая с изгибом проходит в
  * столбце точки ближе всех к ней.
  *
@@ -360,8 +333,10 @@ const findGrabbedLine = (
   return [guess - 1, guess + 1].reduce(
     (best, index) => {
       const u = firstLinePhase + index * step;
-      const distance = Math.abs(toBentLineY(ruling, bend, point.x, u) - point.y);
-      const bestDistance = Math.abs(toBentLineY(ruling, bend, point.x, best) - point.y);
+      const distance = Math.abs(bentLineHeightAt(ruling, bend, point.x, u) - point.y);
+      const bestDistance = Math.abs(
+        bentLineHeightAt(ruling, bend, point.x, best) - point.y
+      );
 
       return distance < bestDistance ? u : best;
     },
@@ -489,7 +464,7 @@ const computeNodeWeights = (
  * @returns смещение, кратное сотой
  */
 const roundOffset = (offset: number): number => {
-  return Math.round(offset * OFFSET_PRECISION) / OFFSET_PRECISION;
+  return Math.round(offset * BEND_OFFSET_PRECISION) / BEND_OFFSET_PRECISION;
 };
 
 /**
@@ -542,7 +517,7 @@ export const editRulingBend = (
     columns.right
   );
   const straight = lineHeightAt(ruling, point.x, u);
-  const shift = point.y + delta - toBentLineY(ruling, bend, point.x, u);
+  const shift = point.y + delta - bentLineHeightAt(ruling, bend, point.x, u);
   const weights = computeNodeWeights(bend, point.x, u, options);
   const response = sampleRulingBend(
     { ...bend, offsets: weights },

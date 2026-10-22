@@ -7,7 +7,7 @@ import type {
   SheetRuling,
   SideEdge,
   SideEdgeEnds,
-} from '../../../../../lib/paper';
+} from '../../../../lib/paper';
 import {
   intersectSideEdge,
   lineCoordinateAt,
@@ -21,10 +21,7 @@ import {
   snapMarginLine,
   toSideEdgeEnds,
   writeSideEdge,
-} from '../../../../../lib/paper';
-import type { MarkupMoveSource } from '../MarkupHandle';
-import { buildMarginGuides, toOutlineBox } from '../MarkupOverlay/markupGeometry';
-import type { MarkupBox } from '../MarkupOverlay/markupGeometry.types';
+} from '../../../../lib/paper';
 
 import type {
   GuideMarginSide,
@@ -38,6 +35,9 @@ import type {
   SideHandles,
   ValueRange,
 } from './marginsGeometry.types';
+import { buildMarginGuides, toOutlineBox } from './markupGeometry';
+import type { MarkupBox } from './markupGeometry.types';
+import type { MarkupMoveSource } from './MarkupHandle';
 
 /**
  * Наименьшее поле, px. Нулевое поле запись листа читает как «поля нет» и
@@ -872,7 +872,7 @@ export const readMarginRange = (
  * @param value — набранное число, px
  * @returns разлиновка и число ручки в ней; `null` — линии поля нет
  */
-const placeSideHandleValueRead = (
+const resolvePlacedSideValue = (
   ruling: SheetRuling,
   frame: SheetFrame,
   edge: SideEdge,
@@ -907,7 +907,7 @@ export const placeExactSideHandleValue = (
   end: SideHandleEnd,
   value: number
 ): SheetRuling | null => {
-  const placed = placeSideHandleValueRead(ruling, frame, edge, end, value);
+  const placed = resolvePlacedSideValue(ruling, frame, edge, end, value);
 
   return placed.value !== null && Math.abs(placed.value - value) <= SIDE_VALUE_TOLERANCE
     ? placed.ruling
@@ -975,12 +975,24 @@ export const readSideHandleRange = (
   edge: SideEdge,
   end: SideHandleEnd
 ): ValueRange => {
+  /**
+   * Принимает ли разметка число как есть, без сдвига ручки.
+   *
+   * @param value — число, px
+   * @returns принимает ли
+   */
   const isAccepted = (value: number): boolean => {
     return placeExactSideHandleValue(ruling, frame, edge, end, value) !== null;
   };
 
+  /**
+   * Куда встаёт ручка, заданная числом: у краёв кадра — зажатое число.
+   *
+   * @param value — набранное число, px
+   * @returns число ручки после правки; без линии поля — само число
+   */
   const readPlaced = (value: number): number => {
-    const placed = placeSideHandleValueRead(ruling, frame, edge, end, value).value;
+    const placed = resolvePlacedSideValue(ruling, frame, edge, end, value).value;
 
     return placed === null ? value : placed;
   };

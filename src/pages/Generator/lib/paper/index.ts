@@ -1,3 +1,4 @@
+export { bentLineHeightAt } from './bentLineHeightAt';
 export type {
   MarginLineReport,
   MarginLineThreshold,

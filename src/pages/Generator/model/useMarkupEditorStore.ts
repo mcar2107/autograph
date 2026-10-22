@@ -1,8 +1,8 @@
 import { create } from 'zustand';
 
-import { deriveRulingPins, type RulingPin } from '../lib/paper';
+import { deriveRulingPins } from '../lib/paper';
 
-import { COALESCE_WINDOW_MS, HISTORY_DEPTH } from './useGeneratorStore.history';
+import { COALESCE_WINDOW_MS, isSameValue, pushPast } from './useGeneratorStore.history';
 import type {
   MarkupDraft,
   MarkupEditorState,
@@ -32,38 +32,6 @@ const CLOSED_EDITOR: MarkupEditorState = {
   isCloseConfirming: false,
   remeasuringSources: [],
   isRemeasuring: false,
-};
-
-/**
- * Совпадают ли два значения разметки поле в поле. Сравнение по значению, а
- * не по ссылке: лист, перечитанный из хранилища, держит найденную и свою
- * разлиновку разными объектами и без единой правки.
- *
- * @param left — одно значение
- * @param right — другое значение
- * @returns совпадают ли
- */
-const isSameValue = (left: unknown, right: unknown): boolean => {
-  if (left === right) {
-    return true;
-  }
-
-  if (typeof left !== 'object' || typeof right !== 'object' || !left || !right) {
-    return false;
-  }
-
-  if (Array.isArray(left) !== Array.isArray(right)) {
-    return false;
-  }
-
-  const leftEntries = Object.entries(left);
-
-  return (
-    leftEntries.length === Object.keys(right).length &&
-    leftEntries.every(([key, value]) => {
-      return key in right && isSameValue(value, Reflect.get(right, key));
-    })
-  );
 };
 
 /**
@@ -100,42 +68,6 @@ const applyUpdate = (draft: MarkupDraft, update: MarkupUpdate): MarkupDraft => {
   });
 
   return isChanged ? { ...draft, ...patch } : draft;
-};
-
-/**
- * Совпадают ли булавки точка в точку.
- *
- * @param left — одни булавки
- * @param right — другие булавки
- * @returns совпадают ли
- */
-const isSamePins = (left: RulingPin[], right: RulingPin[]): boolean => {
-  return (
-    left.length === right.length &&
-    left.every((pin, index) => {
-      const other = right[index];
-
-      return (
-        other !== undefined &&
-        pin.index === other.index &&
-        pin.left.x === other.left.x &&
-        pin.left.y === other.left.y &&
-        pin.right.x === other.right.x &&
-        pin.right.y === other.right.y
-      );
-    })
-  );
-};
-
-/**
- * Добавляет снимок в прошлое, отбрасывая самые старые сверх глубины.
- *
- * @param past — снимки прошлого
- * @param draft — новый снимок
- * @returns прошлое с новым снимком
- */
-const pushPast = (past: MarkupDraft[], draft: MarkupDraft): MarkupDraft[] => {
-  return [...past, draft].slice(-HISTORY_DEPTH);
 };
 
 /**
@@ -230,6 +162,18 @@ export const useMarkupEditorStore = create<MarkupEditorStore>()((set, get) => {
         },
       });
     },
+    cancelPreview: () => {
+      const { history } = get();
+
+      if (!history.previewBase) {
+        return;
+      }
+
+      return set({
+        draft: history.previewBase,
+        history: { ...history, previewBase: null },
+      });
+    },
     undo: () => {
       const { draft, history } = get();
       const previous = history.past.at(-1);
@@ -287,7 +231,7 @@ export const useMarkupEditorStore = create<MarkupEditorStore>()((set, get) => {
         draft.ruling === measuredRuling &&
         draft.kind === measuredKind &&
         draft.remeasure === null &&
-        isSamePins(draft.pins, pins)
+        isSameValue(draft.pins, pins)
       ) {
         return;
       }
@@ -325,11 +269,42 @@ export const useMarkupEditorStore = create<MarkupEditorStore>()((set, get) => {
  * Есть ли в черновике правки, которых нет у листа: по ним закрытие без
  * сохранения спрашивает подтверждение.
  *
+ * Черновик сверяется с листом, а не с длиной истории: история держит не
+ * больше сотни шагов, и после сотни с лишним правок и сотни отмен прошлое
+ * пусто, а черновик всё ещё не тот, что у листа. По значению — потому что
+ * шаг истории пересобирает разлиновку, и вернувшаяся на место ручка дала бы
+ * другой объект с теми же числами.
+ *
  * @param state — состояние редактора
  * @returns есть ли несохранённые правки
  */
 export const selectHasMarkupEdits = (state: MarkupEditorState): boolean => {
-  return state.history.past.length > 0 || state.history.previewBase !== null;
+  const { record, draft, history } = state;
+
+  if (!record || !draft) {
+    return false;
+  }
+
+  if (history.previewBase !== null || draft.remeasure !== null) {
+    return true;
+  }
+
+  if (draft.kind !== record.kind) {
+    return true;
+  }
+
+  /**
+   * Черновик того же объекта, что у листа, — обычный случай без правок или
+   * после отмены всех шагов, — обходится без поэлементного сравнения.
+   */
+  if (draft.ruling === record.sheet.ruling && draft.pins === record.pins) {
+    return false;
+  }
+
+  return (
+    !isSameValue(draft.ruling, record.sheet.ruling) ||
+    !isSameValue(draft.pins, record.pins)
+  );
 };
 
 /**

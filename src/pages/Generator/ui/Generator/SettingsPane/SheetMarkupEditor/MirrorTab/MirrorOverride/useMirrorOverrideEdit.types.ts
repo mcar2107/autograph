@@ -1,5 +1,5 @@
 import type { MarginLineSide, SheetPoint, SideEdge } from '../../../../../../lib/paper';
-import type { SideHandleEnd } from '../../MarginsTool/marginsGeometry.types';
+import type { SideHandleEnd } from '../../marginsGeometry.types';
 
 /**
  * Правка линии поля и боковых полей зеркальной страницы. Точки и столбцы — в

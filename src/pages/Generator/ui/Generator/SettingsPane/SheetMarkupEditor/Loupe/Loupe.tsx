@@ -49,8 +49,8 @@ export const Loupe: FC<LoupeProps> = (props) => {
       aria-label="Лупа"
       data-photo-x={point.x}
       data-photo-y={point.y}
-      className="pointer-events-none fixed z-50 size-40 overflow-hidden rounded-full bg-canvas shadow-popover ring-2 ring-focus"
-      style={{ left, top }}
+      className="pointer-events-none fixed z-50 overflow-hidden rounded-full bg-canvas shadow-popover ring-2 ring-focus"
+      style={{ left, top, width: LOUPE_SIZE, height: LOUPE_SIZE }}
     >
       <div
         data-loupe-photo

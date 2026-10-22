@@ -1,10 +1,13 @@
-import { readFileAsDataUrl } from '@shared/lib/files';
 import { useState } from 'react';
 
 import { buildSheetRuling } from '../../../../lib/paper';
 import { findKindFamily } from '../../../../model/paperSelectors';
 import { useGeneratorStore } from '../../../../model/useGeneratorStore';
 import { useMarkupEditorStore } from '../../../../model/useMarkupEditorStore';
+import {
+  createUserSheetUrl,
+  releaseUserSheetUrls,
+} from '../../../../model/userSheetsStorage';
 import type { UserSheetRecord } from '../../../../model/userSheetsStorage.types';
 import {
   deriveUserSheetMarkup,
@@ -72,16 +75,19 @@ export const useSheetImport = (): SheetImport => {
   const add = async (file: File, options: SheetImportOptions) => {
     const { family } = options;
     const label = toSheetLabel(file.name);
+    const sheetId = nextSheetId();
+    let isAdded = false;
 
     setPendingLabel(label);
     setError(null);
 
     try {
-      const src = await readFileAsDataUrl(file);
+      const src = createUserSheetUrl(sheetId, file);
       /**
        * Измерение тем же путём, что собирает пресеты: контур листа, разлиновка
        * внутри него с наклоном, перспективой и изгибом, свет и текстура только
-       * по бумаге. У чистого листа разлиновка не ищется, остальное — так же.
+       * по бумаге. Семьи — только клетка и линейка, поэтому разлиновка ищется
+       * всегда, а вид листа предлагает снимок.
        */
       const analysis = await analyzeSheetPhoto(
         { src, blob: file },
@@ -105,8 +111,7 @@ export const useSheetImport = (): SheetImport => {
        * семьи отступу.
        */
       const ruling = buildSheetRuling(measurement?.source || MISSING_RULING, frame);
-      const sheetId = nextSheetId();
-      const kind = resolveMeasuredKind(measurement, family.kind, family.kind === 'blank');
+      const kind = resolveMeasuredKind(measurement, family.kind, false);
       const sheet = {
         id: sheetId,
         label,
@@ -137,10 +142,27 @@ export const useSheetImport = (): SheetImport => {
        * Редактор открывается после каждого импорта — и когда разлиновка
        * нашлась, и когда нет: ошибку автомата видно только на снимке. Каналы
        * фотографии уходят магнитам редактора и отпускаются с его закрытием.
+       *
+       * Редактор, уже открытый на другом листе, не подменяется: разбор,
+       * начатый до ухода с экрана, может кончиться, когда после возврата идёт
+       * правка другого листа, и её черновик пропал бы без подтверждения. Лист
+       * при этом добавлен, и его разметку открывает кнопка на плитке.
        */
       addUserSheet(record);
-      openMarkupEditor(record, image);
+      isAdded = true;
+
+      if (!useMarkupEditorStore.getState().record) {
+        openMarkupEditor(record, image);
+      }
     } catch {
+      /**
+       * Адрес фотографии освобождается, только пока лист не попал в стор:
+       * добавленный лист держит его в `src`.
+       */
+      if (!isAdded) {
+        releaseUserSheetUrls(sheetId);
+      }
+
       setError('Не удалось прочитать фотографию');
     } finally {
       setPendingLabel(null);

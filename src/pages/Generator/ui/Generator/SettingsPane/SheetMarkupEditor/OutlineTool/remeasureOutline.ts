@@ -1,22 +1,23 @@
 import type { SheetOutline } from '../../../../../lib/paper';
-import {
-  buildSheetRuling,
-  deriveRulingPins,
-  reanchorMirrorOverride,
-} from '../../../../../lib/paper';
+import { buildSheetRuling, deriveRulingPins } from '../../../../../lib/paper';
 import { useMarkupEditorStore } from '../../../../../model/useMarkupEditorStore';
 import { resolveMeasuredKind } from '../../../../../model/userSheetsStorageRecord';
 import { analyzeSheetPhoto } from '../../useSheetImport';
+import { createRemeasureQueue, keepMirrorOverride } from '../markupRemeasure';
 
 import type { OutlineRemeasureStatus } from './OutlineTool.types';
 import { rebuildBlankRuling } from './rebuildBlankRuling';
 
+const OUTLINE_REMEASURE = createRemeasureQueue('outline');
+
 /**
- * Номер последнего запрошенного перемера. Живёт вне инструмента: перемер
- * переживает переключение на другой инструмент, а ответ на устаревший контур
- * не должен лечь поверх нового.
+ * Делает устаревшим перемер в полёте: угол вернули на место или отпустили
+ * негодный контур, и последнее действие пользователя ответ на прежний контур
+ * перебивать не должен.
  */
-let latestRequest = 0;
+export const cancelOutlineRemeasure = () => {
+  OUTLINE_REMEASURE.cancel();
+};
 
 /**
  * Перемеряет открытый в редакторе лист внутри нового контура и кладёт итог в
@@ -35,27 +36,27 @@ let latestRequest = 0;
 export const remeasureOutline = async (
   outline: SheetOutline
 ): Promise<OutlineRemeasureStatus> => {
-  const { record, draft, setRemeasuring } = useMarkupEditorStore.getState();
+  const { record, draft } = useMarkupEditorStore.getState();
 
   if (!record || !draft) {
     return 'dropped';
   }
 
-  latestRequest += 1;
-
-  const request = latestRequest;
+  const request = OUTLINE_REMEASURE.start();
   const { sheet } = record;
   const { kind } = draft;
   const isBlank = kind === 'blank';
   const frame = { width: sheet.width, height: sheet.height };
 
-  setRemeasuring('outline', true);
-
   try {
     const analysis = await analyzeSheetPhoto({ src: sheet.src }, { kind, outline });
     const { record: current, draft: latest, commit } = useMarkupEditorStore.getState();
 
-    if (request !== latestRequest || current?.sheet.id !== sheet.id || !latest) {
+    if (
+      !OUTLINE_REMEASURE.isLatest(request) ||
+      current?.sheet.id !== sheet.id ||
+      !latest
+    ) {
       return 'dropped';
     }
 
@@ -67,20 +68,7 @@ export const remeasureOutline = async (
     const measured = isBlank
       ? rebuildBlankRuling(latest.ruling, measurement.outline, frame)
       : buildSheetRuling(measurement.source, frame);
-
-    /**
-     * Поля зеркала заданы руками, и автомат их не перемеряет: при новом
-     * наклоне листа они переписываются так, чтобы на фото остаться на месте.
-     */
-    const ruling = {
-      ...measured,
-      mirrorOverride: reanchorMirrorOverride(
-        latest.ruling.mirrorOverride,
-        latest.ruling.skewAngle,
-        measured.skewAngle,
-        frame
-      ),
-    };
+    const ruling = keepMirrorOverride(measured, latest.ruling, frame);
 
     commit({
       ruling,
@@ -95,14 +83,12 @@ export const remeasureOutline = async (
 
     return 'applied';
   } catch {
-    return 'failed';
-  } finally {
     /**
-     * Ожидание снимает только последний перемер: пока идёт более новый,
-     * сохранение по-прежнему ждёт.
+     * Сбой устаревшего перемера не о том, что видно: пока он шёл, контур
+     * сменили, и сообщение об ошибке легло бы поверх идущего нового.
      */
-    if (request === latestRequest) {
-      useMarkupEditorStore.getState().setRemeasuring('outline', false);
-    }
+    return OUTLINE_REMEASURE.isLatest(request) ? 'failed' : 'dropped';
+  } finally {
+    OUTLINE_REMEASURE.finish(request);
   }
 };

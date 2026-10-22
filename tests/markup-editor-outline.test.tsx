@@ -310,6 +310,41 @@ describe('инструмент «Контур»', () => {
     );
   });
 
+  it('угол, возвращённый на место во время перемера, отменяет его: ответ в черновик не ложится', async () => {
+    const release = deferDecode();
+    const { editor } = await openOutlineTool();
+    const before = useMarkupEditorStore.getState().draft;
+    const save = within(editor).getByRole('button', { name: 'Сохранить' });
+
+    dragHandle(getCorner(editor, 'Левый верхний угол листа'), { x: 20, y: 30 });
+
+    await waitFor(() => {
+      expect(save).toHaveProperty('disabled', true);
+    });
+
+    /**
+     * Нажатие без сдвига отпускания не зовёт: угол уводят и возвращают.
+     */
+    const corner = getCorner(editor, 'Левый верхний угол листа');
+
+    fireEvent.pointerDown(corner, { pointerId: 1, clientX: 20, clientY: 30 });
+    fireEvent.pointerMove(corner, { pointerId: 1, clientX: 10, clientY: 10 });
+    fireEvent.pointerMove(corner, { pointerId: 1, clientX: 0, clientY: 0 });
+    fireEvent.pointerUp(corner, { pointerId: 1, clientX: 0, clientY: 0 });
+
+    await waitFor(() => {
+      expect(save).toHaveProperty('disabled', false);
+    });
+
+    await act(async () => {
+      release(createSyntheticSheet(RULED_PHOTO));
+      await Promise.resolve();
+    });
+
+    expect(useMarkupEditorStore.getState().draft).toBe(before);
+    expect(getCorner(editor, 'Левый верхний угол листа').getAttribute('cx')).toBe('0');
+  });
+
   it('подсказка предупреждает, что перемер заменит ручные правки линий и полей', async () => {
     const { editor } = await openOutlineTool();
     const section = getOutlineSection(editor);

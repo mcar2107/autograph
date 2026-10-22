@@ -5,7 +5,6 @@ import type {
   GeneratorRealism,
   GeneratorState,
 } from './generator.types';
-import { isJsonRecord } from './paperSheetJson';
 import { toSession } from './sessionSchema';
 import type {
   CommitOptions,
@@ -51,32 +50,38 @@ export const toDocument = (state: GeneratorState): GeneratorDocument => {
 };
 
 /**
- * Структурное равенство значений документа: строк, чисел, булевых и простых
- * объектов из них. Экшены пересобирают вложенные объекты при каждой правке,
- * поэтому сравнение по ссылке считало бы правку без изменений шагом.
+ * Структурное равенство значений: строк, чисел, булевых и простых объектов и
+ * массивов из них. Экшены пересобирают вложенные объекты при каждой правке, а
+ * лист, перечитанный из хранилища, держит найденную и свою разлиновку разными
+ * объектами и без единой правки, поэтому сравнение по ссылке считало бы правку
+ * без изменений шагом. Одно на историю документа и черновика редактора
+ * разметки: правка «без изменений» должна значить у них одно и то же.
  *
  * @param left — первое значение
  * @param right — второе значение
  * @returns равны ли значения
  */
-const isSameValue = (left: unknown, right: unknown): boolean => {
+export const isSameValue = (left: unknown, right: unknown): boolean => {
   if (left === right) {
     return true;
   }
 
-  if (!isJsonRecord(left) || !isJsonRecord(right)) {
+  if (typeof left !== 'object' || typeof right !== 'object' || !left || !right) {
+    return false;
+  }
+
+  if (Array.isArray(left) !== Array.isArray(right)) {
     return false;
   }
 
   const leftEntries = Object.entries(left);
 
-  if (leftEntries.length !== Object.keys(right).length) {
-    return false;
-  }
-
-  return leftEntries.every(([key, value]) => {
-    return isSameValue(value, right[key]);
-  });
+  return (
+    leftEntries.length === Object.keys(right).length &&
+    leftEntries.every(([key, value]) => {
+      return key in right && isSameValue(value, Reflect.get(right, key));
+    })
+  );
 };
 
 /**
@@ -142,17 +147,15 @@ const resolveUpdate = (
 };
 
 /**
- * Добавляет снимок в прошлое, отбрасывая самые старые сверх глубины.
+ * Добавляет снимок в прошлое, отбрасывая самые старые сверх глубины. Одна на
+ * историю документа и черновика редактора разметки: глубина у них общая.
  *
  * @param past — снимки прошлого
- * @param document — новый снимок
+ * @param snapshot — новый снимок
  * @returns прошлое с новым снимком
  */
-const pushPast = (
-  past: GeneratorDocument[],
-  document: GeneratorDocument
-): GeneratorDocument[] => {
-  return [...past, document].slice(-HISTORY_DEPTH);
+export const pushPast = <T>(past: T[], snapshot: T): T[] => {
+  return [...past, snapshot].slice(-HISTORY_DEPTH);
 };
 
 /**

@@ -6,8 +6,9 @@ import type {
   SheetPoint,
   SheetRuling,
   SideEdge,
-} from '../../../../../../lib/paper';
-import { mirrorSheetRuling, readMarginLineEnds } from '../../../../../../lib/paper';
+} from '../../../../lib/paper';
+import { mirrorSheetRuling, readMarginLineEnds } from '../../../../lib/paper';
+
 import {
   placeCornerColumn,
   placeCornerMargin,
@@ -19,14 +20,14 @@ import {
   removeMarginLine,
   resolveAddedMarginLinePoint,
   snapMarginLineX,
-} from '../../MarginsTool/marginsGeometry';
+} from './marginsGeometry';
 import type {
   MarginCorner,
   MarginCornerMove,
   SideHandleEnd,
   ValueRange,
-} from '../../MarginsTool/marginsGeometry.types';
-import { mirrorMarkupPoint } from '../../MarkupViewport';
+} from './marginsGeometry.types';
+import { mirrorMarkupPoint } from './MarkupViewport';
 
 /**
  * Линия поля и боковые поля зеркала из разлиновки зеркальной страницы.

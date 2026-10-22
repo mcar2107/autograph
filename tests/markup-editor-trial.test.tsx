@@ -51,6 +51,11 @@ type PendingRender = {
    * Ответить готовой страницей.
    */
   resolve: (page: Blob) => void;
+
+  /**
+   * Ответить отказом воркера.
+   */
+  reject: (error: Error) => void;
 };
 
 const { renderPage, pending } = vi.hoisted(() => {
@@ -59,8 +64,8 @@ const { renderPage, pending } = vi.hoisted(() => {
   return {
     pending: requests,
     renderPage: vi.fn((task: PageRenderTask, signal?: AbortSignal) => {
-      return new Promise<Blob>((resolve) => {
-        requests.push({ task, signal, resolve });
+      return new Promise<Blob>((resolve, reject) => {
+        requests.push({ task, signal, resolve, reject });
       });
     }),
   };
@@ -234,6 +239,18 @@ const readTrialSrc = (): string | null => {
   return screen.queryByRole('img', { name: TRIAL_NAME })?.getAttribute('src') || null;
 };
 
+/**
+ * Текст статуса пробного текста.
+ *
+ * @param editor — диалог редактора
+ * @returns текст живой области; пустая строка — сообщать нечего
+ */
+const readTrialStatus = (editor: HTMLElement): string => {
+  const section = within(editor).getByRole('region', { name: 'Пробный текст' });
+
+  return within(section).getByRole('status').textContent || '';
+};
+
 beforeEach(() => {
   clearLayoutCache();
   useGeneratorStore.setState(DEFAULT_GENERATOR_STATE);
@@ -383,6 +400,64 @@ describe('пробный текст', () => {
 
     expect(readTrialSrc()).toBe('blob:trial-0');
     expect(objectUrls.created).toStrictEqual(['blob:trial-0']);
+  });
+
+  it('сбой воркера сообщается, а не оставляет висеть ожидание; отмена заказа сбоем не считается', async () => {
+    const editor = await openWithTrial();
+
+    await settle();
+
+    expect(readTrialStatus(editor)).toMatch(/перекладывается/);
+
+    const { commit } = useMarkupEditorStore.getState();
+
+    act(() => {
+      commit((draft) => {
+        return {
+          ruling: { ...draft.ruling, margins: { ...draft.ruling.margins, left: 100 } },
+        };
+      });
+    });
+    await settle();
+
+    /**
+     * Первый заказ отменён правкой: его отказ — не сбой, ждём новый.
+     */
+    await act(async () => {
+      pending[0]?.reject(new Error('Отрисовка страницы отменена'));
+      await Promise.resolve();
+    });
+
+    expect(pending[0]?.signal?.aborted).toBe(true);
+    expect(readTrialStatus(editor)).toMatch(/перекладывается/);
+
+    await act(async () => {
+      pending[1]?.reject(new Error('Воркер упал'));
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(readTrialStatus(editor)).toMatch(/не\u00A0нарисовался/);
+    });
+    expect(readTrialSrc()).toBeNull();
+
+    act(() => {
+      commit((draft) => {
+        return {
+          ruling: { ...draft.ruling, margins: { ...draft.ruling.margins, left: 110 } },
+        };
+      });
+    });
+
+    expect(readTrialStatus(editor)).toMatch(/перекладывается/);
+
+    await settle();
+    await answer(2);
+
+    await waitFor(() => {
+      expect(readTrialSrc()).toBe('blob:trial-0');
+    });
+    expect(readTrialStatus(editor)).toBe('');
   });
 
   it('выключенный пробный текст убирается с фотографии', async () => {

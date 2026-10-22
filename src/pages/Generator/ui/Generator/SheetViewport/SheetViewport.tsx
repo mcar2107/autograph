@@ -168,12 +168,19 @@ export const SheetViewport: FC<SheetViewportProps> = (props) => {
         )}
       >
         <div className="flex min-h-full w-max min-w-full items-center justify-center p-6">
-          {isAwaitingUserSheets && (
-            <p role="status" className="flex items-center gap-2 text-sm text-fg-muted">
-              <Spinner />
-              Загружаем свои листы…
-            </p>
-          )}
+          {/*
+           * Область ожидания смонтирована всегда, меняется только текст:
+           * область, появившаяся вместе с ним, читалкой часто не объявляется.
+           * Пустая выведена из потока, чтобы не сдвигать лист по центру.
+           */}
+          <div role="status" aria-atomic="true" className="empty:absolute">
+            {isAwaitingUserSheets && (
+              <p className="flex items-center gap-2 text-sm text-fg-muted">
+                <Spinner />
+                Загружаем свои листы…
+              </p>
+            )}
+          </div>
 
           <div ref={sheetRef} className="flex shrink-0 items-center">
             {!isSpread && source && (

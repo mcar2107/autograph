@@ -11,9 +11,10 @@ const SPACE_CODE = 'Space';
  *
  * Включается, только пока указатель над окном просмотра. Иначе пробел,
  * отнятый у кнопок панели, сломал бы их нажатие с клавиатуры, а без мыши
- * сдвигать нечем. Нажатие и отпускание пробела в этом режиме отменяются:
- * кнопка в фокусе (при открытии это «Закрыть») иначе сработала бы на
- * отпускание.
+ * сдвигать нечем. С Ctrl, Cmd или Alt это чужое сочетание — смена раскладки,
+ * поиск системы, — а не сдвиг, и его пробел не отнимается. Нажатие и
+ * отпускание пробела в этом режиме отменяются: кнопка в фокусе (при открытии
+ * это «Закрыть») иначе сработала бы на отпускание.
  *
  * @param viewportRef — узел окна просмотра
  * @returns зажат ли пробел для сдвига
@@ -45,11 +46,16 @@ export const useSpacePan = (viewportRef: RefObject<HTMLElement | null>): boolean
     };
 
     const handleDocumentKeyDown = (event: KeyboardEvent) => {
-      if (event.code !== SPACE_CODE) {
+      const { code, ctrlKey, metaKey, altKey, target } = event;
+
+      if (code !== SPACE_CODE) {
         return;
       }
 
-      if (!isHeld && (!isPointerInside || isTypingTarget(event.target))) {
+      if (
+        !isHeld &&
+        (!isPointerInside || ctrlKey || metaKey || altKey || isTypingTarget(target))
+      ) {
         return;
       }
 

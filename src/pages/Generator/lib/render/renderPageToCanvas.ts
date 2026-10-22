@@ -8,7 +8,7 @@ import { sampleRulingBend, sampleRulingBendSlope } from '../paper/sampleRulingBe
 import type { LetterDistortion } from '../randomize/randomize.types';
 
 import type {
-  LineStart,
+  LineSpan,
   PageGlyphs,
   PageRenderParams,
   RenderContext,
@@ -847,19 +847,19 @@ const drawLine = (
  * @param blockWidth — ширина блока
  * @returns сдвиг начала строки от левого края блока и её ширина
  */
-const resolveLineBounds = (
+const resolveLineSpan = (
   lineBounds: LineBounds | undefined,
   index: number,
   blockWidth: number
-): LineStart => {
+): LineSpan => {
   if (!lineBounds || lineBounds.widths.length === 0) {
-    return { startX: 0, width: blockWidth };
+    return { offset: 0, width: blockWidth };
   }
 
   const position = Math.min(index, lineBounds.widths.length - 1);
 
   return {
-    startX: lineBounds.offsets[position] || 0,
+    offset: lineBounds.offsets[position] || 0,
     width: lineBounds.widths[position] || 0,
   };
 };
@@ -934,18 +934,18 @@ const drawPage = (
     const firstBaselineY = fontAscent * fontSizePx * lineScale;
 
     page.lines.forEach((line, index) => {
-      const bounds = resolveLineBounds(lineBounds, index, blockWidth);
+      const span = resolveLineSpan(lineBounds, index, blockWidth);
 
       drawLine(
         inkContext,
         line,
-        bounds.startX,
+        span.offset,
         firstBaselineY + index * lineStep,
         spaceWidth,
         glyphs,
         fontSizePx,
         baseFont,
-        bounds.width,
+        span.width,
         isCurved
       );
     });

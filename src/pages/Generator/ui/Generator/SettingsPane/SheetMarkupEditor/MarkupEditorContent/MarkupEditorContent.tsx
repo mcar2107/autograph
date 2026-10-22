@@ -158,16 +158,16 @@ export const MarkupEditorContent: FC<MarkupEditorContentProps> = (props) => {
     setPageIndex(next);
   };
 
-  const handleReset = () => {
+  const handleMarkupReset = () => {
     reset();
   };
 
-  const handleDelete = () => {
+  const handleSheetDelete = () => {
     removeUserSheet(sheet.id);
     close();
   };
 
-  const handleCancel = () => {
+  const handleEditorCancel = () => {
     requestClose();
   };
 
@@ -175,7 +175,7 @@ export const MarkupEditorContent: FC<MarkupEditorContentProps> = (props) => {
    * Вся разметка ложится на лист одним действием стора: страницы на листе
    * перекладываются один раз, а не по полю.
    */
-  const handleSave = () => {
+  const handleMarkupSave = () => {
     saveSheetMarkup(sheet.id, draft);
     close();
   };
@@ -294,7 +294,7 @@ export const MarkupEditorContent: FC<MarkupEditorContentProps> = (props) => {
             </MarkupScaleContext>
 
             <div className="border-t border-border pt-4">
-              <MarkupSheetDelete sheetLabel={sheet.label} onDelete={handleDelete} />
+              <MarkupSheetDelete sheetLabel={sheet.label} onDelete={handleSheetDelete} />
             </div>
           </div>
 
@@ -302,10 +302,10 @@ export const MarkupEditorContent: FC<MarkupEditorContentProps> = (props) => {
             <MarkupCloseConfirm />
 
             <MarkupFooter
-              onReset={handleReset}
-              onCancel={handleCancel}
+              onReset={handleMarkupReset}
+              onCancel={handleEditorCancel}
               isSaveDisabled={isRemeasuring}
-              onSave={handleSave}
+              onSave={handleMarkupSave}
             />
           </div>
         </aside>

@@ -356,6 +356,26 @@ describe('закрытие редактора с правками', () => {
     ).toBeNull();
     expect(screen.getByRole('dialog')).toBe(editor);
     expect(queryMarginLine(editor)).toBeNull();
+    expect(document.activeElement).toBe(
+      within(editor).getByRole('button', { name: 'Закрыть' })
+    );
+  });
+
+  it('после «Продолжить правку» фокус возвращается на «Отмену», с которой попросили закрыть', async () => {
+    const user = userEvent.setup();
+    const editor = await openEditor(user);
+
+    removeMarginLine();
+
+    const cancel = within(editor).getByRole('button', { name: 'Отмена' });
+
+    await user.click(cancel);
+    await user.click(within(editor).getByRole('button', { name: 'Продолжить правку' }));
+
+    expect(
+      within(editor).queryByRole('group', { name: 'Подтверждение закрытия' })
+    ).toBeNull();
+    expect(document.activeElement).toBe(cancel);
   });
 
   it('Esc с правками тоже спрашивает подтверждение', async () => {

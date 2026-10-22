@@ -194,6 +194,27 @@ describe('обёртка IndexedDB', () => {
     expect(entries.map(toId)).toEqual(['a']);
   });
 
+  it('исключение в операциях отменяет поставленные до него запросы и отклоняет промис им', async () => {
+    const database = await openDatabase();
+    const failure = new Error('операции сорвались');
+
+    const transactionResult = runTransaction(
+      database,
+      [SHEETS_STORE],
+      'readwrite',
+      (transaction) => {
+        transaction.objectStore(SHEETS_STORE).put(buildEntry('b'));
+
+        throw failure;
+      }
+    );
+
+    await expect(transactionResult).rejects.toBe(failure);
+    database.close();
+
+    expect(await readEntries()).toEqual([]);
+  });
+
   it('без IndexedDB открытие отклоняется, а не бросает синхронно', async () => {
     Reflect.deleteProperty(globalThis, 'indexedDB');
 

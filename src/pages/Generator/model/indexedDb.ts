@@ -90,6 +90,22 @@ export const openDatabase = (): Promise<IDBDatabase> => {
 };
 
 /**
+ * Отменяет транзакцию, если она ещё идёт. Операции могли отменить её сами —
+ * повторная отмена бросает `InvalidStateError`, а отказ уже отдан.
+ *
+ * @param transaction — транзакция
+ */
+const abortTransaction = (transaction: IDBTransaction): void => {
+  try {
+    transaction.abort();
+  } catch {
+    /**
+     * Транзакция уже кончилась — отменять нечего.
+     */
+  }
+};
+
+/**
  * Выполняет операции в одной транзакции. Промис исполняется по `complete`, а
  * не по успеху запросов: запись считается сохранённой, только когда браузер
  * её зафиксировал, — отказ по квоте приходит отменой транзакции уже после
@@ -111,20 +127,34 @@ export const runTransaction = (
   run: (transaction: IDBTransaction) => void
 ): Promise<void> => {
   return new Promise((resolve, reject) => {
+    let transaction: IDBTransaction;
+
     try {
-      const transaction = database.transaction(storeNames, mode);
-
-      transaction.oncomplete = () => {
-        resolve();
-      };
-
-      transaction.onabort = () => {
-        reject(toError(transaction.error, 'Транзакция отменена'));
-      };
-
-      run(transaction);
+      transaction = database.transaction(storeNames, mode);
     } catch (error) {
       reject(error instanceof Error ? error : new Error('Транзакция не началась'));
+
+      return;
+    }
+
+    transaction.oncomplete = () => {
+      resolve();
+    };
+
+    transaction.onabort = () => {
+      reject(toError(transaction.error, 'Транзакция отменена'));
+    };
+
+    try {
+      run(transaction);
+    } catch (error) {
+      /**
+       * Исключение в операциях — тот же сбой, что у запроса: запросы, поставленные
+       * до него, иначе зафиксировались бы, и транзакция сохранила бы половину
+       * записей. Отказ несёт само исключение, а не безымянную отмену.
+       */
+      reject(error instanceof Error ? error : new Error('Транзакция сорвалась'));
+      abortTransaction(transaction);
     }
   });
 };

@@ -1,4 +1,4 @@
-import type { SheetPoint } from '../../../../../lib/paper';
+import type { SheetPoint } from '../../../../lib/paper';
 
 /**
  * Линия разлиновки в оверлее: ломаная в пикселях фотографии.

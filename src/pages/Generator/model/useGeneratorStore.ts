@@ -119,6 +119,7 @@ const DEFAULT_STATE: GeneratorStateWithHistory = {
   presetFamilies: PRESET_PAPER_FAMILIES,
   userSheets: [],
   unsavedUserSheetIds: [],
+  undeletedUserSheetIds: [],
   hasRestoredUserSheets: false,
   customFontFamily: null,
   customSceneSrc: null,
@@ -340,6 +341,29 @@ export const useGeneratorStore = create<GeneratorStoreWithHistory>()(
 
           return { unsavedUserSheetIds: isSaved || !isListed ? rest : [...rest, id] };
         });
+      };
+
+      /**
+       * Удаляет свой лист из хранилища и отмечает в сторе, если хранилище его
+       * не удалило.
+       *
+       * @param sheetId — идентификатор экземпляра
+       */
+      const forgetUserSheet = async (sheetId: string): Promise<void> => {
+        const isDeleted = await deleteUserSheet(sheetId);
+
+        if (!isDeleted) {
+          set((state) => {
+            return {
+              undeletedUserSheetIds: [
+                ...state.undeletedUserSheetIds.filter((id) => {
+                  return id !== sheetId;
+                }),
+                sheetId,
+              ],
+            };
+          });
+        }
       };
 
       return {
@@ -576,7 +600,7 @@ export const useGeneratorStore = create<GeneratorStoreWithHistory>()(
           void saveUserSheet(saved);
         },
         removeUserSheet: (sheetId) => {
-          void deleteUserSheet(sheetId);
+          void forgetUserSheet(sheetId);
 
           return set((state) => {
             const userSheets = state.userSheets.filter((item) => {

@@ -157,6 +157,12 @@ export type MarkupEditorActions = {
   preview: (update: MarkupUpdate) => void;
 
   /**
+   * Снимает показанное перетаскиванием и возвращает черновик до него — без
+   * шага истории: оборванный жест не правка.
+   */
+  cancelPreview: () => void;
+
+  /**
    * Отмена последнего шага.
    */
   undo: () => void;

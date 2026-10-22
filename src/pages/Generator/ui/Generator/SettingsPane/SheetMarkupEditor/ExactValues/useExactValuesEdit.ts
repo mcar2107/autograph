@@ -1,19 +1,16 @@
 import type { SheetFrame, SideEdge } from '../../../../../lib/paper';
 import { useMarkupEditorStore } from '../../../../../model/useMarkupEditorStore';
+import { formatRangeRejection } from '../exactValuesReferences';
 import {
   placeExactSideHandleValue,
   placeMargin,
   readMarginRange,
   readSideHandleRange,
-} from '../MarginsTool/marginsGeometry';
-import type {
-  GuideMarginSide,
-  SideHandleEnd,
-} from '../MarginsTool/marginsGeometry.types';
+} from '../marginsGeometry';
+import type { GuideMarginSide, SideHandleEnd } from '../marginsGeometry.types';
 
 import { retargetComb, toMarginPoint } from './exactValuesMarkup';
 import type { CombPatch } from './exactValuesMarkup.types';
-import { formatRangeRejection } from './exactValuesReferences';
 import type { ExactValuesEdit } from './useExactValuesEdit.types';
 
 const STEP_NOT_POSITIVE_MESSAGE = 'Шаг должен быть больше нуля.';

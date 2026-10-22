@@ -250,7 +250,9 @@ describe('асинхронный старт', () => {
       });
     });
 
-    expect(screen.getByText(/Загружаем свои листы/).getAttribute('role')).toBe('status');
+    const status = screen.getByText(/Загружаем свои листы/).closest('[role="status"]');
+
+    expect(status).not.toBeNull();
     expect(screen.queryAllByTestId('page')).toHaveLength(0);
     expect(useGeneratorStore.getState().sheetId).toBe(USER_SHEET.id);
     expect(useGeneratorStore.getState().isSheetPinned).toBe(true);
@@ -267,5 +269,12 @@ describe('асинхронный старт', () => {
       expect(screen.queryByText(/Загружаем свои листы/)).toBeNull();
       expect(screen.queryAllByTestId('page')).toHaveLength(1);
     });
+
+    /**
+     * Область ожидания та же и опустела, а не снята вместе с текстом: только
+     * смонтированная заранее область объявляет свой новый текст.
+     */
+    expect(status?.isConnected).toBe(true);
+    expect(status?.textContent).toBe('');
   });
 });

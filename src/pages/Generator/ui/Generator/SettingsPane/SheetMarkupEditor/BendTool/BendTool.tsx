@@ -13,10 +13,11 @@ import type {
 } from '../../../../../lib/paper';
 import { resolveBendRadius, resolveBendReach } from '../../../../../lib/paper';
 import { useMarkupEditorStore } from '../../../../../model/useMarkupEditorStore';
-import { normalizePins, refitBendToPins } from '../LinesTool/linesPins';
+import { normalizePins, refitBendToPins } from '../linesPins';
+import { buildRulingLines, toPointsAttribute } from '../markupGeometry';
 import { MarkupLiveRegion } from '../MarkupLiveRegion';
 import { MARKUP_MUTED_OPACITY } from '../MarkupOverlay';
-import { buildRulingLines, toPointsAttribute } from '../MarkupOverlay/markupGeometry';
+import { toPhotoPoint } from '../markupPointer';
 import { MarkupStroke } from '../MarkupStroke';
 import {
   mirrorMarkupPoint,
@@ -25,7 +26,7 @@ import {
 } from '../MarkupViewport';
 import type { MarkupToolProps } from '../SheetMarkupEditor.types';
 
-import { buildBendRing, toPhotoPoint } from './bendGeometry';
+import { buildBendRing } from './bendGeometry';
 import type { BendRefitBlock, BendRefitNotice } from './BendTool.types';
 import { useBendDrag } from './useBendDrag';
 
@@ -224,6 +225,15 @@ export const BendTool: FC<MarkupToolProps> = (props) => {
       : [];
   }, [ruling, frame]);
 
+  /**
+   * Охват правки зависит от разлиновки и радиуса, а не от курсора: рамка идёт
+   * за курсором на каждое движение, а на ровном листе охват заводит сетку
+   * изгиба.
+   */
+  const reach = useMemo(() => {
+    return ruling && ruling.step > 0 ? resolveBendReach(ruling, frame, radius) : null;
+  }, [ruling, frame, radius]);
+
   if (!draft || !ruling) {
     return null;
   }
@@ -238,10 +248,7 @@ export const BendTool: FC<MarkupToolProps> = (props) => {
    * правки он говорил бы уже не о том, что видно.
    */
   const refitMessage = refitNotice?.draft === draft ? refitNotice.text : null;
-  const ring =
-    ringCenter && hasLines
-      ? buildBendRing(ruling, ringCenter, resolveBendReach(ruling, frame, radius))
-      : null;
+  const ring = ringCenter && reach ? buildBendRing(ruling, ringCenter, reach) : null;
 
   const handleRadiusChange = (value: number) => {
     setRadiusSteps(value);
@@ -393,6 +400,11 @@ export const BendTool: FC<MarkupToolProps> = (props) => {
               onPointerCancel={handleLinesPointerCancel}
               onPointerLeave={handleLinesPointerLeave}
             >
+              {/*
+               * Атрибут `pointerEvents` перебивает `pointer-events: none`,
+               * унаследованный от скрытой разметки, поэтому скрытие гасит
+               * захват линий классом по признаку оверлея.
+               */}
               {lines.map(({ index, points }) => {
                 return (
                   <polyline
@@ -401,7 +413,7 @@ export const BendTool: FC<MarkupToolProps> = (props) => {
                     points={points}
                     strokeWidth={HIT_WIDTH / scale}
                     pointerEvents="stroke"
-                    className="cursor-ns-resize fill-none stroke-transparent in-data-pan-mode:pointer-events-none"
+                    className="cursor-ns-resize fill-none stroke-transparent in-data-markup-hidden:pointer-events-none in-data-pan-mode:pointer-events-none"
                   />
                 );
               })}

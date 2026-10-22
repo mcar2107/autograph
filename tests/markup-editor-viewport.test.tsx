@@ -122,6 +122,43 @@ describe('панорама с пробелом', () => {
 
     expect(viewport.dataset.panMode).toBeUndefined();
   });
+
+  it('пробел с Ctrl, Cmd или Alt — чужое сочетание: режим сдвига не включается и нажатие не отменяется', async () => {
+    const { viewport } = renderViewport();
+
+    fireEvent.pointerEnter(viewport);
+
+    for (const modifier of ['ctrlKey', 'metaKey', 'altKey'] as const) {
+      const event = new KeyboardEvent('keydown', {
+        code: 'Space',
+        key: ' ',
+        [modifier]: true,
+        bubbles: true,
+        cancelable: true,
+      });
+
+      act(() => {
+        document.body.dispatchEvent(event);
+      });
+
+      expect(viewport.dataset.panMode).toBeUndefined();
+      expect(event.defaultPrevented).toBe(false);
+    }
+
+    const plain = new KeyboardEvent('keydown', {
+      code: 'Space',
+      key: ' ',
+      bubbles: true,
+      cancelable: true,
+    });
+
+    act(() => {
+      document.body.dispatchEvent(plain);
+    });
+
+    expect(viewport.dataset.panMode).toBe('true');
+    expect(plain.defaultPrevented).toBe(true);
+  });
 });
 
 describe('предел приближения', () => {

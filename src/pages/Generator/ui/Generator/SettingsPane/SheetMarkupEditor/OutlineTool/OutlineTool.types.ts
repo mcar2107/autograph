@@ -1,5 +1,12 @@
 import type { MarkupDraft } from '../../../../../model/useMarkupEditorStore.types';
 
+import type { OUTLINE_CORNERS } from './outlineGeometry';
+
+/**
+ * Угол контура.
+ */
+export type OutlineCorner = (typeof OUTLINE_CORNERS)[number];
+
 /**
  * Годится ли контур для перемера:
  *

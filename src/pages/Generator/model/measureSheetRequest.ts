@@ -1,5 +1,9 @@
-import type { PaperTexture, SheetPhotoMeasurement } from '../lib/paper';
-import type { SheetImageData } from '../lib/paper';
+import type {
+  PaperTexture,
+  SheetImageData,
+  SheetPhotoMeasurement,
+  SheetPhotoOptions,
+} from '../lib/paper';
 import { encodeTextureMap, measureSheetPhoto } from '../lib/paper';
 
 import { decodeSheetPhotoBlob } from './measureSheetImage';
@@ -26,6 +30,25 @@ const encodeTexture = async (
 };
 
 /**
+ * Разбор уже декодированного снимка: измерение и карта текстуры. Один на
+ * воркер и на основной поток без воркера — числа обоих путей обязаны совпадать
+ * до бита, и две копии цепочки рано или поздно разошлись бы.
+ *
+ * @param image — каналы снимка
+ * @param options — настройки измерения
+ * @returns разбор фотографии
+ */
+export const analyzeSheetImage = async (
+  image: SheetImageData,
+  options: SheetPhotoOptions
+): Promise<SheetPhotoAnalysis> => {
+  const measurement = measureSheetPhoto(image, options);
+  const texture = await encodeTexture(measurement);
+
+  return { image, measurement, texture };
+};
+
+/**
  * Разбирает фотографию из задания: декодирование, каналы снимка, измерение и
  * карта текстуры — всё, что основной поток делал бы сам.
  *
@@ -41,10 +64,7 @@ export const measureSheetRequest = async (
     return null;
   }
 
-  const measurement = measureSheetPhoto(image, request.options);
-  const texture = await encodeTexture(measurement);
-
-  return { image, measurement, texture };
+  return await analyzeSheetImage(image, request.options);
 };
 
 /**

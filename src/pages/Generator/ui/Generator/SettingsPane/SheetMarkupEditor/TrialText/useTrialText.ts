@@ -26,6 +26,12 @@ const TRIAL_DEBOUNCE_MS = 150;
 const MIN_RENDER_SCALE = 0.1;
 
 /**
+ * Пробный текст — прогон из одной страницы: от числа страниц рецепт меняет
+ * только раздачу листов, а лист у пробной страницы и так задан.
+ */
+const TRIAL_PAGE_COUNT = 1;
+
+/**
  * Пробная страница по черновой разметке: заказывается у воркера отрисовки
  * после каждой завершённой правки и не задерживает саму правку.
  *
@@ -38,14 +44,22 @@ const MIN_RENDER_SCALE = 0.1;
  * Смена масштаба окна перезаказывает страницу в новом разрешении, но
  * показанную не снимает — разметка у неё та же.
  *
+ * Отмена заказа — не сбой: её вызвала новая правка, и ждать надо уже её
+ * страницу. Сбой воркера по текущей правке, наоборот, сообщается: без этого
+ * ожидание висело бы до следующей правки, а страница так и не пришла бы.
+ *
  * @param input — включён ли пробный текст, страница разворота и масштаб окна
- * @returns адрес пробной страницы и признак ожидания
+ * @returns адрес пробной страницы, признаки ожидания и сбоя
  */
 export const useTrialText = (input: TrialTextInput): TrialTextRaster => {
   const { isEnabled, pageIndex, scale } = input;
   const { metrics, correction, fontFamily } = usePageGeometry();
   const [editCount, setEditCount] = useState(0);
   const [raster, setRaster] = useState<TrialRaster | null>(null);
+  /**
+   * Правка, по которой страница не нарисовалась. `null` — сбоев не было.
+   */
+  const [failedRevision, setFailedRevision] = useState<string | null>(null);
   const revision = `${editCount}:${pageIndex}`;
   /**
    * Заказ уходит по таймеру и берёт параметры страницы на момент отправки:
@@ -85,6 +99,12 @@ export const useTrialText = (input: TrialTextInput): TrialTextRaster => {
       const generator = useGeneratorStore.getState();
       const fontUrl = findFontUrl(latest.fontFamily);
 
+      /**
+       * Повторный заказ по той же правке — после смены масштаба или
+       * включения пробного текста — снова ждёт, а не показывает прежний сбой.
+       */
+      setFailedRevision(null);
+
       try {
         await waitForFont({ fontFamily: latest.fontFamily });
 
@@ -102,7 +122,7 @@ export const useTrialText = (input: TrialTextInput): TrialTextRaster => {
           correction: latest.correction,
           bottomMargin: generator.bottomMargin,
           runSeed: generator.runSeed,
-          recipe: selectPageRecipe(generator, 1),
+          recipe: selectPageRecipe(generator, TRIAL_PAGE_COUNT),
           font: fontUrl
             ? {
                 family: latest.fontFamily,
@@ -125,9 +145,13 @@ export const useTrialText = (input: TrialTextInput): TrialTextRaster => {
         }
       } catch {
         /**
-         * Отмена или сбой воркера: пробного текста нет, разметка правится
-         * дальше.
+         * Отменённый заказ уже сменён новым, и его отказ ничего не значит.
+         * Сбой текущего заказа гасит ожидание: разметка правится дальше, а
+         * пробный текст вернётся со следующей правкой.
          */
+        if (!controller.signal.aborted) {
+          setFailedRevision(revision);
+        }
       }
     }, TRIAL_DEBOUNCE_MS);
 
@@ -148,9 +172,11 @@ export const useTrialText = (input: TrialTextInput): TrialTextRaster => {
   }, [rasterUrl]);
 
   const isCurrent = raster?.revision === revision;
+  const isFailed = failedRevision === revision;
 
   return {
     url: isEnabled && isCurrent ? rasterUrl : null,
-    isPending: isEnabled && !isCurrent,
+    isPending: isEnabled && !isCurrent && !isFailed,
+    isFailed: isEnabled && !isCurrent && isFailed,
   };
 };

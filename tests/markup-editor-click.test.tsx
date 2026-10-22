@@ -255,3 +255,48 @@ describe('шаг истории — только по изменению зна�
     expect(useMarkupEditorStore.getState().history.past).toHaveLength(1);
   });
 });
+
+describe('оборванный системой жест — не правка', () => {
+  it('pointercancel снимает показанное перетаскиванием поле без шага истории', async () => {
+    const editor = await openTool(userEvent.setup(), 'Поля');
+    const handle = within(editor).getByRole('button', { name: 'Верхнее поле' });
+    const { draft, history } = useMarkupEditorStore.getState();
+
+    clickHandle(handle);
+
+    const x = Number(handle.getAttribute('cx'));
+    const y = Number(handle.getAttribute('cy'));
+
+    fireEvent.pointerDown(handle, { pointerId: 2, clientX: x, clientY: y });
+    fireEvent.pointerMove(handle, { pointerId: 2, clientX: x, clientY: y + 60 });
+
+    expect(useMarkupEditorStore.getState().draft).not.toStrictEqual(draft);
+
+    fireEvent.pointerCancel(handle, { pointerId: 2 });
+
+    const state = useMarkupEditorStore.getState();
+
+    expect(state.draft).toStrictEqual(draft);
+    expect(state.history.past).toHaveLength(history.past.length);
+    expect(state.history.previewBase).toBeNull();
+    expect(selectHasMarkupEdits(state)).toBe(false);
+  });
+
+  it('pointercancel возвращает угол контура на место', async () => {
+    const editor = await openTool(userEvent.setup(), 'Контур', OUTLINED_SHEET);
+    const name = 'Правый нижний угол листа';
+    const handle = within(editor).getByRole('button', { name });
+    const x = handle.getAttribute('cx');
+
+    clickHandle(handle);
+    fireEvent.pointerDown(handle, { pointerId: 2, clientX: Number(x), clientY: 0 });
+    fireEvent.pointerMove(handle, { pointerId: 2, clientX: Number(x) - 50, clientY: 0 });
+
+    expect(within(editor).getByRole('button', { name }).getAttribute('cx')).not.toBe(x);
+
+    fireEvent.pointerCancel(handle, { pointerId: 2 });
+
+    expect(within(editor).getByRole('button', { name }).getAttribute('cx')).toBe(x);
+    expect(useMarkupEditorStore.getState().isRemeasuring).toBe(false);
+  });
+});

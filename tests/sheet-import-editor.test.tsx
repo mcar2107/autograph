@@ -21,7 +21,8 @@ import { useMarkupEditorStore } from '@pages/Generator/model/useMarkupEditorStor
 import { readUserSheets } from '@pages/Generator/model/userSheetsStorage';
 import { PaperPicker } from '@pages/Generator/ui/Generator/SettingsPane/PaperPicker';
 import { SheetMarkupEditor } from '@pages/Generator/ui/Generator/SettingsPane/SheetMarkupEditor';
-import { cleanup, render, screen } from '@testing-library/react';
+import { useSheetImport } from '@pages/Generator/ui/Generator/SettingsPane/useSheetImport';
+import { act, cleanup, render, renderHook, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { IDBFactory } from 'fake-indexeddb';
 import type { FC } from 'react';
@@ -666,6 +667,61 @@ describe('импорт фотографии листа', () => {
 
     expect(readUserRuling()?.step).toBe(0);
     expect(readUserRuling()?.marginLineX).toBeNull();
+  });
+
+  it('импорт, кончившийся при открытом редакторе другого листа, его не подменяет', async () => {
+    const family = useGeneratorStore.getState().presetFamilies[0];
+    let finishFirst = (_image: null) => {};
+
+    decodeSheetImage.mockImplementationOnce(() => {
+      return new Promise((resolve) => {
+        finishFirst = resolve;
+      });
+    });
+    decodeSheetImage.mockResolvedValueOnce(null);
+
+    /**
+     * Два экземпляра хука — разбор, начатый до ухода с экрана, и новый,
+     * начатый после возврата: у каждого своё состояние разбора.
+     */
+    const first = renderHook(useSheetImport);
+    const second = renderHook(useSheetImport);
+
+    if (!family) {
+      throw new Error('Нет предустановленной семьи');
+    }
+
+    const firstImport = first.result.current.add(
+      new File(['a'], 'IMG_1.jpg', { type: 'image/jpeg' }),
+      { family }
+    );
+
+    await act(async () => {
+      await second.result.current.add(
+        new File(['b'], 'IMG_2.jpg', { type: 'image/jpeg' }),
+        { family }
+      );
+    });
+
+    expect(useMarkupEditorStore.getState().record?.sheet.label).toBe('IMG_2');
+
+    await act(async () => {
+      finishFirst(null);
+      await firstImport;
+    });
+
+    expect(useMarkupEditorStore.getState().record?.sheet.label).toBe('IMG_2');
+    expect(
+      useGeneratorStore.getState().userSheets.map(({ sheet }) => {
+        return sheet.label;
+      })
+    ).toEqual(['IMG_2', 'IMG_1']);
+
+    /**
+     * Записи листов идут очередью хранилища: дождаться их здесь, иначе они
+     * легли бы в базу следующего теста.
+     */
+    expect(await readUserSheets()).toHaveLength(2);
   });
 });
 

@@ -1,4 +1,4 @@
-import type { SheetFrame, SheetOutline, SheetPoint } from '../../../../../lib/paper';
+import type { SheetFrame, SheetOutline } from '../../../../../lib/paper';
 import { resolveSheetBounds } from '../../../../../lib/paper';
 
 import type { OutlineVerdict } from './OutlineTool.types';
@@ -21,11 +21,6 @@ export const OUTLINE_CORNERS = [
 ] as const;
 
 /**
- * Угол контура.
- */
-export type OutlineCorner = (typeof OUTLINE_CORNERS)[number];
-
-/**
  * Контур, по которому идут ручки: у листа во весь кадр — углы кадра.
  *
  * @param outline — контур листа; `null` — лист во весь кадр
@@ -46,21 +41,6 @@ export const resolveOutline = (
       bottomLeft: { x: 0, y: height },
     }
   );
-};
-
-/**
- * Точка, сдвинутая внутрь кадра: угол листа за краем фотографии мерить не по
- * чему.
- *
- * @param point — точка, px фотографии
- * @param frame — кадр фотографии
- * @returns точка внутри кадра
- */
-export const clampToFrame = (point: SheetPoint, frame: SheetFrame): SheetPoint => {
-  return {
-    x: Math.min(Math.max(point.x, 0), frame.width),
-    y: Math.min(Math.max(point.y, 0), frame.height),
-  };
 };
 
 /**

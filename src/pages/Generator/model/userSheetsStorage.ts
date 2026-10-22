@@ -42,17 +42,37 @@ const sheetUrls = new Map<string, string[]>();
 const urlFiles = new Map<string, Blob>();
 
 /**
+ * Дожидается операции, не пропуская её отказ дальше: хвост очереди не должен
+ * отклоняться, иначе сбой одной операции отменил бы все поставленные за ней.
+ *
+ * @param operation — операция в очереди
+ * @returns исполняется по концу операции, удачному или нет
+ */
+const settle = async (operation: Promise<unknown>): Promise<void> => {
+  try {
+    await operation;
+  } catch {
+    /**
+     * Отказ получает тот, кто ставил операцию, — очереди он не касается.
+     */
+  }
+};
+
+/**
  * Ставит операцию в очередь хранилища. Сбой операции очередь не рвёт.
  *
  * @param operation — операция
  * @returns результат операции
  */
 const enqueue = <T>(operation: () => Promise<T>): Promise<T> => {
-  const result = queueTail.then(operation, operation);
+  const previous = queueTail;
+  const result = (async () => {
+    await previous;
 
-  queueTail = result.catch(() => {
-    return undefined;
-  });
+    return await operation();
+  })();
+
+  queueTail = settle(result);
 
   return result;
 };
@@ -103,6 +123,31 @@ const revokeSheetUrls = (sheetId: string): void => {
   }
 
   sheetUrls.delete(sheetId);
+};
+
+/**
+ * Адрес фотографии только что выбранного листа. Object URL, а не data URL:
+ * файл уже в руках, и запись листа берёт его по адресу без повторного
+ * декодирования base64 в основном потоке, а строка в сторе не весит на треть
+ * больше снимка. Освобождается вместе с листом — `deleteUserSheet` — или
+ * `releaseUserSheetUrls`, если лист так и не добавился.
+ *
+ * @param sheetId — идентификатор нового листа
+ * @param file — файл фотографии
+ * @returns адрес файла
+ */
+export const createUserSheetUrl = (sheetId: string, file: Blob): string => {
+  return createSheetUrl(sheetId, file);
+};
+
+/**
+ * Освобождает адреса листа, который в стор не попал: импорт сорвался после
+ * того, как адрес фотографии уже выдан.
+ *
+ * @param sheetId — идентификатор листа
+ */
+export const releaseUserSheetUrls = (sheetId: string): void => {
+  revokeSheetUrls(sheetId);
 };
 
 /**
@@ -271,20 +316,31 @@ export const writeUserSheet = (record: UserSheetRecord): Promise<boolean> => {
  * хранилища, не перенесённый из-за сбоя, убирается и оттуда.
  *
  * @param sheetId — идентификатор экземпляра
+ * @returns удалось ли убрать; `false` — база открылась, но удаление в ней
+ * сорвалось, и после перезагрузки лист вернётся. Без базы — `true`: лист жил
+ * только в памяти сессии, и удалять в хранилище нечего.
  */
-export const deleteUserSheet = (sheetId: string): Promise<void> => {
+export const deleteUserSheet = (sheetId: string): Promise<boolean> => {
   return enqueue(async () => {
     removeLegacyUserSheets([sheetId]);
     revokeSheetUrls(sheetId);
 
+    let database: IDBDatabase;
+
     try {
-      await withDatabase((database) => {
-        return deleteRecord(database, SHEETS_STORE, sheetId);
-      });
+      database = await openDatabase();
     } catch {
-      /**
-       * Без базы удалять нечего: лист жил только в памяти сессии.
-       */
+      return true;
+    }
+
+    try {
+      await deleteRecord(database, SHEETS_STORE, sheetId);
+
+      return true;
+    } catch {
+      return false;
+    } finally {
+      database.close();
     }
   });
 };

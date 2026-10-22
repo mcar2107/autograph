@@ -1,25 +1,18 @@
 import { Disclosure } from '@shared/ui/Disclosure';
 import type { FC } from 'react';
-import { useMemo } from 'react';
 
 import type { SideEdge } from '../../../../../lib/paper';
 import { useMarkupEditorStore } from '../../../../../model/useMarkupEditorStore';
-import {
-  readSideHandleValue,
-  resolveMarginHandles,
-} from '../MarginsTool/marginsGeometry';
-import type {
-  GuideMarginSide,
-  SideHandleEnd,
-} from '../MarginsTool/marginsGeometry.types';
-
-import { ExactValueField } from './ExactValueField';
+import { ExactValueField } from '../ExactValueField';
 import {
   EXACT_VALUES_LEGEND,
   FIRST_LINE_REFERENCE,
   FROM_FRAME_TOP,
   SIDE_REFERENCES,
-} from './exactValuesReferences';
+} from '../exactValuesReferences';
+import { readSideHandleValue, resolveMarginHandles } from '../marginsGeometry';
+import type { GuideMarginSide, SideHandleEnd } from '../marginsGeometry.types';
+
 import { useExactValuesEdit } from './useExactValuesEdit';
 
 const GUIDE_MARGIN_SIDES: GuideMarginSide[] = ['top', 'bottom'];
@@ -69,9 +62,7 @@ export const ExactValues: FC = () => {
   const ruling = useMarkupEditorStore((state) => {
     return state.draft?.ruling || null;
   });
-  const frame = useMemo(() => {
-    return { width, height };
-  }, [width, height]);
+  const frame = { width, height };
   const { changeStep, changeFirstLine, changeMargin, changeSideEnd } =
     useExactValuesEdit(frame);
 

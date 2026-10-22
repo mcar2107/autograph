@@ -7,8 +7,8 @@ import type {
 } from '../../../../../lib/paper';
 import { deriveRulingPins, fitRulingPins, lineHeightAt } from '../../../../../lib/paper';
 import type { MarkupDraft } from '../../../../../model/useMarkupEditorStore.types';
-import { normalizePins, refitBendToPins } from '../LinesTool/linesPins';
-import type { GuideMarginSide } from '../MarginsTool/marginsGeometry.types';
+import { normalizePins, refitBendToPins } from '../linesPins';
+import type { GuideMarginSide } from '../marginsGeometry.types';
 
 import type { CombPatch } from './exactValuesMarkup.types';
 
@@ -23,12 +23,14 @@ import type { CombPatch } from './exactValuesMarkup.types';
  */
 const placePinsOnComb = (ruling: SheetRuling, pins: RulingPin[]): RulingPin[] => {
   return pins.map((pin) => {
-    const u = ruling.firstLinePhase + pin.index * ruling.step;
-    const [left, right] = [pin.left, pin.right].map(({ x }) => {
-      return { x, y: lineHeightAt(ruling, x, u) };
-    });
+    const { index, left, right } = pin;
+    const u = ruling.firstLinePhase + index * ruling.step;
 
-    return { index: pin.index, left: left || pin.left, right: right || pin.right };
+    return {
+      index,
+      left: { x: left.x, y: lineHeightAt(ruling, left.x, u) },
+      right: { x: right.x, y: lineHeightAt(ruling, right.x, u) },
+    };
   });
 };
 
@@ -61,12 +63,10 @@ export const retargetComb = (
 ): Pick<MarkupDraft, 'pins' | 'ruling'> | null => {
   const target: SheetRuling = { ...draft.ruling, ...patch, bend: null };
   const placed = normalizePins(placePinsOnComb(target, draft.pins));
-  const pins =
-    fitRulingPins(target, placed, frame).status === 'fitted'
-      ? placed
-      : deriveRulingPins(target, frame);
+  const isPlacedFitted = fitRulingPins(target, placed, frame).status === 'fitted';
+  const pins = isPlacedFitted ? placed : deriveRulingPins(target, frame);
 
-  if (fitRulingPins(target, pins, frame).status !== 'fitted') {
+  if (!isPlacedFitted && fitRulingPins(target, pins, frame).status !== 'fitted') {
     return null;
   }
 

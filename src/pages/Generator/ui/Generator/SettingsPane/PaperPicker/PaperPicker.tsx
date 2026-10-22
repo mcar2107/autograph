@@ -65,18 +65,25 @@ const listOwnSheets = (
 export const PaperPicker: FC = () => {
   const titleId = useId();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { presetFamilies, userSheets, familyId, pageSheetId, hasUnsavedSheets } =
-    useGeneratorStore(
-      useShallow((state) => {
-        return {
-          presetFamilies: state.presetFamilies,
-          userSheets: state.userSheets,
-          familyId: state.familyId,
-          pageSheetId: selectPageSheetId(state, state.pageIndex),
-          hasUnsavedSheets: state.unsavedUserSheetIds.length > 0,
-        };
-      })
-    );
+  const {
+    presetFamilies,
+    userSheets,
+    familyId,
+    pageSheetId,
+    hasUnsavedSheets,
+    hasUndeletedSheets,
+  } = useGeneratorStore(
+    useShallow((state) => {
+      return {
+        presetFamilies: state.presetFamilies,
+        userSheets: state.userSheets,
+        familyId: state.familyId,
+        pageSheetId: selectPageSheetId(state, state.pageIndex),
+        hasUnsavedSheets: state.unsavedUserSheetIds.length > 0,
+        hasUndeletedSheets: state.undeletedUserSheetIds.length > 0,
+      };
+    })
+  );
   const selectFamily = useGeneratorStore((state) => {
     return state.selectFamily;
   });
@@ -197,6 +204,13 @@ export const PaperPicker: FC = () => {
         </p>
       ) : null}
 
+      {hasUndeletedSheets ? (
+        <p role="alert" className="text-xs text-danger">
+          Удалённый лист вернётся после перезагрузки: браузер не дал убрать его из
+          хранилища.
+        </p>
+      ) : null}
+
       {ownSheets.length > 0 ? (
         <ul aria-label="Свои листы" className="flex flex-wrap gap-2">
           {ownSheets.map((record) => {
@@ -212,7 +226,7 @@ export const PaperPicker: FC = () => {
             };
 
             return (
-              <li key={id} className="relative">
+              <li key={id}>
                 <OwnSheetTile
                   sheet={sheet}
                   isSelected={id === pageSheetId}

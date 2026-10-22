@@ -26,7 +26,7 @@ import { SheetMarkupEditor } from '@pages/Generator/ui/Generator/SettingsPane/Sh
 import {
   CORNER_HEIGHT_SLOP,
   isCornerDragVertical,
-} from '@pages/Generator/ui/Generator/SettingsPane/SheetMarkupEditor/MarginsTool/marginsGeometry';
+} from '@pages/Generator/ui/Generator/SettingsPane/SheetMarkupEditor/marginsGeometry';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { IDBFactory } from 'fake-indexeddb';
@@ -479,6 +479,15 @@ describe('инструмент «Поля»: линия поля', () => {
     act(() => {
       useMarkupEditorStore.getState().undo();
     });
+
+    /**
+     * Подсказка ведения гаснет сразу, а не с первым движением над фото.
+     */
+    expect(
+      within(within(editor).getByRole('region', { name: 'Поля листа' })).queryByRole(
+        'status'
+      )
+    ).toBeNull();
 
     fireEvent.pointerMove(svg, { pointerId: 1, clientX: 200, clientY: 300 });
 

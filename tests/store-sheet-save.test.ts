@@ -141,6 +141,42 @@ describe('сохранение своего листа', () => {
   });
 });
 
+describe('удаление своего листа', () => {
+  it('отказ удаления помечает лист: из списка он уходит, а после перезагрузки вернётся', async () => {
+    store().addUserSheet(buildRecord('user-1'));
+    await store().restoreUserSheets();
+
+    vi.spyOn(IDBObjectStore.prototype, 'delete').mockImplementation(() => {
+      throw new DOMException('Сбой удаления', 'UnknownError');
+    });
+    store().removeUserSheet('user-1');
+
+    expect(store().userSheets).toEqual([]);
+
+    await vi.waitFor(() => {
+      expect(store().undeletedUserSheetIds).toEqual(['user-1']);
+    });
+
+    vi.restoreAllMocks();
+
+    const stored = await readUserSheets();
+
+    expect(
+      stored.map(({ sheet }) => {
+        return sheet.id;
+      })
+    ).toEqual(['user-1']);
+  });
+
+  it('удачное удаление пометку не ставит', async () => {
+    store().addUserSheet(buildRecord('user-1'));
+    store().removeUserSheet('user-1');
+
+    expect(await readUserSheets()).toEqual([]);
+    expect(store().undeletedUserSheetIds).toEqual([]);
+  });
+});
+
 describe('сохранение разметки своего листа', () => {
   /**
    * Правка редактора: другой шаг и наклон, своя пара булавок.

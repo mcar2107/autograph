@@ -1,19 +1,12 @@
 import type { RulingKind } from '../../../../../lib/paper';
-import {
-  buildSheetRuling,
-  deriveRulingPins,
-  reanchorMirrorOverride,
-} from '../../../../../lib/paper';
+import { buildSheetRuling, deriveRulingPins } from '../../../../../lib/paper';
 import { useMarkupEditorStore } from '../../../../../model/useMarkupEditorStore';
 import { analyzeSheetPhoto } from '../../useSheetImport';
+import { createRemeasureQueue, keepMirrorOverride } from '../markupRemeasure';
 
 import type { RulingLinesSearchStatus } from './RulingKindControl.types';
 
-/**
- * Номер последнего запрошенного поиска: ответ на прежний выбор вида не должен
- * лечь поверх нового.
- */
-let latestRequest = 0;
+const LINES_SEARCH = createRemeasureQueue('lines');
 
 /**
  * Меняет вид с «Без разлиновки» на клетку или линейку и заново ищет линии на
@@ -36,21 +29,18 @@ let latestRequest = 0;
 export const searchRulingLines = async (
   kind: RulingKind
 ): Promise<RulingLinesSearchStatus> => {
-  const { record, draft, preview, setRemeasuring } = useMarkupEditorStore.getState();
+  const { record, draft, preview } = useMarkupEditorStore.getState();
 
   if (!record || !draft) {
     return 'dropped';
   }
 
-  latestRequest += 1;
-
-  const request = latestRequest;
+  const request = LINES_SEARCH.start();
   const { sheet } = record;
   const { outline } = draft.ruling;
   const frame = { width: sheet.width, height: sheet.height };
 
   preview({ kind });
-  setRemeasuring('lines', true);
 
   try {
     const analysis = await analyzeSheetPhoto({ src: sheet.src }, { kind, outline });
@@ -61,7 +51,7 @@ export const searchRulingLines = async (
      * линии, найденные в прежнем контуре, легли бы мимо нового.
      */
     if (
-      request !== latestRequest ||
+      !LINES_SEARCH.isLatest(request) ||
       current?.sheet.id !== sheet.id ||
       latest?.kind !== kind ||
       latest.ruling.outline !== outline
@@ -84,20 +74,7 @@ export const searchRulingLines = async (
     }
 
     const measured = buildSheetRuling(measurement.source, frame);
-
-    /**
-     * Поля зеркала заданы руками, и автомат их не перемеряет: при новом
-     * наклоне листа они переписываются так, чтобы на фото остаться на месте.
-     */
-    const ruling = {
-      ...measured,
-      mirrorOverride: reanchorMirrorOverride(
-        latest.ruling.mirrorOverride,
-        latest.ruling.skewAngle,
-        measured.skewAngle,
-        frame
-      ),
-    };
+    const ruling = keepMirrorOverride(measured, latest.ruling, frame);
 
     commit({ kind, ruling, pins: deriveRulingPins(ruling, frame) });
 
@@ -105,7 +82,7 @@ export const searchRulingLines = async (
   } catch {
     const { draft: latest, commit } = useMarkupEditorStore.getState();
 
-    if (request !== latestRequest || latest?.kind !== kind) {
+    if (!LINES_SEARCH.isLatest(request) || latest?.kind !== kind) {
       return 'dropped';
     }
 
@@ -113,8 +90,6 @@ export const searchRulingLines = async (
 
     return 'failed';
   } finally {
-    if (request === latestRequest) {
-      useMarkupEditorStore.getState().setRemeasuring('lines', false);
-    }
+    LINES_SEARCH.finish(request);
   }
 };

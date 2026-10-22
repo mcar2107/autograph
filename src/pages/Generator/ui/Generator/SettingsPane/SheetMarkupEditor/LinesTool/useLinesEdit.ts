@@ -2,6 +2,7 @@ import { useState } from 'react';
 
 import type {
   RulingPin,
+  RulingPinsFit,
   SheetFrame,
   SheetPoint,
   SheetRuling,
@@ -9,34 +10,20 @@ import type {
 import { fitRulingPins } from '../../../../../lib/paper';
 import { useMarkupEditorStore } from '../../../../../model/useMarkupEditorStore';
 import type { MarkupCommitOptions } from '../../../../../model/useMarkupEditorStore.types';
-import type { MarkupMoveSource } from '../MarkupHandle';
-
 import {
   fitPinsWithBend,
   insertPin,
   movePinEnd,
   normalizePins,
-  type PinEnd,
   shiftGapSteps,
   snapPinEnd,
-} from './linesPins';
+} from '../linesPins';
+import type { PinEnd } from '../linesPins.types';
+import { clampToFrame } from '../markupGeometry';
+import type { MarkupMoveSource } from '../MarkupHandle';
+
 import { useAltKeyRef } from './useAltKeyRef';
 import type { LinesEdit } from './useLinesEdit.types';
-
-/**
- * Точка, сдвинутая внутрь кадра: конец булавки за краем фотографии не на
- * линии листа.
- *
- * @param point — точка, px фотографии
- * @param frame — кадр фотографии
- * @returns точка внутри кадра
- */
-const clampToFrame = (point: SheetPoint, frame: SheetFrame): SheetPoint => {
-  return {
-    x: Math.min(Math.max(point.x, 0), frame.width),
-    y: Math.min(Math.max(point.y, 0), frame.height),
-  };
-};
 
 /**
  * Правка закреплённых линий: перетаскивание концов, число шагов между
@@ -55,6 +42,7 @@ const clampToFrame = (point: SheetPoint, frame: SheetFrame): SheetPoint => {
 export const useLinesEdit = (frame: SheetFrame): LinesEdit => {
   const isAltRef = useAltKeyRef();
   const [lastEditedOrder, setLastEditedOrder] = useState<number | null>(null);
+  const [dragFit, setDragFit] = useState<RulingPinsFit | null>(null);
 
   /**
    * Кладёт булавки в черновик шагом истории вместе с разлиновкой через них.
@@ -89,6 +77,7 @@ export const useLinesEdit = (frame: SheetFrame): LinesEdit => {
       options
     );
     setLastEditedOrder(order);
+    setDragFit(null);
   };
 
   const moveEnd = (order: number, end: PinEnd, point: SheetPoint) => {
@@ -102,6 +91,7 @@ export const useLinesEdit = (frame: SheetFrame): LinesEdit => {
     const fit = fitRulingPins(draft.ruling, normalizePins(pins), frame);
 
     preview(fit.status === 'fitted' ? { pins, ruling: fit.ruling } : { pins });
+    setDragFit(fit);
   };
 
   const releaseEnd = (
@@ -178,5 +168,13 @@ export const useLinesEdit = (frame: SheetFrame): LinesEdit => {
     );
   };
 
-  return { lastEditedOrder, moveEnd, releaseEnd, changeGapSteps, addPin, removePin };
+  return {
+    lastEditedOrder,
+    dragFit,
+    moveEnd,
+    releaseEnd,
+    changeGapSteps,
+    addPin,
+    removePin,
+  };
 };

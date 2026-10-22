@@ -1,6 +1,7 @@
-import { roundTo } from '../../../../../lib/format/formatNumber';
-import type { SideEdge } from '../../../../../lib/paper';
-import type { ValueRange } from '../MarginsTool/marginsGeometry.types';
+import { roundTo } from '../../../../lib/format/formatNumber';
+import type { SideEdge } from '../../../../lib/paper';
+
+import type { ValueRange } from './marginsGeometry.types';
 
 export const FROM_FRAME_TOP = 'от\u00A0верха кадра';
 

@@ -8,7 +8,7 @@ import {
 import { useMarkupEditorStore } from '@pages/Generator/model/useMarkupEditorStore';
 import { readUserSheets } from '@pages/Generator/model/userSheetsStorage';
 import { PaperPicker } from '@pages/Generator/ui/Generator/SettingsPane/PaperPicker';
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { IDBFactory } from 'fake-indexeddb';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -62,6 +62,8 @@ const GRID_PHOTO = {
  * двоеточия — пояснение.
  */
 const SAVE_FAILURE_MESSAGE = /^Лист не сохранится после перезагрузки/;
+
+const DELETE_FAILURE_MESSAGE = /^Удалённый лист вернётся после перезагрузки/;
 
 const buildPhotoFile = (): File => {
   return new File([new Uint8Array([1, 2, 3])], 'моя тетрадь.jpg', {
@@ -258,6 +260,18 @@ describe('PaperPicker', () => {
         name: 'моя тетрадь',
       })
     ).toBeDefined();
+  });
+
+  it('сообщает, что удалённый лист вернётся после перезагрузки', () => {
+    render(<PaperPicker />);
+
+    expect(screen.queryByText(DELETE_FAILURE_MESSAGE)).toBeNull();
+
+    act(() => {
+      useGeneratorStore.setState({ undeletedUserSheetIds: ['user-1'] });
+    });
+
+    expect(screen.getByText(DELETE_FAILURE_MESSAGE).getAttribute('role')).toBe('alert');
   });
 
   it('лист в клетку, добавленный при выбранной линейке, встаёт в семью клетки', async () => {

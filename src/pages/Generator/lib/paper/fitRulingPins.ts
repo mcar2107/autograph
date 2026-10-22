@@ -1,3 +1,4 @@
+import { bentLineHeightAt } from './bentLineHeightAt';
 import type { PinComb, RulingPinsFit } from './fitRulingPins.types';
 import type {
   RulingPerspective,
@@ -8,7 +9,6 @@ import type {
 } from './paper.types';
 import { resolveSheetBounds } from './resolveSheetBounds';
 import { lineCoordinateAt, lineHeightAt } from './rulingPerspective';
-import { sampleRulingBend } from './sampleRulingBend';
 import { reanchorSideEdges } from './sideEdges';
 
 const DEGREES_IN_RADIAN = 180 / Math.PI;
@@ -71,6 +71,13 @@ const LINE_SNAP_EPSILON = 1e-6;
  * там, линии не находит.
  */
 const PIN_INSET_SHARE = 0.1;
+
+/**
+ * Число параметров гребёнки (`PinComb`): наклон, высота линии `0`, шаг и два
+ * схождения. Столько столбцов у строки якобиана и столько уравнений у
+ * нормальной системы шага Гаусса — Ньютона.
+ */
+const COMB_PARAMETER_COUNT = 5;
 
 /**
  * Высота линии `index` над началом в столбце `x`, отсчитанном от начала.
@@ -245,15 +252,14 @@ const computeGaussNewtonStep = (
       return computeJacobianRow(comb, index, point.x - origin.x);
     });
   });
-  const size = 5;
-  const normal = Array.from({ length: size }, (_, row) => {
-    return Array.from({ length: size }, (__, column) => {
+  const normal = Array.from({ length: COMB_PARAMETER_COUNT }, (_, row) => {
+    return Array.from({ length: COMB_PARAMETER_COUNT }, (__, column) => {
       return rows.reduce((sum, jacobian) => {
         return sum + (jacobian[row] || 0) * (jacobian[column] || 0);
       }, 0);
     });
   });
-  const gradient = Array.from({ length: size }, (_, row) => {
+  const gradient = Array.from({ length: COMB_PARAMETER_COUNT }, (_, row) => {
     return rows.reduce((sum, jacobian, point) => {
       return sum + (jacobian[row] || 0) * (residuals[point] || 0);
     }, 0);
@@ -642,24 +648,24 @@ const placePinOnLine = (
   right: number
 ): RulingPin => {
   const u = ruling.firstLinePhase + index * ruling.step;
-  const [leftEnd, rightEnd] = [left, right].map((x) => {
-    const y = lineHeightAt(ruling, x, u);
-
-    return { x, y: ruling.bend ? y + sampleRulingBend(ruling.bend, ruling, x, y) : y };
-  });
 
   return {
     index,
-    left: leftEnd || { x: left, y: 0 },
-    right: rightEnd || { x: right, y: 0 },
+    left: { x: left, y: bentLineHeightAt(ruling, ruling.bend, left, u) },
+    right: { x: right, y: bentLineHeightAt(ruling, ruling.bend, right, u) },
   };
 };
 
 /**
- * Начальные булавки листа: крайние линии области с линиями в её среднем
- * столбце, плюс средняя, если у листа есть перспектива, — две булавки
- * перспективу по высоте не передают. Концы булавок стоят на десятой доле
- * ширины блока внутрь от его краёв.
+ * Начальные булавки листа: крайние линии области с линиями, плюс средняя,
+ * если у листа есть перспектива, — две булавки перспективу по высоте не
+ * передают. Концы булавок стоят на десятой доле ширины блока внутрь от его
+ * краёв.
+ *
+ * Крайние линии берутся в столбце `0`, как у раскладки и направляющих полей
+ * в редакторе: верхнее и нижнее поля — высоты у левого края кадра. В другом
+ * столбце наклонного листа они пришлись бы на другие линии, и булавка встала
+ * бы на несколько строк выше или ниже первой строки текста.
  *
  * Без шага разлиновки булавки ставятся на четверть и три четверти высоты
  * листа с равными номерами: число шагов между ними задаёт пользователь.
@@ -686,17 +692,15 @@ export const deriveRulingPins = (ruling: SheetRuling, frame: SheetFrame): Ruling
 
   const blockLeft = margins.left;
   const blockRight = frame.width - margins.right;
-  const center = (blockLeft + blockRight) / 2;
   const inset = (blockRight - blockLeft) * PIN_INSET_SHARE;
   const left = blockLeft + inset;
   const right = blockRight - inset;
   const firstIndex = Math.ceil(
-    (lineCoordinateAt(ruling, center, margins.top) - firstLinePhase) / step -
-      LINE_SNAP_EPSILON
+    (lineCoordinateAt(ruling, 0, margins.top) - firstLinePhase) / step - LINE_SNAP_EPSILON
   );
   const lastIndex = Math.max(
     Math.floor(
-      (lineCoordinateAt(ruling, center, frame.height - margins.bottom) - firstLinePhase) /
+      (lineCoordinateAt(ruling, 0, frame.height - margins.bottom) - firstLinePhase) /
         step +
         LINE_SNAP_EPSILON
     ),

@@ -2,10 +2,6 @@ import { cx } from '@shared/lib/styles';
 import type { FC } from 'react';
 import { useId, useMemo } from 'react';
 
-import { MarkupStroke, toSvgId } from '../MarkupStroke';
-import { useMarkupMirrorWidth, useMarkupScale } from '../MarkupViewport';
-import type { MarkupToolId } from '../SheetMarkupEditor.types';
-
 import {
   buildMarginGuides,
   buildRulingLines,
@@ -13,7 +9,11 @@ import {
   toLineAttributes,
   toOutlinePolygon,
   toPointsAttribute,
-} from './markupGeometry';
+} from '../markupGeometry';
+import { MarkupStroke, toSvgId } from '../MarkupStroke';
+import { useMarkupMirrorWidth, useMarkupScale } from '../MarkupViewport';
+import type { MarkupToolId } from '../SheetMarkupEditor.types';
+
 import { MARKUP_MUTED_OPACITY } from './markupOpacity';
 import type {
   MarkupLayerGroupAttributes,
@@ -117,15 +117,24 @@ export const MarkupOverlay: FC<MarkupOverlayProps> = (props) => {
   const scale = useMarkupScale();
   const mirrorWidth = useMarkupMirrorWidth();
   const { width, height } = frame;
-  const polygon = toPointsAttribute(toOutlinePolygon(ruling.outline, frame));
-  const marginGuides = buildMarginGuides(ruling, frame);
 
   /**
-   * Ломаные пересчитываются только по разлиновке: изогнутый лист — это
-   * десятки тысяч точек, а зум и сдвиг идут без перерисовки оверлея.
+   * Ломаные и их атрибуты `points` пересчитываются только по разлиновке:
+   * изогнутый лист — это десятки тысяч точек, а оверлей перерисовывается на
+   * каждый тик зума ради толщины обводки.
    */
   const lines = useMemo(() => {
-    return buildRulingLines(ruling, frame);
+    return buildRulingLines(ruling, frame).map(({ index, points }) => {
+      return { index, points: toPointsAttribute(points) };
+    });
+  }, [ruling, frame]);
+
+  const polygon = useMemo(() => {
+    return toPointsAttribute(toOutlinePolygon(ruling.outline, frame));
+  }, [ruling.outline, frame]);
+
+  const marginGuides = useMemo(() => {
+    return buildMarginGuides(ruling, frame);
   }, [ruling, frame]);
 
   const writingZone = useMemo(() => {
@@ -139,6 +148,7 @@ export const MarkupOverlay: FC<MarkupOverlayProps> = (props) => {
       viewBox={`0 0 ${width} ${height}`}
       width={width}
       height={height}
+      data-markup-hidden={isHidden || undefined}
       className={cx(
         'absolute top-0 left-0 overflow-visible',
         isHidden && 'pointer-events-none opacity-0'
@@ -164,13 +174,7 @@ export const MarkupOverlay: FC<MarkupOverlayProps> = (props) => {
               className="stroke-markup-line"
             >
               {lines.map(({ index, points }) => {
-                return (
-                  <polyline
-                    key={index}
-                    data-line-index={index}
-                    points={toPointsAttribute(points)}
-                  />
-                );
+                return <polyline key={index} data-line-index={index} points={points} />;
               })}
             </MarkupStroke>
           </g>

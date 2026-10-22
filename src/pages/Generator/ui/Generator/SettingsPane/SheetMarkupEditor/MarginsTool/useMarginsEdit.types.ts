@@ -1,11 +1,10 @@
 import type { SheetPoint } from '../../../../../lib/paper';
-import type { MarkupMoveSource } from '../MarkupHandle';
-
 import type {
   GuideMarginSide,
   MarginCorner,
   SideHandleEnd,
-} from './marginsGeometry.types';
+} from '../marginsGeometry.types';
+import type { MarkupMoveSource } from '../MarkupHandle';
 
 /**
  * Правка полей и линии поля черновика.

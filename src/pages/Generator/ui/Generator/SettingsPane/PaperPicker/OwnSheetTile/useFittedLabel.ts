@@ -1,14 +1,9 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 
 import { fitTileLabel } from './fitTileLabel';
-import { splitLabelBreaks } from './splitLabelBreaks';
+import { interleaveLabelBreaks } from './interleaveLabelBreaks';
+import { MAX_LABEL_LINES } from './tileLabelLines';
 import type { FittedLabel, FittedText, LineCounter } from './useFittedLabel.types';
-
-/**
- * Сколько строк подписи помещается под превью: третья строка вытянула бы
- * плитку выше соседних.
- */
-const MAX_LABEL_LINES = 2;
 
 /**
  * Кладёт подпись в элемент кусками с точками переноса между ними — так же,
@@ -18,11 +13,11 @@ const MAX_LABEL_LINES = 2;
  * @param text — подпись
  */
 const fillLabelBreaks = (element: HTMLElement, text: string) => {
-  const nodes = splitLabelBreaks(text).flatMap((segment, index) => {
-    return index > 0 ? [document.createElement('wbr'), segment] : [segment];
-  });
-
-  element.replaceChildren(...nodes);
+  element.replaceChildren(
+    ...interleaveLabelBreaks(text, () => {
+      return document.createElement('wbr');
+    })
+  );
 };
 
 /**

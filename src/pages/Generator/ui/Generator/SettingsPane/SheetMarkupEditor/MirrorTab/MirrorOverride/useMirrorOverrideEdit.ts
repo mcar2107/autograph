@@ -5,8 +5,7 @@ import type {
 } from '../../../../../../lib/paper';
 import { useMarkupEditorStore } from '../../../../../../model/useMarkupEditorStore';
 import type { MarkupDraft } from '../../../../../../model/useMarkupEditorStore.types';
-import { formatRangeRejection } from '../../ExactValues/exactValuesReferences';
-
+import { formatRangeRejection } from '../../exactValuesReferences';
 import {
   placeMirrorMarginLineSide,
   placeMirrorSideEnd,
@@ -14,7 +13,8 @@ import {
   readMirrorOverride,
   readMirrorSideRange,
   snapMirrorMarginLineX,
-} from './mirrorOverrideMarkup';
+} from '../../mirrorOverrideMarkup';
+
 import type { MirrorOverrideEdit } from './useMirrorOverrideEdit.types';
 
 /**

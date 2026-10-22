@@ -5,22 +5,18 @@ import type {
   SheetImageData,
   SheetPoint,
   SheetRuling,
-} from '../../../../../lib/paper';
+} from '../../../../lib/paper';
 import {
+  bentLineHeightAt,
   editRulingBend,
   fitRulingPins,
   lineCoordinateAt,
-  lineHeightAt,
   lineHeightScaleAt,
   refitRulingBend,
-  sampleRulingBend,
   snapToRulingLine,
-} from '../../../../../lib/paper';
+} from '../../../../lib/paper';
 
-/**
- * Конец булавки.
- */
-export type PinEnd = 'left' | 'right';
+import type { PinEnd } from './linesPins.types';
 
 /**
  * Булавка с концами слева направо. Конец, перетащенный за другой, меняется с
@@ -119,9 +115,8 @@ export const shiftGapSteps = (
  */
 const pointOnLine = (ruling: SheetRuling, index: number, x: number): SheetPoint => {
   const { bend, firstLinePhase, step } = ruling;
-  const y = lineHeightAt(ruling, x, firstLinePhase + index * step);
 
-  return { x, y: bend ? y + sampleRulingBend(bend, ruling, x, y) : y };
+  return { x, y: bentLineHeightAt(ruling, bend, x, firstLinePhase + index * step) };
 };
 
 /**

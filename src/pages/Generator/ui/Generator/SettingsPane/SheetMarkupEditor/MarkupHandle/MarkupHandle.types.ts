@@ -55,6 +55,12 @@ export type MarkupHandleProps = {
   onMoveEnd?: (point: SheetPoint, source: MarkupMoveSource) => void;
 
   /**
+   * Колбэк на оборванный системой жест (`pointercancel`): показанное
+   * перетаскиванием в черновике ручка снимает сама, а инструмент — своё.
+   */
+  onMoveCancel?: () => void;
+
+  /**
    * Ручка подсвечена ошибкой: то, что она ставит, не годится.
    */
   isFlagged?: boolean;
@@ -63,24 +69,4 @@ export type MarkupHandleProps = {
    * Дополнительные классы группы ручки.
    */
   className?: string;
-};
-
-/**
- * Идущее перетаскивание ручки — то, что нужно лупе.
- */
-export type HandleDrag = {
-  /**
-   * Точка ручки, px фотографии.
-   */
-  point: SheetPoint;
-
-  /**
-   * Указатель в окне браузера.
-   */
-  anchor: SheetPoint;
-
-  /**
-   * Куда лупа кладётся порталом.
-   */
-  container: Element;
 };

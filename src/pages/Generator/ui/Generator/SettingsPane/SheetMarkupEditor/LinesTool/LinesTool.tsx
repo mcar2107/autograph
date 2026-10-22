@@ -8,13 +8,14 @@ import { formatNumber, NBSP } from '../../../../../lib/format/formatNumber';
 import type { RulingPinsFit, SheetPoint } from '../../../../../lib/paper';
 import { fitRulingPins } from '../../../../../lib/paper';
 import { useMarkupEditorStore } from '../../../../../model/useMarkupEditorStore';
+import { measurePinMiss, normalizePins, readGapSteps } from '../linesPins';
+import type { PinEnd } from '../linesPins.types';
 import type { MarkupMoveSource } from '../MarkupHandle';
 import { MarkupHandle } from '../MarkupHandle';
 import { MarkupLiveRegion } from '../MarkupLiveRegion';
 import { useMarkupMirrorWidth } from '../MarkupViewport';
 import type { MarkupToolProps } from '../SheetMarkupEditor.types';
 
-import { measurePinMiss, normalizePins, type PinEnd, readGapSteps } from './linesPins';
 import { PinStepsBadge } from './PinStepsBadge';
 import { useLinesEdit } from './useLinesEdit';
 
@@ -113,16 +114,35 @@ export const LinesTool: FC<MarkupToolProps> = (props) => {
   const frame = useMemo(() => {
     return { width, height };
   }, [width, height]);
-  const { lastEditedOrder, moveEnd, releaseEnd, changeGapSteps, addPin, removePin } =
-    useLinesEdit(frame);
+  /**
+   * Черновик до перетаскивания: промежуточные черновики меняются на каждое
+   * движение, а подгонку по ним уже сделала правка.
+   */
+  const settledDraft = useMarkupEditorStore((state) => {
+    return state.history.previewBase || state.draft;
+  });
+  const {
+    lastEditedOrder,
+    dragFit,
+    moveEnd,
+    releaseEnd,
+    changeGapSteps,
+    addPin,
+    removePin,
+  } = useLinesEdit(frame);
 
   /**
-   * Подгонка по булавкам черновика — ради признака, задают ли они разлиновку.
-   * Гаусс — Ньютон на каждый рендер не нужен: булавки меняются только правкой.
+   * Подгонка по булавкам — ради признака, задают ли они разлиновку. Пока конец
+   * тянут, берётся подгонка самого движения, и Гаусс — Ньютон не идёт второй
+   * раз на тот же черновик; вне перетаскивания — по черновику, который
+   * меняют и правки мимо булавок: отмена, сброс, точные значения.
    */
-  const fit = useMemo(() => {
-    return draft ? fitRulingPins(draft.ruling, normalizePins(draft.pins), frame) : null;
-  }, [draft, frame]);
+  const settledFit = useMemo(() => {
+    return settledDraft
+      ? fitRulingPins(settledDraft.ruling, normalizePins(settledDraft.pins), frame)
+      : null;
+  }, [settledDraft, frame]);
+  const fit = (isDragging && dragFit) || settledFit;
   const rejection = fit && lastEditedOrder !== null ? describeRejectedFit(fit) : null;
   /**
    * Отказ, который читает живая область. Пока ручку тянут, он держит прежний:
@@ -144,7 +164,7 @@ export const LinesTool: FC<MarkupToolProps> = (props) => {
   const residuals = pins.map((pin) => {
     return measurePinMiss(draft.ruling, pin);
   });
-  const canAddPin =
+  const isPinAddable =
     draft.ruling.step > 0 &&
     gapSteps.some((steps) => {
       return steps >= 2;
@@ -279,7 +299,7 @@ export const LinesTool: FC<MarkupToolProps> = (props) => {
         })}
       </ol>
 
-      <Button variant="secondary" isDisabled={!canAddPin} onClick={handleAddPinClick}>
+      <Button variant="secondary" isDisabled={!isPinAddable} onClick={handleAddPinClick}>
         Закрепить ещё линию
       </Button>
 

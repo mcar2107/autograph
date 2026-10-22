@@ -1,19 +1,19 @@
-import { resolveTextEdgesAt } from '../../../../../lib/calibrate';
+import { resolveTextEdgesAt } from '../../../../lib/calibrate';
 import type {
   SheetFrame,
   SheetOutline,
   SheetPoint,
   SheetRuling,
   SideEdgeEnds,
-} from '../../../../../lib/paper';
+} from '../../../../lib/paper';
 import {
+  bentLineHeightAt,
   lineCoordinateAt,
   lineHeightAt,
   readMarginEnds,
   readMarginLineEnds,
-  sampleRulingBend,
   sideEdgePointAt,
-} from '../../../../../lib/paper';
+} from '../../../../lib/paper';
 
 import type {
   LineAttributes,
@@ -198,9 +198,7 @@ export const buildRulingLines = (
     return {
       index,
       points: columns.map((x) => {
-        const y = lineHeightAt(ruling, x, u);
-
-        return { x, y: bend ? y + sampleRulingBend(bend, ruling, x, y) : y };
+        return { x, y: bentLineHeightAt(ruling, bend, x, u) };
       }),
     };
   });
@@ -401,4 +399,19 @@ export const buildWritingZone = (
   );
 
   return [...lefts, ...rights.toReversed()];
+};
+
+/**
+ * Точка, сдвинутая внутрь кадра: угол листа или конец булавки за краем
+ * фотографии мерить не по чему.
+ *
+ * @param point — точка, px фотографии
+ * @param frame — кадр фотографии
+ * @returns точка внутри кадра
+ */
+export const clampToFrame = (point: SheetPoint, frame: SheetFrame): SheetPoint => {
+  return {
+    x: Math.min(Math.max(point.x, 0), frame.width),
+    y: Math.min(Math.max(point.y, 0), frame.height),
+  };
 };

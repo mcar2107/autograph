@@ -386,4 +386,49 @@ describe('свои листы в IndexedDB', () => {
 
     expect(await readRawRecords()).toEqual([]);
   });
+
+  it('сорвавшееся удаление сообщает об отказе: лист вернётся после перезагрузки', async () => {
+    const storage = await reloadStorage();
+
+    await storage.writeUserSheet(buildRecord('user-1'));
+
+    vi.spyOn(IDBObjectStore.prototype, 'delete').mockImplementation(() => {
+      throw new DOMException('Сбой', 'UnknownError');
+    });
+
+    expect(await storage.deleteUserSheet('user-1')).toBe(false);
+
+    vi.restoreAllMocks();
+
+    expect((await (await reloadStorage()).readUserSheets()).map(toSheetId)).toEqual([
+      'user-1',
+    ]);
+  });
+
+  it('без IndexedDB удаление не отказ: лист жил только в памяти', async () => {
+    const storage = await reloadStorage();
+
+    Reflect.deleteProperty(globalThis, 'indexedDB');
+
+    expect(await storage.deleteUserSheet('user-1')).toBe(true);
+  });
+
+  it('свежий импорт отдаёт фотографию адресом объекта, и запись берёт тот же файл', async () => {
+    const storage = await reloadStorage();
+    const photo = new Blob([PHOTO_BYTES], { type: 'image/jpeg' });
+    const record = buildRecord('user-1');
+    const src = storage.createUserSheetUrl('user-1', photo);
+
+    expect(src).toMatch(/^blob:/);
+    expect(
+      await storage.writeUserSheet({ ...record, sheet: { ...record.sheet, src } })
+    ).toBe(true);
+
+    const [stored] = await readRawRecords();
+
+    expect(stored?.source).toBeInstanceOf(Blob);
+    expect(await (stored?.source instanceof Blob ? stored.source.text() : '')).toBe(
+      PHOTO_BYTES
+    );
+  });
 });
