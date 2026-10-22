@@ -1,6 +1,6 @@
 {
   "name": "autograph",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "type": "module",
   "description": "генератор рукописного текста",
   "license": "MIT",

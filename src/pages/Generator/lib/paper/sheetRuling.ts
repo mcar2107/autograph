@@ -1,5 +1,6 @@
 import type {
   PaperMargins,
+  RulingProjection,
   SheetFrame,
   SheetRuling,
   SheetRulingSource,
@@ -18,8 +19,8 @@ export const MARGIN_FALLBACK_STEPS = 1.5;
 
 /**
  * Допуск округления до линии в долях шага. Поле, стоящее ровно на линии,
- * после вычитания фазы и деления на шаг даёт не целое, а целое плюс
- * погрешность, и честный `ceil` перепрыгнул бы на следующую линию.
+ * после вычитания фазы и деления на шаг даёт не целое, а целое плюс или минус
+ * погрешность, и честное округление взяло бы соседнюю линию.
  */
 const LINE_SNAP_EPSILON = 1e-6;
 
@@ -39,15 +40,17 @@ const ceilToLine = (y: number, step: number, phase: number): number => {
 };
 
 /**
- * Координата вдоль линий первой линии разлиновки, лежащей не выше верхнего
- * поля у левого края кадра. На ней стоит базовая линия первой строки: отсчёт
- * от линии, а не от поля, держит строки на разлиновке, даже когда поле не
- * кратно шагу.
+ * Координата вдоль линий первой линии разлиновки, лежащей строго ниже
+ * верхнего поля у левого края кадра. На ней стоит базовая линия первой строки:
+ * поле — верхняя граница области письма, и тело букв первой строки ложится под
+ * него, а не над ним. Поле на линии отдаёт строку на следующую линию; поле
+ * между линиями — на ближайшую ниже. Отсчёт от линии, а не от поля, держит
+ * строки на разлиновке, даже когда поле не кратно шагу.
  *
  * Поле переводится в координату вдоль линий, а не округляется по высоте кадра:
  * при перспективе соседние линии отстоят друг от друга по высоте на разное
  * число пикселей, и округление по высоте встало бы мимо линии. Без
- * перспективы `U(0, y) = y`, и число прежнее.
+ * перспективы `U(0, y) = y`.
  *
  * @param ruling — разлиновка листа
  * @returns координата вдоль линий; без шага — само верхнее поле
@@ -59,14 +62,78 @@ export const resolveFirstLine = (ruling: SheetRuling): number => {
     return margins.top;
   }
 
-  return ceilToLine(lineCoordinateAt(ruling, 0, margins.top), step, firstLinePhase);
+  const top = lineCoordinateAt(ruling, 0, margins.top);
+
+  return (
+    firstLinePhase +
+    (Math.floor((top - firstLinePhase) / step + LINE_SNAP_EPSILON) + 1) * step
+  );
+};
+
+/**
+ * Верхнее поле, под которым первая строка встаёт на линию `firstLine`: поле
+ * ложится на линию шагом выше. Так автомат и фолбэк отдают поле той же
+ * границей области письма, какой его ставят руками в редакторе, — на линии
+ * над первой строкой.
+ *
+ * Линия над первой может уйти за верх кадра, когда первая строка ближе шага к
+ * нему, а поля за край кадра не заходят. Тогда поле встаёт посередине между
+ * верхом кадра и первой линией: строго выше неё и ниже линии над ней.
+ *
+ * @param projection — наклон и перспектива разлиновки
+ * @param step — шаг разлиновки больше нуля
+ * @param firstLine — координата вдоль линий линии первой строки
+ * @returns верхнее поле, px от верха кадра у левого края
+ */
+export const placeTopMarginAbove = (
+  projection: RulingProjection,
+  step: number,
+  firstLine: number
+): number => {
+  const above = lineHeightAt(projection, 0, firstLine - step);
+
+  return above > 0 ? above : lineHeightAt(projection, 0, firstLine) / 2;
+};
+
+/**
+ * Поле, найденное детектором на первой линии области с линиями, переводится
+ * в границу области письма — на линию над ней. Первая строка остаётся на той
+ * линии, которую нашёл детектор, а поле не на линии (округление при переводе в
+ * кадр) отдаёт её на ту же линию, что и до перевода.
+ *
+ * @param source — разлиновка, как её нашёл детектор, в пикселях кадра
+ * @returns разлиновка с верхним полем над первой строкой; ненайденное поле
+ *   остаётся нулём
+ */
+export const liftDetectedTopMargin = (source: SheetRulingSource): SheetRulingSource => {
+  const { step, firstLinePhase, margins } = source;
+
+  if (step <= 0 || !margins?.top) {
+    return source;
+  }
+
+  const projection: RulingProjection = {
+    skewAngle: source.skewAngle,
+    perspective: source.perspective || null,
+  };
+  const firstLine = ceilToLine(
+    lineCoordinateAt(projection, 0, margins.top),
+    step,
+    firstLinePhase
+  );
+
+  return {
+    ...source,
+    margins: { ...margins, top: placeTopMarginAbove(projection, step, firstLine) },
+  };
 };
 
 /**
  * Собирает разлиновку экземпляра из результата детектора или из записи
  * прежней формы. Каждая ненайденная сторона — нулевое поле — получает отступ в
- * полтора шага от стороны листа, верхнее поле при этом опускается до ближайшей
- * линии. Линия поля без стороны считается отсутствующей, а концы полей у низа
+ * полтора шага от стороны листа; у верхнего на этом отступе встаёт первая
+ * строка — на ближайшей линии ниже, — а само поле ложится на линию над ней.
+ * Линия поля без стороны считается отсутствующей, а концы полей у низа
  * кадра, совпавшие с верхними, — отсутствием наклона.
  *
  * Готовую разлиновку функция не меняет, поэтому её можно звать и на
@@ -120,11 +187,13 @@ export const buildSheetRuling = (
   const bounds = resolveSheetBounds(ruling.outline, frame.width, frame.height);
   const fallback = step * MARGIN_FALLBACK_STEPS;
   /**
-   * Верхнее поле округляется до линии в координате вдоль линий, а не по высоте
-   * кадра: при перспективе соседние линии отстоят друг от друга по высоте на
-   * разное число пикселей, и округление по высоте встало бы мимо линии.
+   * Первая строка встаёт на линию не выше полутора шагов от верха листа, а
+   * поле — на линию над ней. Линия ищется в координате вдоль линий, а не по
+   * высоте кадра: при перспективе соседние линии отстоят друг от друга по
+   * высоте на разное число пикселей, и округление по высоте встало бы мимо
+   * линии.
    */
-  const topLine = ceilToLine(
+  const firstLine = ceilToLine(
     lineCoordinateAt(ruling, 0, bounds.top) + fallback,
     step,
     firstLinePhase
@@ -133,7 +202,7 @@ export const buildSheetRuling = (
   return {
     ...ruling,
     margins: {
-      top: margins.top || lineHeightAt(ruling, 0, topLine),
+      top: margins.top || placeTopMarginAbove(ruling, step, firstLine),
       right: margins.right || bounds.right + fallback,
       bottom: margins.bottom || bounds.bottom + fallback,
       left: margins.left || bounds.left + fallback,

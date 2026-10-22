@@ -22,12 +22,14 @@ export const RULED_PHOTO = {
 };
 
 /**
- * Поля, которые детектор находит на этом снимке: верх и низ — на крайних
- * линиях, а бока отступают от границы области с линиями на зазор, как от линии
- * поля, — граница сама служит полем.
+ * Поля, которые детектор находит на этом снимке: низ — на крайней линии, верх
+ * — на линии над первой, чтобы первая строка встала на первую линию, а бока
+ * отступают от границы области с линиями на зазор, как от линии поля, —
+ * граница сама служит полем.
  */
 export const RULED_PHOTO_FOUND_MARGINS = {
   ...RULED_PHOTO.margins,
+  top: RULED_PHOTO.margins.top - RULED_PHOTO.step,
   right: RULED_PHOTO.margins.right + RULED_PHOTO.step * MARGIN_LINE_GAP_SHARE,
   left: RULED_PHOTO.margins.left + RULED_PHOTO.step * MARGIN_LINE_GAP_SHARE,
 };

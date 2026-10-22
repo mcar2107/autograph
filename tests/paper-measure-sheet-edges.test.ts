@@ -1,6 +1,7 @@
 import { measureSheetPhoto } from '@pages/Generator/lib/paper/measureSheetPhoto';
 import { describe, expect, it } from 'vitest';
 
+import { readFirstTextLineY } from './helpers/first-text-line';
 import {
   computeSyntheticColumnX,
   computeSyntheticLineY,
@@ -13,6 +14,8 @@ import {
 const WIDTH = 900;
 
 const HEIGHT = 1200;
+
+const FRAME = { width: WIDTH, height: HEIGHT };
 
 const STEP = 30;
 
@@ -174,7 +177,7 @@ describe('measureSheetPhoto: границы разлиновки трассой 
     { name: 'без перспективы', amplitude: 0.45, decaySteps: 15, drift: 0 },
     { name: 'с дрейфом 4,4 %', amplitude: 0.45, decaySteps: 15, drift: DRIFT },
   ])(
-    'волна у верха листа $amplitude шага за $decaySteps шагов: верхнее поле — первая линия ($name)',
+    'волна у верха листа $amplitude шага за $decaySteps шагов: первая строка — на первой линии ($name)',
     ({ amplitude, decaySteps, drift }) => {
       const params: SyntheticSheetParams = {
         ...BASE_SHEET,
@@ -184,9 +187,9 @@ describe('measureSheetPhoto: границы разлиновки трассой 
       const { source } = measure(params);
 
       expect(source.margins?.top).toBeGreaterThan(0);
-      expect(Math.abs((source.margins?.top || 0) - toFirstLineTop(params))).toBeLessThan(
-        TOLERANCE
-      );
+      expect(
+        Math.abs(readFirstTextLineY(source, FRAME) - toFirstLineTop(params))
+      ).toBeLessThan(TOLERANCE);
     }
   );
 
@@ -204,16 +207,17 @@ describe('measureSheetPhoto: границы разлиновки трассой 
     );
   });
 
-  it('первая линия у края вырезки под наклонной стороной листа: над ней бумага без линий, поле — первая линия', () => {
+  it('первая линия у края вырезки под наклонной стороной листа: над ней бумага без линий, первая строка — на ней', () => {
     const params: SyntheticSheetParams = {
       ...BASE_SHEET,
       margins: { top: 120, right: 140, bottom: BOTTOM, left: 150 },
     };
     const { source } = measure(params);
 
-    expect(Math.abs((source.margins?.top || 0) - toFirstLineTop(params))).toBeLessThan(
-      TOLERANCE
-    );
+    expect(source.margins?.top).toBeGreaterThan(0);
+    expect(
+      Math.abs(readFirstTextLineY(source, FRAME) - toFirstLineTop(params))
+    ).toBeLessThan(TOLERANCE);
   });
 
   it('разлиновка до края листа: край вырезки у наклонной стороны не становится полем', () => {

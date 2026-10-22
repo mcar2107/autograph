@@ -36,8 +36,9 @@ const FRAME = { width: 400, height: 400 };
 const MEASURER = createMonospaceMeasurer();
 
 /**
- * Лист в линейку без наклона: первая базовая линия на 40 px, строки через
- * 40 px, девять строк до нижнего поля.
+ * Лист в линейку без наклона: верхнее поле между верхом кадра и первой линией,
+ * первая базовая линия на 40 px, строки через 40 px, девять строк до нижнего
+ * поля.
  *
  * @param slant — концы полей у низа кадра; `null` — поля без наклона
  * @returns лист страницы
@@ -48,7 +49,7 @@ const buildCalibration = (slant: RulingSideSlant | null): SheetCalibration => {
       step: STEP,
       firstLinePhase: STEP,
       skewAngle: 0,
-      margins: { top: STEP, right: 20, bottom: 20, left: 200 },
+      margins: { top: STEP / 2, right: 20, bottom: 20, left: 200 },
       marginLineX: null,
       marginLineSide: null,
       sideSlant: slant,

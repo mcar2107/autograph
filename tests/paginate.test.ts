@@ -24,7 +24,8 @@ const METRICS: FontMetrics = { xHeight: 0.55, fontAscent: 1, lineHeight: 1.25 };
 /**
  * Лист без боковых полей: ширина блока равна ширине кадра.
  *
- * @param step — шаг разлиновки; первая линия и верхнее поле — на один шаг от верха
+ * @param step — шаг разлиновки; верхнее поле — верх кадра, первая линия под
+ *   ним — на один шаг от верха
  * @param size — кадр листа
  * @param kind — вид разлиновки
  * @returns лист страницы, как его видит разбивка
@@ -39,7 +40,7 @@ const buildCalibration = (
       step,
       firstLinePhase: step,
       skewAngle: 0,
-      margins: { top: step, right: 0, bottom: BOTTOM_MARGIN_PX, left: 0 },
+      margins: { top: 0, right: 0, bottom: BOTTOM_MARGIN_PX, left: 0 },
       marginLineX: null,
       marginLineSide: null,
       sideSlant: null,

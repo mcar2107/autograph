@@ -603,7 +603,14 @@ describe('перемер контура чистого листа', () => {
     const fallback = BLANK_STEP * MARGIN_FALLBACK_STEPS;
 
     expect(ruling?.step).toBe(BLANK_STEP);
-    expect(ruling?.margins.top).toBeGreaterThanOrEqual(topLeft.y + fallback);
+    /**
+     * Верхнее поле — линия над первой строкой, а первая строка — не выше
+     * полутора шагов от нового верха листа: само поле внутри листа.
+     */
+    expect((ruling?.margins.top || 0) + BLANK_STEP).toBeGreaterThanOrEqual(
+      topLeft.y + fallback
+    );
+    expect(ruling?.margins.top).toBeGreaterThan(topLeft.y);
     expect(ruling?.margins.left).toBeGreaterThanOrEqual(topLeft.x + fallback);
     expect(ruling?.margins.bottom).toBeGreaterThanOrEqual(
       FRAME.height - bottomRight.y + fallback

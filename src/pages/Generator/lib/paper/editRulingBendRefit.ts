@@ -3,7 +3,8 @@ import { detectRulingBend, type RulingBendDetection } from './detectRulingBend';
 import { resolveBendRegion } from './editRulingBend';
 import { rectifySheetImage } from './measureSheetPhotoRectify';
 import type { RulingProjection, SheetImageData, SheetRuling } from './paper.types';
-import { lineCoordinateAt } from './rulingPerspective';
+import { lineCoordinateAt, lineHeightAt } from './rulingPerspective';
+import { resolveFirstLine } from './sheetRuling';
 import { toFrameBend } from './toFrameBend';
 
 const DEGREES_IN_RADIAN = 180 / Math.PI;
@@ -33,8 +34,19 @@ export const refitRulingBend = (
   const { step, firstLinePhase, skewAngle, margins, perspective } = ruling;
   const region = resolveBendRegion(ruling, image.width);
 
+  /**
+   * Верх области с линиями — линия первой строки, а не верхнее поле: поле
+   * лежит на линии над ней, а у линейки этой линии на листе может не быть, и
+   * её пустая строка узлов уронила бы долю найденных.
+   */
+  const firstLine = resolveFirstLine(ruling);
+
   if (!perspective) {
-    return detectRulingBend(image, ruling, region);
+    return detectRulingBend(
+      image,
+      { ...ruling, margins: { ...margins, top: lineHeightAt(ruling, 0, firstLine) } },
+      region
+    );
   }
 
   const cropLeft = Math.max(0, Math.floor(region.left));
@@ -62,7 +74,7 @@ export const refitRulingBend = (
    * сдвинутая на столбец вырезки и на верх копии.
    */
   const shift = cropLeft * Math.tan(skewAngle / DEGREES_IN_RADIAN) - rectified.top;
-  const topLine = lineCoordinateAt(ruling, 0, margins.top) + shift;
+  const topLine = firstLine + shift;
   const bottomLine = lineCoordinateAt(ruling, 0, image.height - margins.bottom) + shift;
   const detection = detectRulingBend(
     rectified.image,

@@ -1146,7 +1146,7 @@ describe('инструмент «Поля»: порог высоты у угла
 });
 
 describe('инструмент «Поля»: направляющие', () => {
-  it('верхнее поле, отпущенное между линиями, встаёт на ближайшую линию; первая строка — на ней', async () => {
+  it('верхнее поле, отпущенное между линиями, встаёт на ближайшую линию; первая строка — на линии под ним', async () => {
     const user = userEvent.setup();
     const editor = await openMarginsTool(user, buildRuling(null, null));
     const line = PHOTO.phase + 3 * PHOTO.step;
@@ -1176,7 +1176,7 @@ describe('инструмент «Поля»: направляющие', () => {
     expect(
       selectCalibrationRuling(useGeneratorStore.getState(), 0)?.ruling.margins.top
     ).toBe(line);
-    expect(firstBaseline).toBeCloseTo(line, 6);
+    expect(firstBaseline).toBeCloseTo(line + PHOTO.step, 6);
   });
 
   it('нижнее поле встаёт на ближайшую линию', async () => {

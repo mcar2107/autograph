@@ -288,14 +288,14 @@ describe('форма записи в хранилище', () => {
     });
 
     /**
-     * Поля — полтора шага от края кадра: 72 px. Верхнее опускается до
-     * ближайшей линии: 30 + 48 = 78.
+     * Поля — полтора шага от края кадра: 72 px. Первая строка опускается до
+     * ближайшей линии, 30 + 48 = 78, а верхнее поле — линия над ней: 30.
      */
     expect(family?.sheets.at(-1)?.ruling).toEqual({
       step: 48,
       firstLinePhase: 30,
       skewAngle: -0.6,
-      margins: { top: 78, right: 72, bottom: 72, left: 72 },
+      margins: { top: 30, right: 72, bottom: 72, left: 72 },
       marginLineX: null,
       marginLineSide: null,
       sideSlant: null,

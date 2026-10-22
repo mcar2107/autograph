@@ -217,7 +217,7 @@ describe('сборка предустановленных семей', () => {
         expect(ruling.margins.left).toBeCloseTo(fallback, 9);
         expect(ruling.margins.right).toBeCloseTo(fallback, 9);
         expect(ruling.margins.bottom).toBeCloseTo(fallback, 9);
-        expect(ruling.margins.top).toBeGreaterThanOrEqual(fallback - 1e-9);
+        expect(ruling.margins.top + ruling.step).toBeGreaterThanOrEqual(fallback - 1e-9);
         expect(ruling.marginLineX).toBeNull();
         expect(ruling.marginLineSide).toBeNull();
         expect(sheet.lighting).toBeNull();
