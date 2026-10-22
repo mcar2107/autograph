@@ -22,14 +22,17 @@ export type ExactValuesEdit = {
   changeFirstLine: (phase: number) => string | null;
 
   /**
-   * Задаёт верхнее или нижнее поле, px фотографии.
+   * Задаёт верхнее или нижнее поле, px фотографии. Возвращает, почему не
+   * применено: число за краем кадра или за противоположным полем; `null` —
+   * применено.
    */
-  changeMargin: (side: GuideMarginSide, value: number) => void;
+  changeMargin: (side: GuideMarginSide, value: number) => string | null;
 
   /**
    * Ставит ручку бокового поля или линии поля в столбец, px фотографии; у
    * правого поля число — отступ от правого края. Линии поля нет — она
-   * появляется без наклона.
+   * появляется без наклона. Возвращает, почему не применено: ручка в этом
+   * столбце вышла бы за лист или за противоположное поле; `null` — применено.
    */
-  changeSideEnd: (edge: SideEdge, end: SideHandleEnd, value: number) => void;
+  changeSideEnd: (edge: SideEdge, end: SideHandleEnd, value: number) => string | null;
 };

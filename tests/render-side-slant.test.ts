@@ -161,15 +161,20 @@ const LINE_TEXT = 'мм мм';
  *
  * @param sheet — лист
  * @param pageIndex — номер страницы; нечётный — зеркальная
+ * @param text — текст каждой строки
  * @returns параметры отрисовки
  */
-const buildParams = (sheet: PaperSheet, pageIndex: number): PageRenderParams => {
+const buildParams = (
+  sheet: PaperSheet,
+  pageIndex: number,
+  text = LINE_TEXT
+): PageRenderParams => {
   const calibration = getPageCalibration(buildFamily(sheet), sheet, pageIndex);
   const geometry = deriveGeometry(calibration, FALLBACK_FONT_METRICS);
   const lineCount = countPageLines(calibration, geometry, FALLBACK_FONT_METRICS, 0);
   const page: Page = {
     lines: Array.from({ length: lineCount }, () => {
-      return { text: LINE_TEXT, paragraphIndex: 0 };
+      return { text, paragraphIndex: 0 };
     }),
   };
 
@@ -330,5 +335,40 @@ describe('боковые поля вдоль сторон листа на сто
     expect(Math.abs(mean - SIDE_INSET)).toBeLessThanOrEqual(
       TOLERANCE_STEPS * RULING_STEP
     );
+  });
+
+  it('строка длиннее блока кончается у своего правого поля, а не у ширины верхней строки', () => {
+    const sheet = buildSheet(true);
+    const calibration = getPageCalibration(buildFamily(sheet), sheet, 0);
+    const { ruling } = calibration;
+    const recorder = createPathRecorder();
+
+    renderPageToCanvas(recorder.context, buildParams(sheet, 0, 'мм '.repeat(80).trim()));
+
+    const ends = new Map<number, number>();
+
+    recorder.texts.forEach((text) => {
+      const point = { x: text.x / SCALE, y: text.y / SCALE };
+      const index = Math.round(
+        (lineCoordinateAt(ruling, point.x, point.y) - ruling.firstLinePhase) / ruling.step
+      );
+
+      const distance = distanceFromSide(OUTLINE.topRight, OUTLINE.bottomRight, point);
+      const current = ends.get(index);
+
+      ends.set(index, current === undefined ? distance : Math.max(current, distance));
+    });
+
+    const distances = [...ends.values()];
+
+    /**
+     * Последнее слово начинается до правого поля строки: его буквы — не
+     * дальше слова за полем и не ближе слова с пробелом до него. Внизу лист
+     * на четыреста пикселей шире, чем вверху, и строка, обрезанная по ширине
+     * верхней, кончалась бы далеко до поля.
+     */
+    expect(distances.length).toBeGreaterThan(20);
+    expect(Math.min(...distances)).toBeGreaterThan(-SIDE_INSET - 2 * RULING_STEP);
+    expect(Math.max(...distances)).toBeLessThan(-SIDE_INSET + RULING_STEP);
   });
 });

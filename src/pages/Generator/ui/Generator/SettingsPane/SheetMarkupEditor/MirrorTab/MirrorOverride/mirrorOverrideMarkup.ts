@@ -11,10 +11,11 @@ import { mirrorSheetRuling, readMarginLineEnds } from '../../../../../../lib/pap
 import {
   placeCornerColumn,
   placeCornerMargin,
+  placeExactSideHandleValue,
   placeMarginLine,
   placeMarginLineEnds,
   placeSideEnd,
-  placeSideHandleValue,
+  readSideHandleRange,
   removeMarginLine,
   resolveAddedMarginLinePoint,
   snapMarginLineX,
@@ -23,6 +24,7 @@ import type {
   MarginCorner,
   MarginCornerMove,
   SideHandleEnd,
+  ValueRange,
 } from '../../MarginsTool/marginsGeometry.types';
 import { mirrorMarkupPoint } from '../../MarkupViewport';
 
@@ -125,7 +127,8 @@ export const placeMirrorCorner = (
 
 /**
  * Боковая граница зеркала, ручка которой стоит в столбце из числа, — тот же
- * итог, что перетаскивание ручки туда.
+ * итог, что перетаскивание ручки туда, если разметка принимает число как
+ * есть.
  *
  * @param ruling — разлиновка листа
  * @param frame — кадр фотографии
@@ -133,7 +136,7 @@ export const placeMirrorCorner = (
  * @param end — какая ручка
  * @param value — столбец, у правого поля — отступ от правого края, px
  *   отражённого кадра
- * @returns поля зеркала
+ * @returns поля зеркала; `null` — число вне отрезка `readMirrorSideRange`
  */
 export const placeMirrorSideValue = (
   ruling: SheetRuling,
@@ -141,10 +144,34 @@ export const placeMirrorSideValue = (
   edge: SideEdge,
   end: SideHandleEnd,
   value: number
-): RulingMirrorOverride => {
-  const page = mirrorSheetRuling(ruling, frame);
+): RulingMirrorOverride | null => {
+  const placed = placeExactSideHandleValue(
+    mirrorSheetRuling(ruling, frame),
+    frame,
+    edge,
+    end,
+    value
+  );
 
-  return toMirrorOverride(placeSideHandleValue(page, frame, edge, end, value));
+  return placed && toMirrorOverride(placed);
+};
+
+/**
+ * Отрезок чисел, которые ручка боковой границы зеркала принимает.
+ *
+ * @param ruling — разлиновка листа
+ * @param frame — кадр фотографии
+ * @param edge — какая граница
+ * @param end — какая ручка
+ * @returns отрезок чисел, px отражённого кадра
+ */
+export const readMirrorSideRange = (
+  ruling: SheetRuling,
+  frame: SheetFrame,
+  edge: SideEdge,
+  end: SideHandleEnd
+): ValueRange => {
+  return readSideHandleRange(mirrorSheetRuling(ruling, frame), frame, edge, end);
 };
 
 /**

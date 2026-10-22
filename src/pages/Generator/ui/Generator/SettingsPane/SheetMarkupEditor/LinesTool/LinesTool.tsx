@@ -1,7 +1,7 @@
 import { cx } from '@shared/lib/styles';
 import { Button } from '@shared/ui/Button';
 import type { FC } from 'react';
-import { Fragment, useMemo } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 import { formatNumber, NBSP } from '../../../../../lib/format/formatNumber';
@@ -123,6 +123,17 @@ export const LinesTool: FC<MarkupToolProps> = (props) => {
   const fit = useMemo(() => {
     return draft ? fitRulingPins(draft.ruling, normalizePins(draft.pins), frame) : null;
   }, [draft, frame]);
+  const rejection = fit && lastEditedOrder !== null ? describeRejectedFit(fit) : null;
+  /**
+   * Отказ, который читает живая область. Пока ручку тянут, он держит прежний:
+   * расстановка на каждом движении то годна, то нет, и читалка объявляла бы
+   * каждое переключение. Итог правки объявляется по отпусканию.
+   */
+  const [announcedRejection, setAnnouncedRejection] = useState(rejection);
+
+  if (!isDragging && announcedRejection !== rejection) {
+    setAnnouncedRejection(rejection);
+  }
 
   if (!draft || !fit) {
     return null;
@@ -130,7 +141,6 @@ export const LinesTool: FC<MarkupToolProps> = (props) => {
 
   const { pins } = draft;
   const gapSteps = readGapSteps(pins);
-  const rejection = lastEditedOrder === null ? null : describeRejectedFit(fit);
   const residuals = pins.map((pin) => {
     return measurePinMiss(draft.ruling, pin);
   });
@@ -211,7 +221,7 @@ export const LinesTool: FC<MarkupToolProps> = (props) => {
 
       <MarkupLiveRegion
         tone="alert"
-        message={rejection}
+        message={announcedRejection}
         className="rounded-md border border-danger p-2 text-xs text-fg"
       />
 

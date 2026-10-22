@@ -1096,12 +1096,30 @@ describe('инструмент «Поля»: порог высоты у угла
       useMarkupEditorStore.getState().undo();
     });
 
-    dragHandleAlong(getCorner(editor, 'Левый нижний'), [
-      start,
-      { x: start.x + 40, y: start.y + CORNER_HEIGHT_SLOP + 1 },
-    ]);
+    /**
+     * Точка чуть ниже середины промежутка между линиями 740 и 780 по высоте,
+     * но выше неё по координате вдоль линий: наклон в два градуса на
+     * столбце 130 поднимает координату на четыре с половиной пикселя.
+     */
+    const release = { x: start.x + 40, y: 762 };
+
+    dragHandleAlong(getCorner(editor, 'Левый нижний'), [start, release]);
+
+    /**
+     * Поле встаёт на линию, ближайшую к точке отпускания по координате вдоль
+     * линий, а не по высоте: у середины промежутка на наклонном листе это
+     * разные линии.
+     */
+    const ruling = buildOffLineRuling(SKEW_ANGLE);
+    const u = lineCoordinateAt(ruling, release.x, release.y);
+    const line = PHOTO.phase + Math.round((u - PHOTO.phase) / PHOTO.step) * PHOTO.step;
+    const byHeight =
+      PHOTO.phase + Math.round((release.y - PHOTO.phase) / PHOTO.step) * PHOTO.step;
+
+    expect(line).not.toBe(byHeight);
 
     expect(readHeightMargins().top).toBe(before.top);
+    expect(readHeightMargins().bottom).toBeCloseTo(PHOTO.height - line, 9);
     expect(readHeightMargins().bottom).not.toBe(before.bottom);
   });
 

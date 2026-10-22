@@ -1,4 +1,4 @@
-import type { SheetPoint, SideEdge } from '../../../../../lib/paper';
+import type { SheetPoint } from '../../../../../lib/paper';
 import type { MarkupMoveSource } from '../MarkupHandle';
 
 import type {
@@ -56,18 +56,16 @@ export type MarginsEdit = {
   ) => void;
 
   /**
-   * Промежуточное положение ручки бокового поля или линии поля — без шага
-   * истории. Граница проходит через эту ручку и через вторую.
+   * Промежуточное положение ручки линии поля — без шага истории. Линия
+   * проходит через эту ручку и через вторую.
    */
-  moveSideEnd: (edge: SideEdge, end: SideHandleEnd, point: SheetPoint) => void;
+  moveMarginLineEnd: (end: SideHandleEnd, point: SheetPoint) => void;
 
   /**
-   * Отпускание ручки бокового поля или линии поля — шаг истории. С магнитом
-   * ручка линии поля притягивается к черте фотографии, без него стоит, где
-   * отпущена.
+   * Отпускание ручки линии поля — шаг истории. С магнитом ручка
+   * притягивается к черте фотографии, без него стоит, где отпущена.
    */
-  releaseSideEnd: (
-    edge: SideEdge,
+  releaseMarginLineEnd: (
     end: SideHandleEnd,
     point: SheetPoint,
     shouldSnap: boolean

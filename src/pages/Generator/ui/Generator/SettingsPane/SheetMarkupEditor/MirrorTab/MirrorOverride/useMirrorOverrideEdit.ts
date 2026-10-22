@@ -5,12 +5,14 @@ import type {
 } from '../../../../../../lib/paper';
 import { useMarkupEditorStore } from '../../../../../../model/useMarkupEditorStore';
 import type { MarkupDraft } from '../../../../../../model/useMarkupEditorStore.types';
+import { formatRangeRejection } from '../../ExactValues/exactValuesReferences';
 
 import {
   placeMirrorMarginLineSide,
   placeMirrorSideEnd,
   placeMirrorSideValue,
   readMirrorOverride,
+  readMirrorSideRange,
   snapMirrorMarginLineX,
 } from './mirrorOverrideMarkup';
 import type { MirrorOverrideEdit } from './useMirrorOverrideEdit.types';
@@ -98,9 +100,21 @@ export const useMirrorOverrideEdit = (frame: SheetFrame): MirrorOverrideEdit => 
   };
 
   const setSideValue: MirrorOverrideEdit['setSideValue'] = (edge, end, value) => {
-    commitOverride((ruling) => {
-      return placeMirrorSideValue(ruling, frame, edge, end, value);
-    });
+    const { draft, commit } = useMarkupEditorStore.getState();
+
+    if (!draft) {
+      return null;
+    }
+
+    const mirrorOverride = placeMirrorSideValue(draft.ruling, frame, edge, end, value);
+
+    if (!mirrorOverride) {
+      return formatRangeRejection(readMirrorSideRange(draft.ruling, frame, edge, end));
+    }
+
+    commit(toOverridePatch(draft, mirrorOverride));
+
+    return null;
   };
 
   const setMarginLineSide: MirrorOverrideEdit['setMarginLineSide'] = (side) => {

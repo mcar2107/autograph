@@ -1,4 +1,4 @@
-import type { SheetPoint } from '../../../../../lib/paper';
+import type { SheetPoint, SheetRuling } from '../../../../../lib/paper';
 
 /**
  * Поле листа, которое правится направляющей.
@@ -109,4 +109,36 @@ export type MarginCoordinates = {
    * Нижняя граница.
    */
   bottom: number;
+};
+
+/**
+ * Отрезок чисел, которые разметка принимает для одного поля «Точных
+ * значений», px.
+ */
+export type ValueRange = {
+  /**
+   * Наименьшее число.
+   */
+  min: number;
+
+  /**
+   * Наибольшее число.
+   */
+  max: number;
+};
+
+/**
+ * Разлиновка с ручкой боковой границы, заданной числом, и число, в которое
+ * ручка в ней встала.
+ */
+export type PlacedSideValue = {
+  /**
+   * Разлиновка после правки.
+   */
+  ruling: SheetRuling;
+
+  /**
+   * Число ручки в разлиновке после правки, px. `null` — линии поля нет.
+   */
+  value: number | null;
 };

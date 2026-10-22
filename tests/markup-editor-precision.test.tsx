@@ -629,6 +629,96 @@ describe('точная правка: числа', () => {
     expect(readAlertTexts(editor)).toBe('');
   });
 
+  it.each([
+    ['Верхнее поле, px', '99999', /от 1 до 740/],
+    ['Нижнее поле, px', '-5', /от 1 до 740/],
+    ['Левое поле снизу, px', '99999', /от 8,3 до 540/],
+    ['Правое поле сверху, px', '-3', /от 5,8 до 510/],
+    ['Линия поля снизу, px', '99999', /от 0 до 600/],
+  ])(
+    '%s = %s: число вне листа не зажимается молча, а остаётся с причиной',
+    async (name, typed, range) => {
+      const editor = await openEditor(null);
+
+      await openExactValues(editor);
+
+      const before = readDraft();
+
+      await typeExactValue(editor, name, typed);
+
+      const field = within(editor).getByRole('textbox', { name });
+
+      expect(readDraft()).toBe(before);
+      expect(useMarkupEditorStore.getState().history.past).toHaveLength(0);
+      expect((field as HTMLInputElement).value).toBe(typed);
+      expect(field.getAttribute('aria-invalid')).toBe('true');
+      expect(readFieldDescription(field).replaceAll('\u00A0', ' ')).toMatch(range);
+      expect(readAlertTexts(editor).replaceAll('\u00A0', ' ')).toMatch(range);
+    }
+  );
+
+  it('край отрезка из причины разметка принимает', async () => {
+    const editor = await openEditor(null);
+
+    await openExactValues(editor);
+    await typeExactValue(editor, 'Левое поле снизу, px', '8,3');
+
+    const field = within(editor).getByRole('textbox', { name: 'Левое поле снизу, px' });
+
+    expect(field.getAttribute('aria-invalid')).toBeNull();
+    expect((field as HTMLInputElement).value).toBe('8,3');
+    expect(useMarkupEditorStore.getState().history.past).toHaveLength(1);
+  });
+
+  it('первая линия, при которой линии сошлись бы внутри кадра, — ошибка у поля', async () => {
+    const editor = await openEditor(null);
+
+    await openExactValues(editor);
+
+    act(() => {
+      useMarkupEditorStore.getState().commit((draft) => {
+        return {
+          ruling: {
+            ...draft.ruling,
+            perspective: {
+              originX: 300,
+              originY: 400,
+              convergenceX: 0.001,
+              convergenceY: 0.0015,
+            },
+          },
+        };
+      });
+    });
+
+    const before = readDraft();
+
+    await typeExactValue(editor, 'Первая линия, px', '600');
+
+    const field = within(editor).getByRole('textbox', { name: 'Первая линия, px' });
+
+    expect(readDraft()).toBe(before);
+    expect(field.getAttribute('aria-invalid')).toBe('true');
+    expect(readFieldDescription(field)).toMatch(/сошлись\u00A0бы внутри кадра/);
+  });
+
+  it('минус обещан только у первой линии: у полей отрицательное число — ошибка', async () => {
+    const editor = await openEditor(null);
+
+    await openExactValues(editor);
+
+    expect(within(editor).queryByText(/Выше верхнего края/)).toBeNull();
+    expect(
+      readFieldDescription(
+        within(editor).getByRole('textbox', { name: 'Первая линия, px' })
+      )
+    ).toMatch(/с\u00A0минусом/);
+
+    await typeExactValue(editor, 'Первая линия, px', '-10');
+
+    expect(readDraft().ruling.firstLinePhase).toBeCloseTo(-10, 9);
+  });
+
   it('ошибка у поля снимается, когда значение меняется другой правкой', async () => {
     const editor = await openEditor(null);
 

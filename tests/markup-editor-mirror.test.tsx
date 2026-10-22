@@ -610,6 +610,43 @@ const dragHandleSideways = (
   fireEvent.pointerUp(handle, { pointerId: 1, clientX: toX, clientY: y });
 };
 
+describe('вкладка зеркальной страницы: место полей зеркала', () => {
+  it('поля зеркала стоят там, где у листа «Точные значения»: под выбором инструмента, над инструментом', async () => {
+    const user = userEvent.setup();
+    const editor = await openMirror(user, buildRuling(null, null), 'Поля');
+    const toolPicker = within(editor).getByRole('radiogroup', { name: 'Инструмент' });
+    const mirrorPicker = within(editor).getByRole('radiogroup', {
+      name: 'Линия поля и боковые поля зеркала',
+    });
+    const tool = within(editor).getByRole('region', { name: 'Поля листа' });
+    const layers = within(editor).getByRole('group', { name: 'Слои' });
+
+    expect(within(editor).queryByRole('button', { name: 'Точные значения' })).toBeNull();
+    expect(
+      toolPicker.compareDocumentPosition(mirrorPicker) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(
+      mirrorPicker.compareDocumentPosition(tool) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(
+      mirrorPicker.compareDocumentPosition(layers) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+
+    await user.click(within(editor).getByRole('radio', { name: 'Страница' }));
+
+    const exact = within(editor).getByRole('button', { name: 'Точные значения' });
+
+    expect(
+      toolPicker.compareDocumentPosition(exact) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(
+      exact.compareDocumentPosition(
+        within(editor).getByRole('region', { name: 'Поля листа' })
+      ) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+  });
+});
+
 describe('вкладка зеркальной страницы: порог высоты у угла', () => {
   it('угол зеркала вбок: поле по высоте то же до бита, меняется только поле зеркала', async () => {
     const user = userEvent.setup();
@@ -797,7 +834,7 @@ describe('вкладка зеркальной страницы: линия по�
     expect(mirror?.lineBounds?.offsets.at(-1)).toBeLessThan(-30);
   });
 
-  it('боковое поле зеркала не опускается до нуля ни числом, ни ручкой', async () => {
+  it('боковое поле зеркала не опускается до нуля: число — с причиной, ручка — упирается', async () => {
     const user = userEvent.setup();
     const editor = await openMirror(user, buildRuling(null, null), 'Поля');
 
@@ -806,11 +843,24 @@ describe('вкладка зеркальной страницы: линия по�
     const field = within(editor).getByRole('textbox', {
       name: 'Левое поле зеркала сверху, px',
     });
+    const before = readDraftRuling();
+    const historyBefore = readHistoryLength();
 
     await user.clear(field);
     await user.type(field, '-5{Enter}');
 
-    expect(readDraftRuling().mirrorOverride?.marginLeft).toBe(1);
+    expect(readDraftRuling()).toBe(before);
+    expect(readHistoryLength()).toBe(historyBefore);
+    expect((field as HTMLInputElement).value).toBe('-5');
+    expect(field.getAttribute('aria-invalid')).toBe('true');
+    expect(
+      within(editor)
+        .getAllByRole('alert')
+        .map((alert) => {
+          return alert.textContent;
+        })
+        .join('')
+    ).toMatch(/Можно от\u00A05,8 до\u00A0510/);
 
     dragHandle(editor, getCorner(editor, 'Правый верхний'), {
       x: WIDTH + 50,

@@ -8,6 +8,7 @@ import { mirrorSheetRuling } from '../../../../../lib/paper';
 import { useMarkupEditorStore } from '../../../../../model/useMarkupEditorStore';
 import type { MarkupMoveSource } from '../MarkupHandle';
 import { MarkupHandle } from '../MarkupHandle';
+import { MARKUP_MUTED_OPACITY } from '../MarkupOverlay';
 import { toPointsAttribute } from '../MarkupOverlay/markupGeometry';
 import { MarkupStroke } from '../MarkupStroke';
 import { mirrorMarkupPoint } from '../MarkupViewport';
@@ -87,7 +88,7 @@ const GUIDE_WIDTH = 2;
  * зеркала правится в его разделе.
  */
 export const MarginsTool: FC<MarkupToolProps> = (props) => {
-  const { handleLayer, pageIndex } = props;
+  const { handleLayer, pageIndex, isMuted } = props;
   const isMirrorPage = pageIndex !== 0;
   const record = useMarkupEditorStore((state) => {
     return state.record;
@@ -107,8 +108,8 @@ export const MarginsTool: FC<MarkupToolProps> = (props) => {
     startCorner,
     moveCorner,
     releaseCorner,
-    moveSideEnd,
-    releaseSideEnd,
+    moveMarginLineEnd,
+    releaseMarginLineEnd,
     removeMarginLine,
     addMarginLine,
   } = useMarginsEdit(frame, isMirrorPage ? null : handleLayer, isMirrorPage);
@@ -222,7 +223,7 @@ export const MarginsTool: FC<MarkupToolProps> = (props) => {
           const { x, y } = marginLine[end];
 
           const handleMarginLineMove = (point: SheetPoint) => {
-            moveSideEnd('marginLine', end, point);
+            moveMarginLineEnd(end, point);
           };
 
           /**
@@ -236,7 +237,7 @@ export const MarginsTool: FC<MarkupToolProps> = (props) => {
             point: SheetPoint,
             source: MarkupMoveSource
           ) => {
-            releaseSideEnd('marginLine', end, point, source === 'pointer');
+            releaseMarginLineEnd(end, point, source === 'pointer');
           };
 
           return (
@@ -297,22 +298,32 @@ export const MarginsTool: FC<MarkupToolProps> = (props) => {
       {handleLayer
         ? createPortal(
             <g data-tool="margins">
-              <MarkupStroke
-                pointerEvents="none"
-                fill="none"
-                width={GUIDE_WIDTH}
-                className="stroke-markup-margin"
+              {/*
+               * Направляющие лежат в слое ручек, мимо приглушения оверлея,
+               * поэтому под пробным текстом гаснут здесь — той же
+               * непрозрачностью, что и линии разметки.
+               */}
+              <g
+                data-muted={isMuted || undefined}
+                opacity={isMuted ? MARKUP_MUTED_OPACITY : undefined}
               >
-                {guides.map(({ side, points }) => {
-                  return (
-                    <polyline
-                      key={side}
-                      data-margin-guide={side}
-                      points={toPointsAttribute(points)}
-                    />
-                  );
-                })}
-              </MarkupStroke>
+                <MarkupStroke
+                  pointerEvents="none"
+                  fill="none"
+                  width={GUIDE_WIDTH}
+                  className="stroke-markup-margin"
+                >
+                  {guides.map(({ side, points }) => {
+                    return (
+                      <polyline
+                        key={side}
+                        data-margin-guide={side}
+                        points={toPointsAttribute(points)}
+                      />
+                    );
+                  })}
+                </MarkupStroke>
+              </g>
 
               {guideHandles}
 

@@ -5,6 +5,7 @@ import {
   lineCoordinateAt,
   mirrorSheetRuling,
   readSideEdge,
+  reanchorMirrorOverride,
   resolveSideEdgeAt,
   sideEdgePointAt,
   sideEdgePointAtHeight,
@@ -175,5 +176,38 @@ describe('концы полей у низа кадра на зеркальной
       right: 90,
       marginLineX: null,
     });
+  });
+});
+
+describe('поля зеркала при смене наклона листа', () => {
+  const override = {
+    marginLineX: 1300,
+    marginLineSide: 'right' as const,
+    marginLeft: 140,
+    marginRight: 200,
+    sideSlant: null,
+  };
+
+  it('наклон тот же — поля зеркала те же до бита, тем же объектом', () => {
+    expect(reanchorMirrorOverride(override, SKEW_ANGLE, SKEW_ANGLE, FRAME)).toBe(
+      override
+    );
+  });
+
+  it('смена наклона мельче погрешности арктангенса поля не трогает', () => {
+    expect(reanchorMirrorOverride(override, SKEW_ANGLE, SKEW_ANGLE + 5e-10, FRAME)).toBe(
+      override
+    );
+  });
+
+  it('заметная смена наклона переписывает концы, и у низа кадра они расходятся с верхом', () => {
+    const next = reanchorMirrorOverride(override, SKEW_ANGLE, SKEW_ANGLE + 0.5, FRAME);
+
+    expect(next).not.toBe(override);
+    expect(next?.sideSlant).not.toBeNull();
+  });
+
+  it('зеркала без своих полей нет — и переписывать нечего', () => {
+    expect(reanchorMirrorOverride(null, SKEW_ANGLE, SKEW_ANGLE + 0.5, FRAME)).toBeNull();
   });
 });

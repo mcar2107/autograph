@@ -744,6 +744,36 @@ describe('удаление листа', () => {
     expect(await readUserSheets()).toHaveLength(1);
     expect(screen.getByRole('dialog')).toBeDefined();
   });
+
+  it('подтверждение забирает фокус, а «Не удалять» возвращает его на «Удалить лист»', async () => {
+    const user = userEvent.setup();
+
+    seedSheet();
+    render(<SheetImportHarness />);
+    await openSheetEditor(user, TABLE_SHEET_LABEL);
+
+    expect(document.activeElement).not.toBe(
+      screen.getByRole('button', { name: 'Удалить лист' })
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Удалить лист' }));
+
+    expect(document.activeElement).toBe(
+      screen.getByRole('group', { name: 'Подтверждение удаления' })
+    );
+
+    await user.keyboard('{Tab}');
+
+    expect(document.activeElement).toBe(
+      screen.getByRole('button', { name: 'Да, удалить' })
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Не удалять' }));
+
+    expect(document.activeElement).toBe(
+      screen.getByRole('button', { name: 'Удалить лист' })
+    );
+  });
 });
 
 describe('фотография листа', () => {

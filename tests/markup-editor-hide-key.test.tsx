@@ -98,6 +98,31 @@ describe('скрытие разметки клавишей H', () => {
     expect(isMarkupHidden(editor)).toBe(false);
   });
 
+  it('ручка в фокусе остаётся в фокусе, пока разметка скрыта, и после', async () => {
+    const editor = await openEditor();
+    const [handle] = within(editor)
+      .getByRole('group', { name: 'Разметка листа' })
+      .querySelectorAll<SVGCircleElement>('circle[role="button"]');
+
+    if (!handle) {
+      throw new Error('Нет ручки');
+    }
+
+    act(() => {
+      handle.focus();
+    });
+
+    fireEvent.keyDown(handle, { code: 'KeyH', key: 'h' });
+
+    expect(isMarkupHidden(editor)).toBe(true);
+    expect(document.activeElement).toBe(handle);
+
+    fireEvent.keyUp(handle, { code: 'KeyH', key: 'h' });
+
+    expect(isMarkupHidden(editor)).toBe(false);
+    expect(document.activeElement).toBe(handle);
+  });
+
   it('в русской раскладке работает та же клавиша', async () => {
     const editor = await openEditor();
 
@@ -152,5 +177,17 @@ describe('скрытие разметки клавишей H', () => {
     const layers = within(editor).getByRole('group', { name: 'Слои' });
 
     expect(layers.textContent).toContain('Удерживайте H');
+  });
+
+  it('подсказка про клавишу одна на редактор — в панели слоёв', async () => {
+    const editor = await openEditor();
+    const hints = [...editor.querySelectorAll('kbd')].filter((kbd) => {
+      return kbd.textContent === 'H';
+    });
+
+    expect(hints).toHaveLength(1);
+    expect(hints[0]?.closest('fieldset')).toBe(
+      within(editor).getByRole('group', { name: 'Слои' })
+    );
   });
 });

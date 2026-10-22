@@ -1,11 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
-import type {
-  SheetFrame,
-  SheetPoint,
-  SheetRuling,
-  SideEdge,
-} from '../../../../../lib/paper';
+import type { SheetFrame, SheetPoint, SheetRuling } from '../../../../../lib/paper';
 import { useMarkupEditorStore } from '../../../../../model/useMarkupEditorStore';
 import type { MarkupDraft } from '../../../../../model/useMarkupEditorStore.types';
 import { toPhotoPoint } from '../BendTool/bendGeometry';
@@ -364,14 +359,14 @@ export const useMarginsEdit = (
     }
   };
 
-  const moveSideEnd = (edge: SideEdge, end: SideHandleEnd, point: SheetPoint) => {
+  const moveMarginLineEnd = (end: SideHandleEnd, point: SheetPoint) => {
     const { draft, preview } = useMarkupEditorStore.getState();
 
     if (!draft) {
       return;
     }
 
-    preview({ ruling: placeSideEnd(draft.ruling, frame, edge, end, point) });
+    preview({ ruling: placeSideEnd(draft.ruling, frame, 'marginLine', end, point) });
   };
 
   /**
@@ -380,13 +375,11 @@ export const useMarginsEdit = (
    * черты. Каналы фотографии берутся из стора в момент вызова, как у
    * добавления линии.
    *
-   * @param edge — какая граница
    * @param end — какая ручка
    * @param point — точка отпускания, px фотографии
    * @param shouldSnap — притягивать ли линию поля к черте
    */
-  const releaseSideEnd = (
-    edge: SideEdge,
+  const releaseMarginLineEnd = (
     end: SideHandleEnd,
     point: SheetPoint,
     shouldSnap: boolean
@@ -398,11 +391,11 @@ export const useMarginsEdit = (
     }
 
     const target =
-      edge === 'marginLine' && shouldSnap && image && draft.kind !== 'blank'
+      shouldSnap && image && draft.kind !== 'blank'
         ? { x: snapMarginLineX(image, draft.ruling, point), y: point.y }
         : point;
 
-    commit({ ruling: placeSideEnd(draft.ruling, frame, edge, end, target) });
+    commit({ ruling: placeSideEnd(draft.ruling, frame, 'marginLine', end, target) });
   };
 
   const removeMarginLine = () => {
@@ -438,8 +431,8 @@ export const useMarginsEdit = (
     startCorner,
     moveCorner,
     releaseCorner,
-    moveSideEnd,
-    releaseSideEnd,
+    moveMarginLineEnd,
+    releaseMarginLineEnd,
     removeMarginLine,
     addMarginLine,
   };

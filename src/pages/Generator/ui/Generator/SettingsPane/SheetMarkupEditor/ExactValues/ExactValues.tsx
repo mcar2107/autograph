@@ -16,6 +16,7 @@ import type {
 import { ExactValueField } from './ExactValueField';
 import {
   EXACT_VALUES_LEGEND,
+  FIRST_LINE_REFERENCE,
   FROM_FRAME_TOP,
   SIDE_REFERENCES,
 } from './exactValuesReferences';
@@ -103,16 +104,14 @@ export const ExactValues: FC = () => {
 
         <ExactValueField
           label="Первая линия, px"
-          reference={`${FROM_FRAME_TOP} у\u00A0левого края`}
+          reference={FIRST_LINE_REFERENCE}
           value={firstLinePhase}
           onValueCommit={handleFirstLineCommit}
         />
 
         {GUIDE_MARGIN_SIDES.map((side) => {
-          const handleMarginCommit = (value: number): null => {
-            changeMargin(side, value);
-
-            return null;
+          const handleMarginCommit = (value: number): string | null => {
+            return changeMargin(side, value);
           };
 
           return (
@@ -128,10 +127,8 @@ export const ExactValues: FC = () => {
 
         {SIDE_EDGES.flatMap((edge) => {
           return SIDE_HANDLE_ENDS.map((end) => {
-            const handleSideCommit = (value: number): null => {
-              changeSideEnd(edge, end, value);
-
-              return null;
+            const handleSideCommit = (value: number): string | null => {
+              return changeSideEnd(edge, end, value);
             };
 
             return (

@@ -1,8 +1,16 @@
 import type { RefObject } from 'react';
 import { useEffect, useRef } from 'react';
-import { flushSync } from 'react-dom';
 
 import { computeRevealOffset } from './markupView';
+
+/**
+ * События, после которых указатель больше не нажат.
+ */
+const POINTER_RELEASE_EVENTS = [
+  'pointerup',
+  'pointercancel',
+  'lostpointercapture',
+] as const;
 
 /**
  * Показывает ручку, получившую фокус за краем окна просмотра: сдвигает
@@ -12,9 +20,10 @@ import { computeRevealOffset } from './markupView';
  * нативно не прокручивается вовсе (`overflow: clip`), а этот хук даёт
  * табуляции то, что давала прокрутка.
  *
- * Сдвиг применяется синхронно, до прокрутки к элементу в фокусе, которую
- * браузер делает после событий фокуса: ручка к тому моменту уже в окне, и
- * прокручивать браузеру нечего — ни окно, ни диалог вокруг.
+ * Прокрутку браузера к ручке в фокусе держит `overflow: clip`, а не этот хук:
+ * прокручивать браузеру нечего — ни окно, ни диалог вокруг. Поэтому сдвиг
+ * фотографии — обычное обновление React, и успевать до прокрутки, которую
+ * браузер делает после событий фокуса, ему не нужно.
  *
  * Ручку, взятую указателем, фотография не догоняет: она под указателем и так
  * видна, а сдвиг снимка в начале перетаскивания увёл бы её из-под руки.
@@ -48,7 +57,14 @@ export const useRevealFocus = (
       pressedPointers.add(event.pointerId);
     };
 
-    const handleWindowPointerUp = (event: PointerEvent) => {
+    /**
+     * Указатель отпущен или потерян: `pointerup` не приходит, если его
+     * перехватил браузер (`pointercancel`) или ручка потеряла захват, — без
+     * этого табуляция к ручкам глохла бы до следующего нажатия.
+     *
+     * @param event — событие указателя
+     */
+    const handleWindowPointerRelease = (event: PointerEvent) => {
       pressedPointers.delete(event.pointerId);
     };
 
@@ -76,22 +92,24 @@ export const useRevealFocus = (
       );
 
       if (offset) {
-        flushSync(() => {
-          panByRef.current(offset.x, offset.y);
-        });
+        panByRef.current(offset.x, offset.y);
       }
     };
 
     viewport.addEventListener('pointerdown', handleViewportPointerDown, true);
     viewport.addEventListener('focusin', handleViewportFocusIn);
-    globalThis.addEventListener('pointerup', handleWindowPointerUp, true);
-    globalThis.addEventListener('pointercancel', handleWindowPointerUp, true);
+
+    for (const type of POINTER_RELEASE_EVENTS) {
+      globalThis.addEventListener(type, handleWindowPointerRelease, true);
+    }
 
     return () => {
       viewport.removeEventListener('pointerdown', handleViewportPointerDown, true);
       viewport.removeEventListener('focusin', handleViewportFocusIn);
-      globalThis.removeEventListener('pointerup', handleWindowPointerUp, true);
-      globalThis.removeEventListener('pointercancel', handleWindowPointerUp, true);
+
+      for (const type of POINTER_RELEASE_EVENTS) {
+        globalThis.removeEventListener(type, handleWindowPointerRelease, true);
+      }
     };
   }, [viewportRef]);
 };

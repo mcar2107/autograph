@@ -110,6 +110,57 @@ describe('стор редактора разметки', () => {
     expect(store().draft).toBe(before);
   });
 
+  it('правка поля черновика вне ручного перечня на отпускании не теряется', () => {
+    store().open(buildEditedRecord());
+
+    const opened = store().draft;
+
+    if (!opened) {
+      throw new Error('Редактор закрыт');
+    }
+
+    /**
+     * Черновик с полем, которого в типе нет: так выглядит черновик, когда тип
+     * получает новое поле. Правка его идёт между предпросмотром и отпусканием,
+     * а разлиновка на отпускании возвращается к прежней.
+     */
+    const withField = { ...opened, trialText: 'до' };
+
+    useMarkupEditorStore.setState({ draft: withField });
+    store().preview((draft) => {
+      return { ruling: { ...draft.ruling, firstLinePhase: 13 } };
+    });
+
+    const dragged = { ...store().draft, trialText: 'после' };
+
+    useMarkupEditorStore.setState({ draft: { ...opened, ...dragged } });
+    store().commit((draft) => {
+      return {
+        ruling: { ...draft.ruling, firstLinePhase: opened.ruling.firstLinePhase },
+      };
+    });
+
+    expect(store().history.past).toHaveLength(1);
+    expect(store().draft).toHaveProperty('trialText', 'после');
+  });
+
+  it('перемер сверяется по ссылке: равный по значению — другой перемер', () => {
+    const record = buildEditedRecord();
+    const remeasure = {
+      lighting: null,
+      texture: null,
+      measuredRuling: MEASURED,
+      measuredKind: record.kind,
+    };
+
+    store().open(record);
+    store().commit({ remeasure });
+    store().preview({ remeasure: { ...remeasure } });
+    store().commit({ remeasure: { ...remeasure } });
+
+    expect(store().history.past).toHaveLength(2);
+  });
+
   it('правки с одним ключом склейки в пределах окна — один шаг', () => {
     vi.useFakeTimers();
     store().open(buildEditedRecord());

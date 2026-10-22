@@ -194,10 +194,8 @@ export const MirrorOverride: FC<MirrorOverrideProps> = (props) => {
             <div className="grid grid-cols-2 gap-2">
               {SIDE_EDGES.flatMap((edge) => {
                 return SIDE_HANDLE_ENDS.map((end) => {
-                  const handleSideCommit = (value: number): null => {
-                    setSideValue(edge, end, value);
-
-                    return null;
+                  const handleSideCommit = (value: number): string | null => {
+                    return setSideValue(edge, end, value);
                   };
 
                   return (

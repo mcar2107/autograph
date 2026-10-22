@@ -245,4 +245,23 @@ describe('ручка в фокусе вне видимой части окна',
 
     expect(stage.style.transform).not.toBe(before);
   });
+
+  it.each(['pointerCancel', 'lostPointerCapture'] as const)(
+    'указатель, потерянный без pointerup (%s), табуляцию не глушит',
+    (lost) => {
+      const { viewport, stage, handle } = renderViewport();
+      const before = stage.style.transform;
+
+      mockRect(viewport, 0, 0, 400, 300);
+      mockRect(handle, 950, 100, 14, 14);
+
+      fireEvent.pointerDown(handle, { pointerId: 1, clientX: 955, clientY: 107 });
+      fireEvent[lost](handle, { pointerId: 1 });
+      act(() => {
+        handle.focus();
+      });
+
+      expect(stage.style.transform).not.toBe(before);
+    }
+  );
 });

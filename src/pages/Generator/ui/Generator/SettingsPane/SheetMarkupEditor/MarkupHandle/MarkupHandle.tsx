@@ -122,6 +122,8 @@ export const MarkupHandle: FC<MarkupHandleProps> = (props) => {
   });
   const pointerIdRef = useRef<number | null>(null);
   const lastPointRef = useRef<SheetPoint | null>(null);
+  const pressPointRef = useRef<SheetPoint | null>(null);
+  const hasMovedRef = useRef(false);
   const [drag, setDrag] = useState<HandleDrag | null>(null);
 
   const handleHandlePointerDown = (event: PointerEvent<SVGCircleElement>) => {
@@ -130,6 +132,7 @@ export const MarkupHandle: FC<MarkupHandleProps> = (props) => {
     event.stopPropagation();
     pointerIdRef.current = pointerId;
     lastPointRef.current = { x, y };
+    hasMovedRef.current = false;
     currentTarget.setPointerCapture?.(pointerId);
     setDrag({
       point: { x, y },
@@ -138,9 +141,12 @@ export const MarkupHandle: FC<MarkupHandleProps> = (props) => {
     });
 
     const pagePoint = toPhotoPoint(currentTarget, clientX, clientY);
+    const pressPoint = pagePoint && mirrorMarkupPoint(pagePoint, mirrorWidth);
 
-    if (pagePoint) {
-      onMoveStart?.(mirrorMarkupPoint(pagePoint, mirrorWidth));
+    pressPointRef.current = pressPoint;
+
+    if (pressPoint) {
+      onMoveStart?.(pressPoint);
     }
   };
 
@@ -153,8 +159,24 @@ export const MarkupHandle: FC<MarkupHandleProps> = (props) => {
 
     const pagePoint = toPhotoPoint(currentTarget, clientX, clientY);
     const point = pagePoint && mirrorMarkupPoint(pagePoint, mirrorWidth);
+    const pressPoint = pressPointRef.current;
+
+    /**
+     * Движение в точку нажатия — не сдвиг: браузер шлёт его и без движения
+     * руки, а ручка, нажатая не в центре, иначе прыгнула бы под указатель.
+     */
+    if (
+      !hasMovedRef.current &&
+      point &&
+      pressPoint &&
+      point.x === pressPoint.x &&
+      point.y === pressPoint.y
+    ) {
+      return;
+    }
 
     if (point) {
+      hasMovedRef.current = true;
       lastPointRef.current = point;
       setDrag((current) => {
         return current && { ...current, point, anchor: { x: clientX, y: clientY } };
@@ -172,9 +194,15 @@ export const MarkupHandle: FC<MarkupHandleProps> = (props) => {
 
     pointerIdRef.current = null;
     lastPointRef.current = null;
+    pressPointRef.current = null;
     setDrag(null);
 
-    if (point) {
+    /**
+     * Нажатие без движения — не правка: отпускание не зовётся, и ни магнит,
+     * ни подгонка разлиновки через булавки, ни перемер по контуру не
+     * запускаются.
+     */
+    if (point && hasMovedRef.current) {
       onMoveEnd?.(point, 'pointer');
     }
   };

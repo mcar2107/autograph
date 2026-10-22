@@ -92,4 +92,52 @@ describe('ручка разметки', () => {
     expect(onMove).toHaveBeenCalledWith({ x: 110, y: 210 });
     expect(onMoveEnd).toHaveBeenCalledWith({ x: 110, y: 210 }, 'pointer');
   });
+
+  it('обводка фигуры — два экранных пикселя при любом масштабе окна', () => {
+    const handle = renderHandle(vi.fn(), vi.fn());
+    const shape = handle.parentElement?.querySelector('[data-handle-kind]');
+
+    /**
+     * Масштаб окна 2: в пикселях фотографии обводка вдвое тоньше экранной.
+     */
+    expect(shape?.getAttribute('stroke-width')).toBe('1');
+  });
+
+  it('нажатие без движения — не отпускание: правки нет', () => {
+    const onMove = vi.fn();
+    const onMoveEnd = vi.fn();
+    const handle = renderHandle(onMove, onMoveEnd);
+    const svg = handle.closest('svg');
+
+    if (!svg) {
+      throw new Error('Ручка вне SVG');
+    }
+
+    Object.defineProperty(svg, 'getScreenCTM', {
+      value: () => {
+        return {
+          inverse: () => {
+            return INVERSE_SCREEN_MATRIX;
+          },
+        };
+      },
+    });
+
+    const pointer = { pointerId: 1, clientX: 220, clientY: 440 };
+
+    fireEvent.pointerDown(handle, pointer);
+    fireEvent.pointerMove(handle, pointer);
+    fireEvent.pointerUp(handle, pointer);
+
+    expect(onMove).not.toHaveBeenCalled();
+    expect(onMoveEnd).not.toHaveBeenCalled();
+
+    fireEvent.pointerDown(handle, pointer);
+    fireEvent.pointerMove(handle, { ...pointer, clientX: 240 });
+    fireEvent.pointerMove(handle, pointer);
+    fireEvent.pointerUp(handle, pointer);
+
+    expect(onMove).toHaveBeenCalledTimes(2);
+    expect(onMoveEnd).toHaveBeenCalledTimes(1);
+  });
 });

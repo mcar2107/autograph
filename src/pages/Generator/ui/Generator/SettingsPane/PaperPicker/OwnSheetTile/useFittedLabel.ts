@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 
 import { fitTileLabel } from './fitTileLabel';
+import { splitLabelBreaks } from './splitLabelBreaks';
 import type { FittedLabel, FittedText, LineCounter } from './useFittedLabel.types';
 
 /**
@@ -10,9 +11,25 @@ import type { FittedLabel, FittedText, LineCounter } from './useFittedLabel.type
 const MAX_LABEL_LINES = 2;
 
 /**
+ * Кладёт подпись в элемент кусками с точками переноса между ними — так же,
+ * как её рисует плитка.
+ *
+ * @param element — элемент
+ * @param text — подпись
+ */
+const fillLabelBreaks = (element: HTMLElement, text: string) => {
+  const nodes = splitLabelBreaks(text).flatMap((segment, index) => {
+    return index > 0 ? [document.createElement('wbr'), segment] : [segment];
+  });
+
+  element.replaceChildren(...nodes);
+};
+
+/**
  * Сколько строк займёт текст в подписи: замер — пробным элементом рядом с
- * подписью, той же ширины и с тем же шрифтом плитки, но без срезки строк, так
- * что перенос тот же, что у браузера на плитке.
+ * подписью, той же ширины, с тем же шрифтом и теми же точками переноса, что у
+ * плитки, но без срезки строк, так что перенос тот же, что у браузера на
+ * плитке.
  *
  * @param element — элемент подписи
  * @returns подсчёт строк и уборка копии; `null` — раскладки ещё нет
@@ -32,7 +49,7 @@ const createLineCounter = (element: HTMLElement): LineCounter | null => {
     display: 'block',
     visibility: 'hidden',
     width: `${clientWidth}px`,
-    wordBreak: 'break-all',
+    overflowWrap: 'anywhere',
   });
   parentElement.append(probe);
   probe.textContent = 'x';
@@ -40,7 +57,7 @@ const createLineCounter = (element: HTMLElement): LineCounter | null => {
   const lineHeight = probe.scrollHeight;
 
   const countLines = (text: string): number => {
-    probe.textContent = text;
+    fillLabelBreaks(probe, text);
 
     return lineHeight > 0 ? Math.round(probe.scrollHeight / lineHeight) : 1;
   };

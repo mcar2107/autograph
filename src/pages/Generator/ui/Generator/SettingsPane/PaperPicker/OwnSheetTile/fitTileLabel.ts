@@ -5,6 +5,10 @@ import { truncateMiddle } from './truncateMiddle';
  * самое длинное, обрезанное с середины, что встаёт. Середина, а не конец:
  * снимки с телефона различаются концом имени.
  *
+ * Длина ищется делением пополам: каждый замер — раскладка пробного элемента
+ * браузером, и перебор по знаку у длинного имени стоил бы десятков раскладок
+ * на плитку. Строк у более короткой обрезки не больше, чем у длинной.
+ *
  * @param label — имя листа
  * @param countLines — сколько строк займёт текст на плитке
  * @param maxLines — сколько строк отведено
@@ -15,15 +19,26 @@ export const fitTileLabel = (
   countLines: (text: string) => number,
   maxLines: number
 ): string => {
-  const length = [...label].length;
+  if (countLines(label) <= maxLines) {
+    return label;
+  }
 
-  for (let kept = length; kept > 1; kept -= 1) {
-    const candidate = truncateMiddle(label, kept);
+  /**
+   * Длина, которая точно встаёт (одно многоточие — последнее, что остаётся),
+   * и длина, которая точно не встаёт.
+   */
+  let fits = 1;
+  let overflows = [...label].length;
 
-    if (countLines(candidate) <= maxLines) {
-      return candidate;
+  while (overflows - fits > 1) {
+    const middle = Math.floor((fits + overflows) / 2);
+
+    if (countLines(truncateMiddle(label, middle)) <= maxLines) {
+      fits = middle;
+    } else {
+      overflows = middle;
     }
   }
 
-  return truncateMiddle(label, 1);
+  return truncateMiddle(label, fits);
 };

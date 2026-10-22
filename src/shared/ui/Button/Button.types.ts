@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { ReactNode, Ref } from 'react';
 
 export type ButtonProps = {
   /**
@@ -39,4 +39,9 @@ export type ButtonProps = {
    * Дополнительные классы.
    */
   className?: string;
+
+  /**
+   * Ссылка на элемент кнопки: например, чтобы вернуть на неё фокус.
+   */
+  ref?: Ref<HTMLButtonElement>;
 };

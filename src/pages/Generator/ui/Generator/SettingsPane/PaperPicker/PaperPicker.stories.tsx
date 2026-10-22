@@ -21,6 +21,65 @@ const LOAD_TIMEOUT = 20_000;
 const MIN_TARGET_SIZE = 32;
 
 /**
+ * Цель нажатия кнопки разметки под палец, px.
+ */
+const COARSE_TARGET_SIZE = 44;
+
+/**
+ * Правила таблиц стилей под `pointer: coarse`, вынутые из медиазапроса: в
+ * браузере с мышью окно под палец иначе не проверить. Селектор правила —
+ * внешнего правила стиля, в которое медиазапрос вложен.
+ *
+ * @param rules — правила таблицы или группы
+ * @param selector — селектор внешнего правила; `null` — его нет
+ * @returns правила CSS текстом
+ */
+const collectCoarseRules = (rules: CSSRuleList, selector: string | null): string[] => {
+  return [...rules].flatMap((rule) => {
+    if (rule instanceof CSSMediaRule && /pointer:\s*coarse/u.test(rule.conditionText)) {
+      return [...rule.cssRules].map((inner) => {
+        const own =
+          inner instanceof CSSStyleRule
+            ? inner.selectorText.replaceAll('&', selector || '')
+            : selector;
+        const declarations =
+          inner instanceof CSSStyleRule || inner instanceof CSSNestedDeclarations
+            ? inner.style.cssText
+            : '';
+
+        return `${own || ':root'}{${declarations}}`;
+      });
+    }
+
+    if (rule instanceof CSSStyleRule) {
+      return collectCoarseRules(rule.cssRules, rule.selectorText);
+    }
+
+    return rule instanceof CSSGroupingRule
+      ? collectCoarseRules(rule.cssRules, selector)
+      : [];
+  });
+};
+
+/**
+ * Включает на странице правила под палец, как если бы указатель был грубым.
+ *
+ * @returns таблица стилей с этими правилами — убрать после замера
+ */
+const applyCoarsePointerRules = (): HTMLStyleElement => {
+  const style = document.createElement('style');
+
+  style.textContent = [...document.styleSheets]
+    .flatMap((sheet) => {
+      return collectCoarseRules(sheet.cssRules, null);
+    })
+    .join('\n');
+  document.head.append(style);
+
+  return style;
+};
+
+/**
  * Свои листы с именами, какие даёт телефон, — они совпадают до последних цифр,
  * и на плитках обязаны различаться, — и два длинных: такое не встаёт в две
  * строки, и обрезка с середины оставляет на виду конец имени.
@@ -132,11 +191,54 @@ export const OwnSheets: Story = {
 
       if (isShort) {
         await expect(text).toBe(label);
+
+        /**
+         * Номер снимка не разрезается переносом: «IMG_» / «1813», а не
+         * «IMG_181» / «3».
+         */
+        const tail = [...(caption?.childNodes || [])].at(-1);
+        const range = document.createRange();
+
+        if (tail) {
+          range.selectNodeContents(tail);
+        }
+
+        const tops = new Set(
+          [...range.getClientRects()].map(({ top }) => {
+            return Math.round(top);
+          })
+        );
+
+        await expect(tail?.textContent).toBe(label.slice(label.indexOf('_') + 1));
+        await expect(tops.size).toBe(1);
       } else {
         await expect(text).toContain('…');
         await expect(label.endsWith(text.slice(-3))).toBe(true);
       }
     }
+
+    /**
+     * Под палец кнопка вырастает до 44 px, под мышь остаётся 32 px.
+     */
+    const [firstSheet] = OWN_SHEETS;
+    const markup = within(ownSheets).getByRole('button', {
+      name: `Разметка листа «${firstSheet?.label}»`,
+    });
+    const coarse = applyCoarsePointerRules();
+    const coarseRect = markup.getBoundingClientRect();
+
+    coarse.remove();
+
+    const fineRect = markup.getBoundingClientRect();
+
+    await expect([coarseRect.width, coarseRect.height]).toStrictEqual([
+      COARSE_TARGET_SIZE,
+      COARSE_TARGET_SIZE,
+    ]);
+    await expect([fineRect.width, fineRect.height]).toStrictEqual([
+      MIN_TARGET_SIZE,
+      MIN_TARGET_SIZE,
+    ]);
 
     /**
      * Снимок ждёт превью: без них эталон вышел бы с пустыми плитками.

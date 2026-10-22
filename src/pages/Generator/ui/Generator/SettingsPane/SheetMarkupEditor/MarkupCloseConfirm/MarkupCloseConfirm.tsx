@@ -3,8 +3,7 @@ import type { FC } from 'react';
 import { useRef } from 'react';
 
 import { useMarkupEditorStore } from '../../../../../model/useMarkupEditorStore';
-
-import { useFocusOnShow } from './useFocusOnShow';
+import { useFocusOnShow } from '../useFocusOnShow';
 
 /**
  * Подтверждение закрытия редактора с несохранёнными правками. Показывается,

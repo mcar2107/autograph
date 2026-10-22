@@ -2,7 +2,7 @@ import { Button } from '@shared/ui/Button';
 import type { FC } from 'react';
 import { useRef, useState } from 'react';
 
-import { useFocusOnShow } from '../MarkupCloseConfirm/useFocusOnShow';
+import { useFocusOnShow } from '../useFocusOnShow';
 
 import type { MarkupSheetDeleteProps } from './MarkupSheetDelete.types';
 
@@ -18,12 +18,21 @@ import type { MarkupSheetDeleteProps } from './MarkupSheetDelete.types';
 export const MarkupSheetDelete: FC<MarkupSheetDeleteProps> = (props) => {
   const { sheetLabel, onDelete } = props;
   const [isDeleteConfirming, setDeleteConfirming] = useState(false);
+  /**
+   * Подтверждение закрыли отказом: фокус возвращается на «Удалить лист», а не
+   * пропадает вместе с ответами. При открытии редактора кнопка фокус не
+   * забирает.
+   */
+  const [isDeleteDeclined, setDeleteDeclined] = useState(false);
   const groupRef = useRef<HTMLDivElement>(null);
+  const deleteRef = useRef<HTMLButtonElement>(null);
 
   useFocusOnShow(groupRef, isDeleteConfirming);
+  useFocusOnShow(deleteRef, isDeleteDeclined && !isDeleteConfirming);
 
   const handleDeleteClick = () => {
     setDeleteConfirming(true);
+    setDeleteDeclined(false);
   };
 
   const handleDeleteConfirmClick = () => {
@@ -32,12 +41,13 @@ export const MarkupSheetDelete: FC<MarkupSheetDeleteProps> = (props) => {
 
   const handleDeleteCancelClick = () => {
     setDeleteConfirming(false);
+    setDeleteDeclined(true);
   };
 
   if (!isDeleteConfirming) {
     return (
       <div className="flex">
-        <Button variant="danger" onClick={handleDeleteClick}>
+        <Button ref={deleteRef} variant="danger" onClick={handleDeleteClick}>
           Удалить лист
         </Button>
       </div>

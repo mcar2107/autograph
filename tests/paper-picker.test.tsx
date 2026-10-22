@@ -323,16 +323,59 @@ const LABEL_LINE_HEIGHT = 16;
 const LABEL_LINE_CHARS = 5;
 
 /**
+ * Сколько строк займут куски подписи, если класть их в строку по пять знаков
+ * и переносить только между кусками, а кусок длиннее строки — по знакам, как
+ * `overflow-wrap: anywhere`.
+ *
+ * @param segments — куски подписи между точками переноса
+ * @returns число строк
+ */
+const countLabelLines = (segments: string[]): number => {
+  const { lines, filled } = segments.reduce(
+    (layout, segment) => {
+      const length = [...segment].length;
+
+      if (layout.filled + length <= LABEL_LINE_CHARS) {
+        return { ...layout, filled: layout.filled + length };
+      }
+
+      const opened = layout.filled > 0 ? layout.lines + 1 : layout.lines;
+      const whole = Math.floor(length / LABEL_LINE_CHARS);
+      const rest = length % LABEL_LINE_CHARS;
+
+      return rest > 0
+        ? { lines: opened + whole, filled: rest }
+        : { lines: opened + whole - 1, filled: LABEL_LINE_CHARS };
+    },
+    { lines: 0, filled: 0 }
+  );
+
+  return filled > 0 ? lines + 1 : lines;
+};
+
+/**
  * Раскладка подписи плитки. В jsdom её нет: ширина элемента — ноль, высота
- * текста — тоже. Заглушка ставит в строку пять знаков и отдаёт высоту текста
- * по числу строк.
+ * текста — тоже. Заглушка ставит в строку пять знаков, переносит только в
+ * точках `<wbr>` элемента (кусок длиннее строки — по знакам) и отдаёт высоту
+ * текста по числу строк.
  */
 const stubLabelWidth = () => {
   const layout = {
     readHeight(this: HTMLElement): number {
-      const length = [...(this.textContent || '')].length;
+      const segments = [...this.childNodes].reduce<string[]>(
+        (result, node) => {
+          if (node.nodeName === 'WBR') {
+            result.push('');
+          } else {
+            result[result.length - 1] += node.textContent || '';
+          }
 
-      return Math.ceil(length / LABEL_LINE_CHARS) * LABEL_LINE_HEIGHT;
+          return result;
+        },
+        ['']
+      );
+
+      return countLabelLines(segments) * LABEL_LINE_HEIGHT;
     },
   };
 
@@ -357,7 +400,55 @@ describe('плитки своих листов: подпись и кнопка �
 
     expect(first.textContent).toBe('IMG_1813');
     expect(second.textContent).toBe('IMG_1808');
-    expect(first.querySelector('.line-clamp-2.break-all')?.textContent).toBe('IMG_1813');
+    expect(first.querySelector('.line-clamp-2')?.innerHTML).toBe('IMG_<wbr>1813');
+  });
+
+  it('перенос — после «_» и перед номером снимка: пробный элемент считает строки с теми же точками', () => {
+    stubLabelWidth();
+    store().selectFamily('lined');
+    store().addUserSheet(buildLabeledRecord('user-181345', 'IMG_181345'));
+
+    render(<PaperPicker />);
+
+    const [tile] = within(screen.getByRole('list', { name: 'Свои листы' }))
+      .getAllByRole('button')
+      .filter((button) => {
+        return button.hasAttribute('aria-pressed');
+      });
+
+    /**
+     * По знакам «IMG_181345» встало бы в две строки по пять, но перенос только
+     * в точках даёт три: «IMG_» / «18134» / «5». Обрезанная подпись встаёт в
+     * две: «IMG_…» / «1345».
+     */
+    expect(tile?.textContent).toBe('IMG_…1345');
+    expect(tile?.querySelector('.line-clamp-2')?.innerHTML).toBe('IMG_<wbr>…<wbr>1345');
+  });
+
+  it('подсказка плитки называет лист целиком, даже когда подпись обрезана', async () => {
+    const user = userEvent.setup();
+
+    stubLabelWidth();
+    store().selectFamily('lined');
+    store().addUserSheet(buildLabeledRecord('user-long', 'IMG_20250925_143012'));
+
+    render(<PaperPicker />);
+
+    const [tile] = within(screen.getByRole('list', { name: 'Свои листы' }))
+      .getAllByRole('button')
+      .filter((button) => {
+        return button.hasAttribute('aria-pressed');
+      });
+
+    if (!tile) {
+      throw new Error('Плитки своего листа нет');
+    }
+
+    expect(tile.textContent).not.toBe('IMG_20250925_143012');
+
+    await user.hover(tile);
+
+    expect((await screen.findByRole('tooltip')).textContent).toBe('IMG_20250925_143012');
   });
 
   it('сверх двух строк — обрезка с середины, видимый текст входит в доступное имя', () => {

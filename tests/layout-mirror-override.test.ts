@@ -117,4 +117,24 @@ describe('поля зеркальной страницы в раскладке',
     expect(overridden[0]?.lines).toStrictEqual(reflected[0]?.lines);
     expect(overridden[1]?.lines).not.toStrictEqual(reflected[1]?.lines);
   });
+
+  it('наклон полей зеркала — отдельная раскладка, а не прежняя из кэша', () => {
+    const factory = createMonospaceMeasurerFactory();
+    const straight = measureLayout(
+      buildParams(buildSheet(MIRROR_OVERRIDE)),
+      factory.create
+    );
+    const slanted = measureLayout(
+      buildParams(
+        buildSheet({
+          ...MIRROR_OVERRIDE,
+          sideSlant: { left: 900, right: 300, marginLineX: 900 },
+        })
+      ),
+      factory.create
+    );
+
+    expect(slanted[0]?.lines).toStrictEqual(straight[0]?.lines);
+    expect(slanted[1]?.lines).not.toStrictEqual(straight[1]?.lines);
+  });
 });

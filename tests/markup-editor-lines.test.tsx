@@ -647,6 +647,49 @@ describe('инструмент «Линии»: булавки', () => {
     expect(readPinEndClass(editor, 2, 'правый')).not.toMatch(/stroke-danger/);
   });
 
+  it('отказ объявляется по отпусканию, а не на каждое переключение во время перетаскивания', async () => {
+    const editor = await openEditor(RULING, PINS, null);
+
+    /**
+     * Годная правка: отказа нет, но правленая булавка уже есть.
+     */
+    dragHandle(getPinEnd(editor, 1, 'левый'), { x: PIN_LEFT, y: lineY(3) + 1 }, true);
+
+    expect(readLinesAlert(editor).textContent).toBe('');
+
+    const handle = getPinEnd(editor, 1, 'правый');
+    const bad = { pointerId: 1, clientX: PIN_RIGHT, clientY: lineY(18), altKey: true };
+    const good = { pointerId: 1, clientX: PIN_RIGHT, clientY: lineY(3), altKey: true };
+
+    fireEvent.pointerDown(handle, { ...good, clientX: 0, clientY: 0 });
+
+    for (const pointer of [bad, good, bad]) {
+      fireEvent.pointerMove(handle, pointer);
+
+      expect(readLinesAlert(editor).textContent).toBe('');
+    }
+
+    fireEvent.pointerUp(handle, bad);
+
+    expect(readLinesAlert(editor).textContent).toMatch(
+      /не задают разлиновку|сходятся внутри кадра/
+    );
+
+    /**
+     * Из отказа: пока тянут в годное место, прежний отказ стоит на месте.
+     */
+    const rejection = readLinesAlert(editor).textContent;
+
+    fireEvent.pointerDown(handle, { ...bad, clientX: 0, clientY: 0 });
+    fireEvent.pointerMove(handle, good);
+
+    expect(readLinesAlert(editor).textContent).toBe(rejection);
+
+    fireEvent.pointerUp(handle, good);
+
+    expect(readLinesAlert(editor).textContent).toBe('');
+  });
+
   it('невязка — расстояние от булавки до нарисованной линии; больше пикселя подсвечено', async () => {
     const [first, second] = PINS;
 

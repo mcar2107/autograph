@@ -382,6 +382,10 @@ describe('разбор концов полей у низа кадра из JSON'
     { name: 'нулевое правое поле', value: { left: 30, right: 0, marginLineX: 95 } },
     { name: 'нет левого поля', value: { right: 90, marginLineX: 95 } },
     { name: 'не объектом', value: [30, 90] },
+    {
+      name: 'отрицательное левое поле',
+      value: { left: -30, right: 90, marginLineX: 95 },
+    },
   ])('испорченные концы читает полями без наклона: $name', ({ value }) => {
     const sheet = parsePaperSheet(buildEntry({ ...SLANTED_RULING, sideSlant: value }));
 
@@ -409,4 +413,34 @@ describe('разбор концов полей у низа кадра из JSON'
       marginLineX: null,
     });
   });
+
+  it.each([
+    { name: 'правое поле строкой', value: { left: 100, right: '50', marginLineX: null } },
+    { name: 'нулевое левое поле', value: { left: 0, right: 50, marginLineX: null } },
+    { name: 'не объектом', value: 'slant' },
+  ])(
+    'испорченные концы у полей зеркала снимают только наклон зеркала: $name',
+    ({ value }) => {
+      const sheet = parsePaperSheet(
+        buildEntry({
+          ...RULING,
+          mirrorOverride: {
+            marginLineX: null,
+            marginLineSide: null,
+            marginLeft: 140,
+            marginRight: 50,
+            sideSlant: value,
+          },
+        })
+      );
+
+      expect(sheet?.ruling.mirrorOverride).toStrictEqual({
+        marginLineX: null,
+        marginLineSide: null,
+        marginLeft: 140,
+        marginRight: 50,
+        sideSlant: null,
+      });
+    }
+  );
 });

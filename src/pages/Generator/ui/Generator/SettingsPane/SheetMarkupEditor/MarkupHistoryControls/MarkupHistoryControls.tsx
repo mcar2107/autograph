@@ -7,6 +7,7 @@ import {
   selectIsMarkupUndoAvailable,
   useMarkupEditorStore,
 } from '../../../../../model/useMarkupEditorStore';
+import { RedoIcon, UndoIcon } from '../../../HistoryIcons';
 
 /**
  * Кнопки отмены и повтора правок разметки — те же, что в шапке генератора, но
@@ -42,14 +43,7 @@ export const MarkupHistoryControls: FC = () => {
           isDisabled={!isUndoAvailable}
           onClick={handleUndoClick}
         >
-          <svg aria-hidden viewBox="0 0 16 16">
-            <path
-              d="M5 3 2 6l3 3M2 6h8a4 4 0 0 1 0 8H7"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-            />
-          </svg>
+          <UndoIcon />
         </IconButton>
       </ToolbarItem>
 
@@ -59,14 +53,7 @@ export const MarkupHistoryControls: FC = () => {
           isDisabled={!isRedoAvailable}
           onClick={handleRedoClick}
         >
-          <svg aria-hidden viewBox="0 0 16 16">
-            <path
-              d="m11 3 3 3-3 3m3-3H6a4 4 0 0 0 0 8h3"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-            />
-          </svg>
+          <RedoIcon />
         </IconButton>
       </ToolbarItem>
     </Toolbar>

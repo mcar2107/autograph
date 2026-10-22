@@ -15,6 +15,7 @@ import {
 } from '@pages/Generator/model/useGeneratorStore';
 import { useMarkupEditorStore } from '@pages/Generator/model/useMarkupEditorStore';
 import { SheetMarkupEditor } from '@pages/Generator/ui/Generator/SettingsPane/SheetMarkupEditor';
+import { MARKUP_MUTED_OPACITY } from '@pages/Generator/ui/Generator/SettingsPane/SheetMarkupEditor/MarkupOverlay';
 import {
   act,
   cleanup,
@@ -430,6 +431,22 @@ describe('пробный текст', () => {
       )
     ).toBe(true);
     expect(pageText.split('Первая пробная строка.').length - 1).toBeGreaterThan(2);
+
+    /**
+     * Набранный текст — два абзаца, повтор — третий, один на всю страницу.
+     * Строка, на которой кончается предложение и больше ничего нет, — только
+     * конец абзаца набранного текста: в повторе предложения идут подряд.
+     * Повтор с абзацами обрывал бы строку на каждом предложении.
+     */
+    const paragraphEnds = texts.reduce<number[]>((ends, text, index) => {
+      if (text === 'строка.') {
+        ends.push(index);
+      }
+
+      return ends;
+    }, []);
+
+    expect(paragraphEnds).toStrictEqual([1, 3]);
   });
 
   it('пустое поле ввода — страница целиком из образца', async () => {
@@ -444,6 +461,26 @@ describe('пробный текст', () => {
     await settle();
 
     expect(pending[0]?.task.params.page.lines).toHaveLength(capacity);
+  });
+
+  it('направляющие полей в слое ручек под пробным текстом тоже приглушены', async () => {
+    const user = userEvent.setup();
+    const editor = await openWithTrial();
+    const overlay = within(editor).getByRole('group', { name: 'Разметка листа' });
+
+    await user.click(within(editor).getByRole('radio', { name: 'Поля' }));
+
+    const guide = overlay.querySelector('[data-margin-guide="top"]');
+
+    expect(guide?.closest('[data-muted]')?.getAttribute('opacity')).toBe(
+      String(MARKUP_MUTED_OPACITY)
+    );
+
+    await user.click(within(editor).getByRole('checkbox', { name: 'Пробный текст' }));
+
+    expect(
+      overlay.querySelector('[data-margin-guide="top"]')?.closest('[data-muted]')
+    ).toBeNull();
   });
 
   it('под пробным текстом линии разметки приглушены, у закреплённых линий — только концы', async () => {

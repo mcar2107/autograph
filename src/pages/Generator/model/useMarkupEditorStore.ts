@@ -35,6 +35,57 @@ const CLOSED_EDITOR: MarkupEditorState = {
 };
 
 /**
+ * Совпадают ли два значения разметки поле в поле. Сравнение по значению, а
+ * не по ссылке: лист, перечитанный из хранилища, держит найденную и свою
+ * разлиновку разными объектами и без единой правки.
+ *
+ * @param left — одно значение
+ * @param right — другое значение
+ * @returns совпадают ли
+ */
+const isSameValue = (left: unknown, right: unknown): boolean => {
+  if (left === right) {
+    return true;
+  }
+
+  if (typeof left !== 'object' || typeof right !== 'object' || !left || !right) {
+    return false;
+  }
+
+  if (Array.isArray(left) !== Array.isArray(right)) {
+    return false;
+  }
+
+  const leftEntries = Object.entries(left);
+
+  return (
+    leftEntries.length === Object.keys(right).length &&
+    leftEntries.every(([key, value]) => {
+      return key in right && isSameValue(value, Reflect.get(right, key));
+    })
+  );
+};
+
+/**
+ * Совпадают ли два черновика по значению. Перемер сравнивается по ссылке: в
+ * нём каналы фотографии, и совпасть по значению с другим перемером он может
+ * только случайно, а поэлементный обход стоил бы дороже самой правки.
+ * Остальные поля сверяются все, а не по перечню: новое поле черновика,
+ * забытое в перечне, делало бы свою правку неотличимой от нажатия без
+ * движения, и она терялась бы на отпускании.
+ *
+ * @param left — один черновик
+ * @param right — другой черновик
+ * @returns совпадают ли
+ */
+const isSameDraft = (left: MarkupDraft, right: MarkupDraft): boolean => {
+  const { remeasure: leftRemeasure, ...leftFields } = left;
+  const { remeasure: rightRemeasure, ...rightFields } = right;
+
+  return leftRemeasure === rightRemeasure && isSameValue(leftFields, rightFields);
+};
+
+/**
  * Черновик после правки. Правка, не поменявшая ни одного поля, возвращает
  * тот же черновик: по ссылке шаг истории понимает, что менять нечего.
  *
@@ -134,8 +185,14 @@ export const useMarkupEditorStore = create<MarkupEditorStore>()((set, get) => {
       const next = applyUpdate(draft, update);
       const base = history.previewBase || draft;
 
-      if (next === base) {
-        return set({ draft: next, history: { ...history, previewBase: null } });
+      /**
+       * Правка сверяется с черновиком до перетаскивания по значению, а не по
+       * ссылке: отпускание пересобирает разлиновку заново, и нажатие без
+       * движения или возврат ручки на прежнее место иначе стали бы шагом
+       * истории и несохранённой правкой.
+       */
+      if (next === base || isSameDraft(next, base)) {
+        return set({ draft: base, history: { ...history, previewBase: null } });
       }
 
       const now = Date.now();
@@ -293,38 +350,6 @@ export const selectIsMarkupUndoAvailable = (state: MarkupEditorState): boolean =
  */
 export const selectIsMarkupRedoAvailable = (state: MarkupEditorState): boolean => {
   return state.history.future.length > 0;
-};
-
-/**
- * Совпадают ли два значения разметки поле в поле. Сравнение по значению, а
- * не по ссылке: лист, перечитанный из хранилища, держит найденную и свою
- * разлиновку разными объектами и без единой правки.
- *
- * @param left — одно значение
- * @param right — другое значение
- * @returns совпадают ли
- */
-const isSameValue = (left: unknown, right: unknown): boolean => {
-  if (left === right) {
-    return true;
-  }
-
-  if (typeof left !== 'object' || typeof right !== 'object' || !left || !right) {
-    return false;
-  }
-
-  if (Array.isArray(left) !== Array.isArray(right)) {
-    return false;
-  }
-
-  const leftEntries = Object.entries(left);
-
-  return (
-    leftEntries.length === Object.keys(right).length &&
-    leftEntries.every(([key, value]) => {
-      return key in right && isSameValue(value, Reflect.get(right, key));
-    })
-  );
 };
 
 /**

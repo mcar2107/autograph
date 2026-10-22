@@ -2,22 +2,27 @@ import { cx } from '@shared/lib/styles';
 import { IconButton } from '@shared/ui/IconButton';
 import { Tooltip } from '@shared/ui/Tooltip';
 import type { FC } from 'react';
+import { Fragment } from 'react';
 
 import { PAPER_TILE_CLASS_NAME } from '../paperTileClassName';
 import { renderSheetPreview } from '../renderSheetPreview';
 
 import type { OwnSheetTileProps } from './OwnSheetTile.types';
+import { splitLabelBreaks } from './splitLabelBreaks';
 import { useFittedLabel } from './useFittedLabel';
 
 /**
  * Плитка своего листа: превью с подписью — выбор листа, в углу — кнопка
  * разметки.
  *
- * Подпись идёт в две строки с переносом по любому знаку: имена снимков — одно
- * длинное слово, и перенос по словам оставил бы его обрезанным. Имя целиком,
- * если встаёт; длиннее — обрезано с середины, по концу имени снимки и
- * различаются. Видимая подпись входит в доступное имя плитки: голосом
- * выбирают то, что видно.
+ * Подпись идёт в две строки. Имя снимка — одно длинное слово, и строка
+ * переносится после «_» и перед номером снимка, а кусок, которому строки
+ * мало, — по знакам: перенос по словам оставил бы имя обрезанным, а по любому
+ * знаку разрезал бы номер. Имя целиком, если встаёт; длиннее — обрезано с
+ * середины, по концу имени снимки и различаются.
+ *
+ * Видимая подпись входит в доступное имя плитки: голосом выбирают то, что
+ * видно.
  */
 export const OwnSheetTile: FC<OwnSheetTileProps> = (props) => {
   const { sheet, isSelected, isMarkupDisabled, onSelect, onMarkupOpen } = props;
@@ -50,8 +55,15 @@ export const OwnSheetTile: FC<OwnSheetTileProps> = (props) => {
             {renderSheetPreview(sheet)}
           </span>
 
-          <span ref={ref} className="line-clamp-2 w-full break-all">
-            {text}
+          <span ref={ref} className="line-clamp-2 w-full wrap-anywhere">
+            {splitLabelBreaks(text).map((segment, index) => {
+              return (
+                <Fragment key={index}>
+                  {index > 0 ? <wbr /> : null}
+                  {segment}
+                </Fragment>
+              );
+            })}
           </span>
         </button>
       </Tooltip>

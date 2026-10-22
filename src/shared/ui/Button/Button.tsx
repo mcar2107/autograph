@@ -15,6 +15,7 @@ export const Button: FC<ButtonProps> = (props) => {
     isLoading = false,
     describedBy,
     className,
+    ref,
   } = props;
 
   const handleButtonClick = () => {
@@ -27,6 +28,7 @@ export const Button: FC<ButtonProps> = (props) => {
 
   return (
     <button
+      ref={ref}
       type="button"
       className={cx(buttonVariants({ variant }), className)}
       disabled={isDisabled}

@@ -1,6 +1,11 @@
 import type { SheetFrame, SideEdge } from '../../../../../lib/paper';
 import { useMarkupEditorStore } from '../../../../../model/useMarkupEditorStore';
-import { placeMargin, placeSideHandleValue } from '../MarginsTool/marginsGeometry';
+import {
+  placeExactSideHandleValue,
+  placeMargin,
+  readMarginRange,
+  readSideHandleRange,
+} from '../MarginsTool/marginsGeometry';
 import type {
   GuideMarginSide,
   SideHandleEnd,
@@ -8,6 +13,7 @@ import type {
 
 import { retargetComb, toMarginPoint } from './exactValuesMarkup';
 import type { CombPatch } from './exactValuesMarkup.types';
+import { formatRangeRejection } from './exactValuesReferences';
 import type { ExactValuesEdit } from './useExactValuesEdit.types';
 
 const STEP_NOT_POSITIVE_MESSAGE = 'Шаг должен быть больше нуля.';
@@ -63,27 +69,55 @@ export const useExactValuesEdit = (frame: SheetFrame): ExactValuesEdit => {
     return changeComb({ firstLinePhase: phase });
   };
 
-  const changeMargin = (side: GuideMarginSide, value: number) => {
-    const { commit } = useMarkupEditorStore.getState();
+  const changeMargin = (side: GuideMarginSide, value: number): string | null => {
+    const { draft, commit } = useMarkupEditorStore.getState();
 
-    commit((draft) => {
-      const point = toMarginPoint(side, value, frame);
+    if (!draft) {
+      return null;
+    }
 
-      return {
-        ruling: {
-          ...draft.ruling,
-          margins: placeMargin(draft.ruling, frame, side, point, true),
-        },
-      };
+    const range = readMarginRange(draft.ruling, frame, side);
+
+    if (value < range.min || value > range.max) {
+      return formatRangeRejection(range);
+    }
+
+    commit({
+      ruling: {
+        ...draft.ruling,
+        margins: placeMargin(
+          draft.ruling,
+          frame,
+          side,
+          toMarginPoint(side, value, frame),
+          true
+        ),
+      },
     });
+
+    return null;
   };
 
-  const changeSideEnd = (edge: SideEdge, end: SideHandleEnd, value: number) => {
-    const { commit } = useMarkupEditorStore.getState();
+  const changeSideEnd = (
+    edge: SideEdge,
+    end: SideHandleEnd,
+    value: number
+  ): string | null => {
+    const { draft, commit } = useMarkupEditorStore.getState();
 
-    commit((draft) => {
-      return { ruling: placeSideHandleValue(draft.ruling, frame, edge, end, value) };
-    });
+    if (!draft) {
+      return null;
+    }
+
+    const ruling = placeExactSideHandleValue(draft.ruling, frame, edge, end, value);
+
+    if (!ruling) {
+      return formatRangeRejection(readSideHandleRange(draft.ruling, frame, edge, end));
+    }
+
+    commit({ ruling });
+
+    return null;
   };
 
   return { changeStep, changeFirstLine, changeMargin, changeSideEnd };

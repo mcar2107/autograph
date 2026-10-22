@@ -33,8 +33,10 @@ import type {
   MarginCornerMove,
   MarginCornerParts,
   MarginHandles,
+  PlacedSideValue,
   SideHandleEnd,
   SideHandles,
+  ValueRange,
 } from './marginsGeometry.types';
 
 /**
@@ -43,6 +45,28 @@ import type {
  * кадра, встаёт в пиксель от него.
  */
 const MIN_MARGIN = 1;
+
+/**
+ * Насколько столбец ручки, прочитанный обратно из разметки, может отойти от
+ * набранного числа и всё ещё считаться им, px: ручка ставится пересечением
+ * наклонных прямых, и точного совпадения до бита нет. Поле показывает десятые
+ * — тысячной не видно.
+ */
+const SIDE_VALUE_TOLERANCE = 1e-3;
+
+/**
+ * До какой ширины сужается вилка «принято — отвергнуто» у конца отрезка
+ * чисел ручки, px: показ округляет концы внутрь до десятой, и точнее
+ * миллионной конец не нужен.
+ */
+const SIDE_RANGE_PRECISION = 1e-6;
+
+/**
+ * Сколько раз вилка у конца отрезка делится пополам — предел на случай,
+ * если точность не набирается: 40 делений сужают кадр в тысячи пикселей
+ * до миллионной.
+ */
+const SIDE_RANGE_MAX_BISECTIONS = 40;
 
 /**
  * На какой доле ширины листа от его стороны появляется добавленная линия
@@ -415,9 +439,7 @@ export const placeCornerMargin = (
       return ruling;
     }
 
-    case 'drag': {
-      return { ...ruling, margins: placeMargin(ruling, frame, side, point, false) };
-    }
+    case 'drag':
 
     case 'nudgeY': {
       return { ...ruling, margins: placeMargin(ruling, frame, side, point, false) };
@@ -806,6 +828,192 @@ export const placeSideHandleValue = (
   }
 
   return placeSideEnd(ruling, frame, edge, end, point);
+};
+
+/**
+ * Отрезок, в котором верхнее или нижнее поле ставится числом без зажима: не
+ * уже пикселя и не за противоположной направляющей — те же границы, что у
+ * перетаскивания направляющей.
+ *
+ * @param ruling — разлиновка листа
+ * @param frame — кадр фотографии
+ * @param side — какое поле
+ * @returns отрезок чисел, px
+ */
+export const readMarginRange = (
+  ruling: SheetRuling,
+  frame: SheetFrame,
+  side: GuideMarginSide
+): ValueRange => {
+  const { margins } = ruling;
+
+  switch (side) {
+    case 'top': {
+      return { min: MIN_MARGIN, max: frame.height - margins.bottom };
+    }
+
+    case 'bottom': {
+      return { min: MIN_MARGIN, max: frame.height - margins.top };
+    }
+
+    default: {
+      throw new Error(`Неизвестное поле: ${String(side)}`);
+    }
+  }
+};
+
+/**
+ * Число, в которое встаёт ручка боковой границы, заданная числом `value`.
+ *
+ * @param ruling — разлиновка листа
+ * @param frame — кадр фотографии
+ * @param edge — какая граница
+ * @param end — какая ручка
+ * @param value — набранное число, px
+ * @returns разлиновка и число ручки в ней; `null` — линии поля нет
+ */
+const placeSideHandleValueRead = (
+  ruling: SheetRuling,
+  frame: SheetFrame,
+  edge: SideEdge,
+  end: SideHandleEnd,
+  value: number
+): PlacedSideValue => {
+  const next = placeSideHandleValue(ruling, frame, edge, end, value);
+
+  return {
+    ruling: next,
+    value: readSideHandleValue(resolveMarginHandles(next, frame), frame, edge, end),
+  };
+};
+
+/**
+ * Разлиновка с ручкой боковой границы в столбце, заданном числом, — только
+ * если разметка принимает число как есть. Край листа, пиксель у края кадра
+ * или противоположное поле сдвинули бы ручку, и правка выглядела бы принятой
+ * с другим числом.
+ *
+ * @param ruling — разлиновка листа
+ * @param frame — кадр фотографии
+ * @param edge — какая граница
+ * @param end — какая ручка
+ * @param value — число: столбец, у правого поля — отступ от правого края, px
+ * @returns разлиновка; `null` — число вне отрезка `readSideHandleRange`
+ */
+export const placeExactSideHandleValue = (
+  ruling: SheetRuling,
+  frame: SheetFrame,
+  edge: SideEdge,
+  end: SideHandleEnd,
+  value: number
+): SheetRuling | null => {
+  const placed = placeSideHandleValueRead(ruling, frame, edge, end, value);
+
+  return placed.value !== null && Math.abs(placed.value - value) <= SIDE_VALUE_TOLERANCE
+    ? placed.ruling
+    : null;
+};
+
+/**
+ * Конец отрезка принимаемых чисел между принятым числом и отвергнутым:
+ * вилка делится пополам, пока не станет уже точности показа.
+ *
+ * @param isAccepted — принимает ли разметка число
+ * @param accepted — принятое число, px
+ * @param rejected — отвергнутое число, px
+ * @returns крайнее принятое число вилки, px
+ */
+const bisectAcceptedEnd = (
+  isAccepted: (value: number) => boolean,
+  accepted: number,
+  rejected: number
+): number => {
+  let inside = accepted;
+  let outside = rejected;
+
+  for (
+    let index = 0;
+    index < SIDE_RANGE_MAX_BISECTIONS &&
+    Math.abs(outside - inside) > SIDE_RANGE_PRECISION;
+    index += 1
+  ) {
+    const middle = (inside + outside) / 2;
+
+    if (isAccepted(middle)) {
+      inside = middle;
+    } else {
+      outside = middle;
+    }
+  }
+
+  return inside;
+};
+
+/**
+ * Отрезок чисел, которые ручка боковой границы принимает, — ровно те, что
+ * примет `placeExactSideHandleValue` при второй ручке на месте. Ограничение
+ * ручки перетаскиванием его не описывает: граница идёт через обе ручки и
+ * продолжается до верха и низа кадра, и поле у края кадра не уже пикселя.
+ * Когда наклон упирает это продолжение в пиксель, ручка сдвигается раньше,
+ * чем дойдёт до края листа или противоположного поля. Поэтому концы ищутся
+ * делением вилки от принятого числа — от числа ручки сейчас — до числа за
+ * краем кадра.
+ *
+ * Принятые числа идут одним отрезком: каждое ограничение — ручка внутри
+ * листа, против противоположного поля, концы у верха и низа кадра — отсекает
+ * числа с одной стороны.
+ *
+ * @param ruling — разлиновка листа
+ * @param frame — кадр фотографии
+ * @param edge — какая граница
+ * @param end — какая ручка
+ * @returns отрезок чисел, px
+ */
+export const readSideHandleRange = (
+  ruling: SheetRuling,
+  frame: SheetFrame,
+  edge: SideEdge,
+  end: SideHandleEnd
+): ValueRange => {
+  const isAccepted = (value: number): boolean => {
+    return placeExactSideHandleValue(ruling, frame, edge, end, value) !== null;
+  };
+
+  const readPlaced = (value: number): number => {
+    const placed = placeSideHandleValueRead(ruling, frame, edge, end, value).value;
+
+    return placed === null ? value : placed;
+  };
+
+  const low = readPlaced(0);
+  const high = readPlaced(frame.width);
+  const current = readSideHandleValue(
+    resolveMarginHandles(ruling, frame),
+    frame,
+    edge,
+    end
+  );
+
+  /**
+   * Линии поля нет — ручки сейчас тоже нет, и принятое число берётся из
+   * середины между зажатыми краями: там встаёт новая линия поля.
+   */
+  const seeds = [current, (low + high) / 2, low, high];
+  const seed = seeds.find((value) => {
+    return value !== null && isAccepted(value);
+  });
+
+  if (seed === undefined || seed === null) {
+    return { min: Math.min(low, high), max: Math.max(low, high) };
+  }
+
+  const below = -MIN_MARGIN;
+  const above = frame.width + MIN_MARGIN;
+
+  return {
+    min: isAccepted(below) ? below : bisectAcceptedEnd(isAccepted, seed, below),
+    max: isAccepted(above) ? above : bisectAcceptedEnd(isAccepted, seed, above),
+  };
 };
 
 /**

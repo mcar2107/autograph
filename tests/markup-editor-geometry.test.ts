@@ -6,6 +6,7 @@ import {
   type SheetRuling,
 } from '@pages/Generator/lib/paper';
 import { getPageRuling } from '@pages/Generator/model/geometrySelectors';
+import { findLinePoint } from '@pages/Generator/ui/Generator/SettingsPane/SheetMarkupEditor/BendTool/bendGeometry';
 import {
   buildRulingLines,
   toOutlineBox,
@@ -132,5 +133,56 @@ describe('линии оверлея редактора', () => {
   it('без шага и с шагом в доли пикселя линий нет', () => {
     expect(buildRulingLines({ ...FLAT_RULING, step: 0 }, FRAME)).toStrictEqual([]);
     expect(buildRulingLines({ ...FLAT_RULING, step: 0.5 }, FRAME)).toStrictEqual([]);
+  });
+});
+
+describe('«Изгиб»: шаг у взятой линии', () => {
+  /**
+   * Лист на столе: к верху кадра шаг заметно короче, чем в середине.
+   */
+  const ruling = buildSheetRuling(
+    {
+      step: 40,
+      firstLinePhase: 20,
+      skewAngle: 0.5,
+      margins: { top: 60, right: 60, bottom: 60, left: 90 },
+      marginLineX: null,
+      marginLineSide: null,
+      perspective: {
+        originX: 300,
+        originY: 400,
+        convergenceX: 0,
+        convergenceY: 0.0008,
+      },
+    },
+    { width: 600, height: 800 }
+  );
+
+  it.each([
+    [300, 60],
+    [300, 720],
+    [80, 400],
+  ])('в точке (%i, %i) — половина промежутка между соседями линии', (x, y) => {
+    const grab = findLinePoint(ruling, { x, y });
+
+    if (!grab) {
+      throw new Error('Линия не взята');
+    }
+
+    const u = ruling.firstLinePhase + grab.index * ruling.step;
+    const above = lineHeightAt(ruling, x, u - ruling.step);
+    const below = lineHeightAt(ruling, x, u + ruling.step);
+
+    expect(grab.localStep).toBeCloseTo((below - above) / 2, 9);
+  });
+
+  it('у верха и у низа кадра шаг разный, и ни один не равен шагу разлиновки', () => {
+    const [top, bottom] = [60, 720].map((y) => {
+      return findLinePoint(ruling, { x: 300, y })?.localStep || 0;
+    });
+
+    expect(Math.abs((top || 0) - ruling.step)).toBeGreaterThan(ruling.step * 0.1);
+    expect(Math.abs((bottom || 0) - ruling.step)).toBeGreaterThan(ruling.step * 0.1);
+    expect(bottom).toBeGreaterThan(top || 0);
   });
 });
