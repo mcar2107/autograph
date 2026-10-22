@@ -32,6 +32,7 @@ import type {
 import { resolveSheetBounds } from './resolveSheetBounds';
 import { lineCoordinateAt, lineHeightAt } from './rulingPerspective';
 import { toTangent } from './sheetProfile';
+import { liftDetectedTopMargin } from './sheetRuling';
 import { toFrameBend } from './toFrameBend';
 import { TRACE_SEARCH_SHARE } from './traceRulingLines';
 
@@ -932,7 +933,10 @@ export const measureSheetPhoto = (
     measureRuling(image, crop, outline);
 
   return {
-    source: { ...source, outline },
+    source: liftDetectedTopMargin(
+      { ...source, outline },
+      { width: image.width, height: image.height }
+    ),
     outline,
     lighting,
     textureMap,

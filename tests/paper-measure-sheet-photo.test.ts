@@ -15,6 +15,7 @@ import {
   type SheetOutline,
   type SheetPhotoMeasurement,
   type SheetRuling,
+  type SheetRulingSource,
 } from '@pages/Generator/lib/paper';
 import type * as DetectRulingModule from '@pages/Generator/lib/paper/detectRuling';
 import type {
@@ -27,6 +28,7 @@ import type * as RectifyModule from '@pages/Generator/lib/paper/measureSheetPhot
 import { rectifySheetImage } from '@pages/Generator/lib/paper/measureSheetPhotoRectify';
 import { describe, expect, it, vi } from 'vitest';
 
+import { readFirstTextLineY } from './helpers/first-text-line';
 import {
   computeSyntheticLineY,
   computeSyntheticOutline,
@@ -61,6 +63,23 @@ const WIDTH = 900;
 const HEIGHT = 1200;
 
 const FRAME = { width: WIDTH, height: HEIGHT };
+
+/**
+ * Поля замера в той форме, в какой их отдаёт детектор по вырезке: верхнее —
+ * линия первой строки, а не поле над ней.
+ *
+ * @param source — разлиновка замера
+ * @param fallback — поля, если замер их не отдал
+ * @returns поля с верхним на линии первой строки
+ */
+const toTextMargins = (
+  source: SheetRulingSource,
+  fallback: PaperMargins
+): PaperMargins => {
+  return source.margins
+    ? { ...source.margins, top: readFirstTextLineY(source, FRAME) }
+    : fallback;
+};
 
 const DEGREES_IN_RADIAN = 180 / Math.PI;
 
@@ -473,20 +492,23 @@ describe('measureSheetPhoto: лист на столе', () => {
     );
     expect(result.source.margins).toBeDefined();
 
-    const margins = result.source.margins || expected;
+    const margins = toTextMargins(result.source, expected);
 
     (['top', 'right', 'bottom', 'left'] as const).forEach((side) => {
       expect(expected[side]).toBeGreaterThan(0);
       expect(Math.abs(margins[side] - expected[side])).toBeLessThanOrEqual(1);
     });
+    expect(
+      Math.abs((result.source.margins?.top || 0) - (expected.top - result.source.step))
+    ).toBeLessThanOrEqual(1);
   });
 
-  it('верхнее поле стоит на линии: без поправки фазы на отступ вырезки было бы ниже', () => {
-    const ruling = buildSheetRuling(measure(GRID_SHEET).source, FRAME);
+  it('первая строка стоит на первой линии: без поправки фазы на отступ вырезки была бы ниже', () => {
+    const firstTextLine = readFirstTextLineY(measure(GRID_SHEET).source, FRAME);
     const [firstLine = 0] = toDrawnLines(GRID_SHEET);
 
     expect(
-      Math.abs(ruling.margins.top - computeSyntheticLineY(GRID_SHEET, firstLine, 0))
+      Math.abs(firstTextLine - computeSyntheticLineY(GRID_SHEET, firstLine, 0))
     ).toBeLessThanOrEqual(GRID_STEP / 20);
   });
 
@@ -569,11 +591,12 @@ describe('measureSheetPhoto: лист без поверхности', () => {
     const lighting = extractLighting(image);
 
     expect(result.outline).toBeNull();
+    expect(detection.margins.top).toBeGreaterThan(detection.step);
     expect(result.source).toEqual({
       step: detection.step,
       firstLinePhase: detection.firstLinePhase,
       skewAngle: detection.skewAngle,
-      margins: detection.margins,
+      margins: { ...detection.margins, top: detection.margins.top - detection.step },
       marginLineX: detection.marginLineX,
       marginLineSide: detection.marginLineSide,
       bend: detection.bend,
@@ -753,7 +776,7 @@ describe('measureSheetPhoto: повторный импорт', () => {
 });
 
 describe('measureSheetPhoto: перспектива', () => {
-  it('линейка с дрейфом 4 % на столе: верхнее поле на первой линии, у ровного прохода — мимо', () => {
+  it('линейка с дрейфом 4 % на столе: первая строка на первой линии, у ровного прохода — мимо', () => {
     const result = measure(LINED_DRIFT_SHEET);
     const ruling = buildSheetRuling(result.source, FRAME);
     const [firstLine = 0] = toDrawnLines(LINED_DRIFT_SHEET);
@@ -761,9 +784,9 @@ describe('measureSheetPhoto: перспектива', () => {
     const { crop, detection } = detectInCrop(LINED_DRIFT_SHEET, result.outline);
 
     expect(ruling.perspective).not.toBeNull();
-    expect(Math.abs(ruling.margins.top - firstLineY)).toBeLessThanOrEqual(
-      LINED_STEP / 10
-    );
+    expect(
+      Math.abs(readFirstTextLineY(result.source, FRAME) - firstLineY)
+    ).toBeLessThanOrEqual(LINED_STEP / 10);
     /**
      * Ровная гребёнка на этом листе ставит первую линию выше настоящей: шаг у
      * верха мельче среднего. Знак зависит от того, успела ли гребёнка
@@ -844,7 +867,8 @@ describe('measureSheetPhoto: перспектива', () => {
     expect(flat.perspective).toBeNull();
     expect(
       Math.abs(
-        ruling.margins.top - computeSyntheticLineY(GRID_DRIFT_SHEET, lines[0] || 0, 0)
+        readFirstTextLineY(result.source, FRAME) -
+          computeSyntheticLineY(GRID_DRIFT_SHEET, lines[0] || 0, 0)
       )
     ).toBeLessThanOrEqual(LINED_STEP / 2);
     expect(
@@ -895,7 +919,7 @@ describe('measureSheetPhoto: перспектива', () => {
     );
 
     const expected = toFrameMargins(detection, crop);
-    const margins = result.source.margins || expected;
+    const margins = toTextMargins(result.source, expected);
 
     (['top', 'right', 'bottom', 'left'] as const).forEach((side) => {
       expect(margins[side]).toBeCloseTo(expected[side], 9);

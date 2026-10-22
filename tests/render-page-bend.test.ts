@@ -44,6 +44,11 @@ const FIRST_LINE_PHASE = 60;
 const SHEET_MARGIN = 100;
 
 /**
+ * Верхнее поле — линия над первой строкой: строка встаёт на линию 100.
+ */
+const SHEET_TOP_MARGIN = SHEET_MARGIN - RULING_STEP;
+
+/**
  * Допуск попадания низа букв на линию — десятая доля шага, как в требовании.
  */
 const TOLERANCE_STEPS = 0.1;
@@ -114,7 +119,7 @@ const BENT_SHEET: PaperSheet = {
     firstLinePhase: FIRST_LINE_PHASE,
     skewAngle: SKEW_ANGLE,
     margins: {
-      top: SHEET_MARGIN,
+      top: SHEET_TOP_MARGIN,
       right: SHEET_MARGIN,
       bottom: SHEET_MARGIN,
       left: SHEET_MARGIN,

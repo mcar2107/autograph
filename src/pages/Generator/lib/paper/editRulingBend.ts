@@ -13,6 +13,7 @@ import type {
 import type { RulingBend, SheetFrame, SheetPoint, SheetRuling } from './paper.types';
 import { lineCoordinateAt, lineHeightAt } from './rulingPerspective';
 import { sampleRulingBend } from './sampleRulingBend';
+import { resolveFirstLineIndex } from './sheetRuling';
 
 /**
  * Радиус по умолчанию поперёк линий — три шага: прогиб бумаги захватывает
@@ -114,7 +115,7 @@ export const resolveBendRadius = (
 /**
  * Нулевая сетка изгиба с узлами, как у поиска изгиба: столбцы — центры равных
  * полос области с линиями шириной около двух шагов, строки — линии гребёнки
- * между верхним и нижним полями.
+ * от линии первой строки до нижнего поля.
  *
  * Плотность узлов берётся у поиска изгиба (`detectRulingBend.ts`): заведённая
  * руками сетка и найденная по фото одной плотности, и подгонка по фото после
@@ -139,9 +140,7 @@ const createBendGrid = (ruling: SheetRuling, frame: SheetFrame): RulingBend | nu
     Math.max(MIN_BEND_STRIPS, Math.round(cropWidth / (BEND_STRIP_STEPS * step)))
   );
   const columnSpacing = cropWidth / columnCount;
-  const firstLine = Math.ceil(
-    (lineCoordinateAt(ruling, 0, margins.top) - firstLinePhase) / step - SNAP_EPSILON
-  );
+  const firstLine = resolveFirstLineIndex(ruling);
   const lastLine = Math.max(
     firstLine,
     Math.floor(

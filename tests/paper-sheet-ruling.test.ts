@@ -8,6 +8,7 @@ import {
   MARGIN_FALLBACK_STEPS,
   resolveFirstLine,
 } from '@pages/Generator/lib/paper';
+import { liftDetectedTopMargin } from '@pages/Generator/lib/paper/sheetRuling';
 import { describe, expect, it } from 'vitest';
 
 /**
@@ -126,17 +127,19 @@ describe('сборка разлиновки экземпляра из резул
     expect(ruling.skewAngle).toBe(SKEW_ANGLE);
   });
 
-  it('верхнее поле фолбэка округляет вверх до ближайшей линии не выше полутора шагов', () => {
+  it('верхнее поле фолбэка — линия над первой линией не выше полутора шагов', () => {
     const ruling = buildSheetRuling({ ...buildDetection(), skewAngle: 0 }, FRAME);
     const fallback = STEP * MARGIN_FALLBACK_STEPS;
 
     /**
-     * Верхнее поле — первая линия, лежащая не выше полутора шагов от края: она
-     * не выше фолбэка, а предыдущая линия — уже выше него.
+     * Первая строка — первая линия, лежащая не выше полутора шагов от края: она
+     * не выше фолбэка, а линия над ней — уже выше него. Поле — эта линия над
+     * первой строкой: граница области письма, под которой встаёт текст.
      */
     expect(measureLineDrift(ruling.margins.top)).toBeLessThan(1e-9);
-    expect(ruling.margins.top).toBeGreaterThanOrEqual(fallback);
-    expect(ruling.margins.top - STEP).toBeLessThan(fallback);
+    expect(ruling.margins.top + STEP).toBeGreaterThanOrEqual(fallback);
+    expect(ruling.margins.top).toBeLessThan(fallback);
+    expect(resolveFirstLine(ruling)).toBeCloseTo(ruling.margins.top + STEP, 9);
   });
 
   it('найденные поля и линию поля со стороной берёт как есть', () => {
@@ -174,7 +177,7 @@ describe('сборка разлиновки экземпляра из резул
     expect(ruling.margins.left).toBe(210);
     expect(ruling.margins.right).toBe(fallback);
     expect(ruling.margins.bottom).toBe(fallback);
-    expect(ruling.margins.top).toBeGreaterThanOrEqual(fallback);
+    expect(ruling.margins.top + STEP).toBeGreaterThanOrEqual(fallback);
     expect(measureLineDrift(ruling.margins.top)).toBeLessThan(1e-9);
   });
 
@@ -183,7 +186,7 @@ describe('сборка разлиновки экземпляра из резул
     const firstLine = resolveFirstLine(ruling);
 
     expect(measureLineDrift(firstLine)).toBeLessThanOrEqual(DRIFT_TOLERANCE);
-    expect(firstLine).toBeGreaterThanOrEqual(ruling.margins.top);
+    expect(firstLine).toBeGreaterThanOrEqual(STEP * MARGIN_FALLBACK_STEPS);
   });
 
   it('линию поля без стороны считает отсутствующей', () => {
@@ -206,7 +209,7 @@ describe('сборка разлиновки экземпляра из резул
     expect(ruling.firstLinePhase).toBe(73.5);
     expect(ruling.skewAngle).toBe(-1.4);
     expect(ruling.margins.left).toBe(96);
-    expect(ruling.margins.top).toBe(137.5);
+    expect(ruling.margins.top).toBe(73.5);
     expect(ruling.marginLineX).toBeNull();
   });
 
@@ -242,13 +245,13 @@ describe('сборка разлиновки экземпляра из резул
     expect(ruling.margins.left).toBe(BOUNDS.left + fallback);
     expect(ruling.margins.right).toBe(BOUNDS.right + fallback);
     expect(ruling.margins.bottom).toBe(BOUNDS.bottom + fallback);
-    expect(ruling.margins.top).toBeGreaterThanOrEqual(BOUNDS.top + fallback);
-    expect(ruling.margins.top - STEP).toBeLessThan(BOUNDS.top + fallback);
+    expect(ruling.margins.top + STEP).toBeGreaterThanOrEqual(BOUNDS.top + fallback);
+    expect(ruling.margins.top).toBeLessThan(BOUNDS.top + fallback);
     expect(measureLineDrift(ruling.margins.top)).toBeLessThan(1e-9);
     expect(ruling.outline).toEqual(OUTLINE);
   });
 
-  it('при перспективе верхнее поле фолбэком стоит на линии разлиновки', () => {
+  it('при перспективе верхнее поле фолбэком стоит на линии над первой строкой', () => {
     const ruling = buildSheetRuling(
       { ...buildDetection(), skewAngle: SKEW_ANGLE, perspective: PERSPECTIVE },
       FRAME
@@ -258,8 +261,8 @@ describe('сборка разлиновки экземпляра из резул
     const lines = (top - PHASE) / STEP;
 
     expect(Math.abs(lines - Math.round(lines))).toBeLessThan(1e-6);
-    expect(top).toBeGreaterThanOrEqual(fallbackTop - 1e-9);
-    expect(top - STEP).toBeLessThan(fallbackTop);
+    expect(top + STEP).toBeGreaterThanOrEqual(fallbackTop - 1e-9);
+    expect(top).toBeLessThan(fallbackTop);
     expect(ruling.perspective).toEqual(PERSPECTIVE);
   });
 
@@ -278,7 +281,7 @@ describe('сборка разлиновки экземпляра из резул
 });
 
 describe('первая линия разлиновки', () => {
-  it('лежит не выше верхнего поля, даже если поле между линиями', () => {
+  it('лежит ниже верхнего поля на ближайшей линии, если поле между линиями', () => {
     const ruling = buildSheetRuling(
       {
         ...buildDetection({ margins: { top: 100, right: 60, bottom: 60, left: 60 } }),
@@ -290,7 +293,7 @@ describe('первая линия разлиновки', () => {
     expect(resolveFirstLine(ruling)).toBe(133);
   });
 
-  it('совпадает с полем, которое уже стоит на линии', () => {
+  it('у поля, стоящего на линии, — следующая линия: тело букв встаёт под поле', () => {
     const ruling = buildSheetRuling(
       {
         ...buildDetection({ margins: { top: 133, right: 60, bottom: 60, left: 60 } }),
@@ -299,11 +302,15 @@ describe('первая линия разлиновки', () => {
       FRAME
     );
 
-    expect(resolveFirstLine(ruling)).toBe(133);
+    expect(resolveFirstLine(ruling)).toBe(173);
   });
 
-  it('не перепрыгивает на следующую линию из-за погрешности вычислений', () => {
-    const step = 53.7;
+  /**
+   * Шаг подобран так, что `(top − phase) / step` выходит 6,999999999999999, а не
+   * 7: без допуска округления строка осталась бы на линии самого поля.
+   */
+  it('не перепрыгивает через линию из-за погрешности вычислений', () => {
+    const step = 40.1;
     const phase = 0.3;
     const ruling = buildSheetRuling(
       {
@@ -315,6 +322,131 @@ describe('первая линия разлиновки', () => {
       FRAME
     );
 
-    expect(resolveFirstLine(ruling)).toBeCloseTo(phase + 7 * step, 9);
+    expect(resolveFirstLine(ruling)).toBeCloseTo(phase + 8 * step, 9);
+  });
+});
+
+describe('верхнее поле, найденное детектором', () => {
+  it('ложится на линию над найденной: первая строка остаётся на найденной линии', () => {
+    const source = liftDetectedTopMargin(
+      {
+        ...buildDetection({ margins: { top: 133, right: 60, bottom: 60, left: 60 } }),
+        skewAngle: 0,
+      },
+      FRAME
+    );
+    const ruling = buildSheetRuling(source, FRAME);
+
+    expect(ruling.margins.top).toBe(93);
+    expect(resolveFirstLine(ruling)).toBe(133);
+  });
+
+  it('поле между линиями отдаёт первую строку ближайшей линии ниже, а само ложится шагом выше', () => {
+    const source = liftDetectedTopMargin(
+      {
+        ...buildDetection({ margins: { top: 120, right: 60, bottom: 60, left: 60 } }),
+        skewAngle: 0,
+      },
+      FRAME
+    );
+    const ruling = buildSheetRuling(source, FRAME);
+
+    expect(ruling.margins.top).toBe(93);
+    expect(resolveFirstLine(ruling)).toBe(133);
+  });
+
+  it('при наклоне и перспективе поднимает поле ровно на шаг вдоль линий', () => {
+    const detectedTop = 500;
+    const detectedLine = Math.ceil(
+      (toLineCoordinate(0, detectedTop, SKEW_ANGLE) - PHASE) / STEP
+    );
+    const source = liftDetectedTopMargin(
+      {
+        ...buildDetection({
+          margins: { top: detectedTop, right: 60, bottom: 60, left: 60 },
+          perspective: PERSPECTIVE,
+        }),
+        skewAngle: SKEW_ANGLE,
+      },
+      FRAME
+    );
+    const ruling = buildSheetRuling(source, FRAME);
+
+    expect(toLineCoordinate(0, ruling.margins.top, SKEW_ANGLE)).toBeCloseTo(
+      PHASE + (detectedLine - 1) * STEP,
+      6
+    );
+    expect(resolveFirstLine(ruling)).toBeCloseTo(PHASE + detectedLine * STEP, 6);
+  });
+
+  it('у первой линии ближе шага к верху кадра встаёт между верхом и ней, не за край', () => {
+    const source = liftDetectedTopMargin(
+      {
+        ...buildDetection({ margins: { top: PHASE, right: 60, bottom: 60, left: 60 } }),
+        skewAngle: 0,
+      },
+      FRAME
+    );
+    const ruling = buildSheetRuling(source, FRAME);
+
+    expect(ruling.margins.top).toBe((1 + PHASE) / 2);
+    expect(resolveFirstLine(ruling)).toBe(PHASE);
+  });
+
+  /**
+   * Линия над первой лежит в полупикселе от верха кадра: поле на ней вышло бы
+   * меньше пикселя, а такое поле редактор разметки не принимает.
+   */
+  it('не ставит поле ближе пикселя к верху кадра', () => {
+    const source = liftDetectedTopMargin(
+      {
+        ...buildDetection({
+          firstLinePhase: 0.5,
+          margins: { top: 40.5, right: 60, bottom: 60, left: 60 },
+        }),
+        skewAngle: 0,
+      },
+      FRAME
+    );
+    const ruling = buildSheetRuling(source, FRAME);
+
+    expect(ruling.margins.top).toBe((1 + 40.5) / 2);
+    expect(resolveFirstLine(ruling)).toBe(40.5);
+  });
+
+  it('у первой линии ближе шага к верху листа встаёт между верхом листа и ней, не на стол', () => {
+    const source = liftDetectedTopMargin(
+      {
+        ...buildDetection({ margins: { top: 93, right: 60, bottom: 60, left: 60 } }),
+        skewAngle: 0,
+        outline: OUTLINE,
+      },
+      FRAME
+    );
+    const ruling = buildSheetRuling(source, FRAME);
+
+    expect(ruling.margins.top).toBe((BOUNDS.top + 93) / 2);
+    expect(resolveFirstLine(ruling)).toBe(93);
+  });
+
+  it('у первой линии на самом верху листа не кладёт поле на неё саму', () => {
+    const source = liftDetectedTopMargin(
+      {
+        ...buildDetection({ margins: { top: 53, right: 60, bottom: 60, left: 60 } }),
+        skewAngle: 0,
+        outline: OUTLINE,
+      },
+      FRAME
+    );
+    const ruling = buildSheetRuling(source, FRAME);
+
+    expect(ruling.margins.top).toBe(53 / 2);
+    expect(resolveFirstLine(ruling)).toBe(53);
+  });
+
+  it('ненайденное поле оставляет нулём: его ставит фолбэк', () => {
+    const source = { ...buildDetection(), skewAngle: 0 };
+
+    expect(liftDetectedTopMargin(source, FRAME)).toBe(source);
   });
 });

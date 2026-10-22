@@ -2,6 +2,7 @@ import type { SheetRuling } from '@pages/Generator/lib/paper';
 import {
   lineHeightAt,
   refitRulingBend,
+  resolveFirstLine,
   sampleRulingBend,
 } from '@pages/Generator/lib/paper';
 import { detectRulingBend } from '@pages/Generator/lib/paper/detectRulingBend';
@@ -192,8 +193,16 @@ describe('refitRulingBend: подгонка изгиба по фото от те
 
     expect(ruling.perspective).toBeNull();
     expect(detection.bend).not.toBeNull();
+    /**
+     * Верх области с линиями — линия первой строки: на ровном листе её высота
+     * у левого края кадра — сама координата вдоль линий.
+     */
     expect(detection).toStrictEqual(
-      detectRulingBend(image, ruling, { left: SIDE, right: WIDTH - SIDE })
+      detectRulingBend(
+        image,
+        { ...ruling, margins: { ...ruling.margins, top: resolveFirstLine(ruling) } },
+        { left: SIDE, right: WIDTH - SIDE }
+      )
     );
     expect(
       measureLineError({ ...ruling, bend: detection.bend }, WAVY_FLAT_SHEET)

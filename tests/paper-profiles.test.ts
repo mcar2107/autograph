@@ -217,7 +217,15 @@ describe('сборка предустановленных семей', () => {
         expect(ruling.margins.left).toBeCloseTo(fallback, 9);
         expect(ruling.margins.right).toBeCloseTo(fallback, 9);
         expect(ruling.margins.bottom).toBeCloseTo(fallback, 9);
-        expect(ruling.margins.top).toBeGreaterThanOrEqual(fallback - 1e-9);
+        /**
+         * Первая строка — ближайшая линия не выше полутора шагов от верха, а поле
+         * — линия над ней: на линии, ниже отступа и не дальше шага от него.
+         */
+        const topLines = (ruling.margins.top - ruling.firstLinePhase) / ruling.step;
+
+        expect(Math.abs(topLines - Math.round(topLines))).toBeLessThan(1e-6);
+        expect(ruling.margins.top + ruling.step).toBeGreaterThanOrEqual(fallback - 1e-9);
+        expect(ruling.margins.top).toBeLessThan(fallback);
         expect(ruling.marginLineX).toBeNull();
         expect(ruling.marginLineSide).toBeNull();
         expect(sheet.lighting).toBeNull();

@@ -148,8 +148,15 @@ docs/notes/       отложенные направления и исследо�
    задаёт вид **листа** страницы, а не семьи: у своего листа — `kind` его записи (`PaperFamily.sheetKinds`), у
    пресета — вид семьи. Чистый лист лежит в семье клетки или линейки, но строка на нём — ровно заданный шаг; вид
    читают `getPageCalibration` (`model/geometrySelectors.ts`) и отпечаток кэша раскладки. Ненайденное поле —
-   полтора шага от **стороны листа**, а не от края кадра, верхнее опускается до ближайшей линии
-   (`lib/paper/sheetRuling.ts`).
+   полтора шага от **стороны листа**, а не от края кадра; у верхнего первая строка опускается до ближайшей
+   линии, а само поле ложится на линию над ней (`lib/paper/sheetRuling.ts`). Верхнее поле — верхняя граница
+   области письма: первая строка садится на первую линию **строго ниже** него (`resolveFirstLine`), поэтому поле,
+   поставленное в редакторе на линию, отдаёт текст следующей линии. Автомат находит первую линию области и отдаёт
+   поле шагом выше (`liftDetectedTopMargin` в конце `measureSheetPhoto`), чтобы строка встала на неё; если линия над
+   ней легла бы выше верха листа или ближе пикселя к верху кадра (меньшее поле редактор не примет), поле встаёт
+   посередине между верхом листа и первой линией (`placeTopMarginAbove`). Инструменты редактора, которым нужна
+   верхняя линия области (начальные булавки, сетка и подгонка изгиба), берут линию первой строки
+   (`resolveFirstLineIndex`), а не поле: у линейки линии над первой на листе может не быть.
 
    Контур (`SheetOutline`) — четыре угла листа в кадре, а не прямоугольник: лист снят под углом и лежит на столе,
    на обложке, рядом с соседним листом. `null` — лист во весь кадр, как у скана. Всё, что меряется по бумаге —
@@ -518,7 +525,7 @@ docs/notes/       отложенные направления и исследо�
    подставленную бумагу. Отказ чтения — пустой список.
 5. **Автокалибровка.** `lib/calibrate/deriveGeometry.ts` выводит кегль, межстрочный интервал, верхний и левый
    отступы и ширину блока из разлиновки листа страницы и метрик шрифта (`lib/measure/measureFontMetrics.ts`):
-   базовая линия первой строки садится на первую линию не выше верхнего поля, края блока — поля, сужённые линией
+   базовая линия первой строки садится на первую линию строго ниже верхнего поля, края блока — поля, сужённые линией
    поля. При наклонных полях или линии поля (`sideSlant`) у каждой строки свои края (`lineBounds`: сдвиг начала
    от `leftPadding` и ширина): строка начинается и кончается там, где её базовая линия пересекает наклонную
    границу, с перспективой (`resolveSideEdgeAt`). Края считаются на каждую базовую линию до низа кадра; строкам
@@ -870,7 +877,7 @@ steiger.config.ts        # границы слоёв FSD
    ```
 
    ```bash
-   gh api --method POST repos/Corvus278/autograph/pulls/<N>/reviews --input /tmp/review.json
+   gh api --method POST repos/mcar2107/autograph/pulls/<N>/reviews --input /tmp/review.json
    ```
 
    Один тред — одна находка. `event: COMMENT`, а не `REQUEST_CHANGES`: автор PR и ревьюер здесь одно лицо, и
@@ -884,7 +891,7 @@ steiger.config.ts        # границы слоёв FSD
    ответ в треде с обоснованием тоже закрывает находку.
 
    ```bash
-   gh api --method POST repos/Corvus278/autograph/pulls/<N>/comments/<databaseId первого коммента треда>/replies -f body='<как поправлено или почему нет>'
+   gh api --method POST repos/mcar2107/autograph/pulls/<N>/comments/<databaseId первого коммента треда>/replies -f body='<как поправлено или почему нет>'
    ```
 
    Ответ идёт на **комментарий**, а не на тред: у REST есть только `databaseId` первого коммента, а резолв (шаг 6)
@@ -896,7 +903,7 @@ steiger.config.ts        # границы слоёв FSD
    ```bash
    # нерезолвнутые треды с путями и строками
    gh api graphql -f query='query($owner:String!,$repo:String!,$pr:Int!){repository(owner:$owner,name:$repo){pullRequest(number:$pr){reviewThreads(first:100){nodes{id isResolved path line comments(first:1){nodes{databaseId body}}}}}}}' \
-     -F owner=Corvus278 -F repo=autograph -F pr=<N> --jq '.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved | not) | {id, path, line, commentId: .comments.nodes[0].databaseId}'
+     -F owner=mcar2107 -F repo=autograph -F pr=<N> --jq '.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved | not) | {id, path, line, commentId: .comments.nodes[0].databaseId}'
 
    gh api graphql -f query='mutation($id:ID!){resolveReviewThread(input:{threadId:$id}){thread{isResolved}}}' -F id=<id треда>
    ```

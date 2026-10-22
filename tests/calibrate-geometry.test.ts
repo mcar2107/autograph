@@ -79,8 +79,8 @@ const NO_LINE: SheetCalibration = {
 };
 
 /**
- * Лист, у которого верхнее поле не лежит на линии: первая линия не выше поля —
- * `13 + ceil((100 − 13) / 40) · 40 = 133`.
+ * Лист, у которого верхнее поле не лежит на линии: первая линия строго ниже
+ * поля — `13 + (floor((100 − 13) / 40) + 1) · 40 = 133`.
  */
 const OFF_PHASE: SheetCalibration = {
   kind: 'lined',
@@ -159,7 +159,7 @@ const withRuling = (
 
 /**
  * Линия разлиновки, на которую должна лечь строка с этим номером. Первая
- * линия считается здесь заново, а не берётся из кода: первая линия не выше
+ * линия считается здесь заново, а не берётся из кода: первая линия строго ниже
  * верхнего поля.
  *
  * @param sheet — лист страницы
@@ -174,7 +174,8 @@ const getRulingLineY = (
 ): number => {
   const { step, firstLinePhase, margins } = sheet.ruling;
   const firstLine =
-    firstLinePhase + Math.ceil((margins.top - firstLinePhase) / step - PX_EPSILON) * step;
+    firstLinePhase +
+    (Math.floor((margins.top - firstLinePhase) / step + PX_EPSILON) + 1) * step;
 
   return firstLine + lineIndex * step * rowSteps;
 };
@@ -257,7 +258,7 @@ describe('deriveGeometry: границы блока из стороны лини
 });
 
 describe('deriveGeometry: первая строка на линии', () => {
-  it('поле не кратно фазе: базовая линия на первой линии не выше поля', () => {
+  it('поле не кратно фазе: базовая линия на первой линии ниже поля', () => {
     const { ruling } = OFF_PHASE;
     const geometry = deriveGeometry(OFF_PHASE, METRICS);
     const baseline = getBaselineY(geometry, METRICS, 0);
@@ -266,18 +267,19 @@ describe('deriveGeometry: первая строка на линии', () => {
 
     expect(baseline).toBeCloseTo(OFF_PHASE_FIRST_LINE, 9);
     expect(Math.min(phaseRemainder, ruling.step - phaseRemainder)).toBeLessThan(1e-6);
-    expect(baseline).toBeGreaterThanOrEqual(ruling.margins.top);
+    expect(baseline).toBeGreaterThan(ruling.margins.top);
     expect(baseline - ruling.margins.top).toBeLessThan(ruling.step);
     expect(getMaxDrift(OFF_PHASE, METRICS, 1)).toBeLessThanOrEqual(
       DRIFT_SHARE * ruling.step
     );
   });
 
-  it('поле ровно на линии остаётся этой линией', () => {
+  it('поле ровно на линии: первая строка — на следующей линии, под полем', () => {
+    const { ruling } = LINE_LEFT;
     const geometry = deriveGeometry(LINE_LEFT, METRICS);
 
     expect(getBaselineY(geometry, METRICS, 0)).toBeCloseTo(
-      LINE_LEFT.ruling.margins.top,
+      ruling.margins.top + ruling.step,
       9
     );
   });
