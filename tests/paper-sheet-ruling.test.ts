@@ -429,6 +429,21 @@ describe('верхнее поле, найденное детектором', () 
     expect(resolveFirstLine(ruling)).toBe(93);
   });
 
+  it('у первой линии на самом верху листа не кладёт поле на неё саму', () => {
+    const source = liftDetectedTopMargin(
+      {
+        ...buildDetection({ margins: { top: 53, right: 60, bottom: 60, left: 60 } }),
+        skewAngle: 0,
+        outline: OUTLINE,
+      },
+      FRAME
+    );
+    const ruling = buildSheetRuling(source, FRAME);
+
+    expect(ruling.margins.top).toBe(53 / 2);
+    expect(resolveFirstLine(ruling)).toBe(53);
+  });
+
   it('ненайденное поле оставляет нулём: его ставит фолбэк', () => {
     const source = { ...buildDetection(), skewAngle: 0 };
 

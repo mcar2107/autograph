@@ -125,7 +125,12 @@ export const placeTopMarginAbove = (
 
   const first = lineHeightAt(projection, 0, firstLine);
 
-  return (Math.min(lowest, first) + first) / 2;
+  /**
+   * Первая линия на самом верху листа места над собой на бумаге не оставляет:
+   * поле, прижатое к верху листа, легло бы на неё и отдало первую строку
+   * следующей линии. Тогда поле встаёт посередине между верхом кадра и ней.
+   */
+  return (lowest < first ? lowest + first : first) / 2;
 };
 
 /**
