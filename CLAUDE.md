@@ -875,7 +875,7 @@ steiger.config.ts        # границы слоёв FSD
    ```
 
    ```bash
-   gh api --method POST repos/Corvus278/autograph/pulls/<N>/reviews --input /tmp/review.json
+   gh api --method POST repos/mcar2107/autograph/pulls/<N>/reviews --input /tmp/review.json
    ```
 
    Один тред — одна находка. `event: COMMENT`, а не `REQUEST_CHANGES`: автор PR и ревьюер здесь одно лицо, и
@@ -889,7 +889,7 @@ steiger.config.ts        # границы слоёв FSD
    ответ в треде с обоснованием тоже закрывает находку.
 
    ```bash
-   gh api --method POST repos/Corvus278/autograph/pulls/<N>/comments/<databaseId первого коммента треда>/replies -f body='<как поправлено или почему нет>'
+   gh api --method POST repos/mcar2107/autograph/pulls/<N>/comments/<databaseId первого коммента треда>/replies -f body='<как поправлено или почему нет>'
    ```
 
    Ответ идёт на **комментарий**, а не на тред: у REST есть только `databaseId` первого коммента, а резолв (шаг 6)
@@ -901,7 +901,7 @@ steiger.config.ts        # границы слоёв FSD
    ```bash
    # нерезолвнутые треды с путями и строками
    gh api graphql -f query='query($owner:String!,$repo:String!,$pr:Int!){repository(owner:$owner,name:$repo){pullRequest(number:$pr){reviewThreads(first:100){nodes{id isResolved path line comments(first:1){nodes{databaseId body}}}}}}}' \
-     -F owner=Corvus278 -F repo=autograph -F pr=<N> --jq '.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved | not) | {id, path, line, commentId: .comments.nodes[0].databaseId}'
+     -F owner=mcar2107 -F repo=autograph -F pr=<N> --jq '.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved | not) | {id, path, line, commentId: .comments.nodes[0].databaseId}'
 
    gh api graphql -f query='mutation($id:ID!){resolveReviewThread(input:{threadId:$id}){thread{isResolved}}}' -F id=<id треда>
    ```
